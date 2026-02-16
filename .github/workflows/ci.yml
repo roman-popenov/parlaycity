@@ -18,8 +18,8 @@ jobs:
       - name: Install dependencies
         working-directory: packages/contracts
         run: |
-          forge install foundry-rs/forge-std --no-commit
-          forge install OpenZeppelin/openzeppelin-contracts --no-commit
+          forge install foundry-rs/forge-std --no-git
+          forge install OpenZeppelin/openzeppelin-contracts --no-git
 
       - name: Build
         working-directory: packages/contracts
