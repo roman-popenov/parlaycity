@@ -11,11 +11,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
+
+      - name: Install dependencies
+        working-directory: packages/contracts
+        run: forge install
 
       - name: Build
         working-directory: packages/contracts
@@ -50,9 +52,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - name: Build shared
+      - name: Typecheck shared
         working-directory: packages/shared
-        run: pnpm build
+        run: pnpm typecheck
 
       - name: Test services
         working-directory: packages/services
