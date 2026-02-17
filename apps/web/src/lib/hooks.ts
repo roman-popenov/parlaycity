@@ -106,6 +106,8 @@ export function useLegStatuses(
 
   useEffect(() => {
     fetchStatuses();
+    const interval = setInterval(fetchStatuses, 5000);
+    return () => clearInterval(interval);
   }, [fetchStatuses]);
 
   return statuses;

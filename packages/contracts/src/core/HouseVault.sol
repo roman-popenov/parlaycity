@@ -210,6 +210,7 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
     function reservePayout(uint256 amount) external onlyEngine nonReentrant {
         require(totalReserved + amount <= maxReservable(), "HouseVault: utilization cap exceeded");
         require(amount <= maxPayout(), "HouseVault: exceeds max payout");
+        require(amount <= freeLiquidity(), "HouseVault: insufficient free liquidity");
         totalReserved += amount;
         emit PayoutReserved(amount, totalReserved);
     }
