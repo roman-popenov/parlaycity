@@ -175,15 +175,18 @@ contract HouseVaultFuzzTest is Test {
         vm.prank(bob);
         uint256 r2 = vault.withdraw(s2, bob);
 
-        // Each should get at least their original deposit (yield is profit)
-        assertGe(r1, a1 - 2, "alice lost principal");
-        assertGe(r2, a2 - 2, "bob lost principal");
+        // Each should get at least their original deposit (yield is profit).
+        // Max rounding loss per withdrawal = share price = totalAssets / totalSupply.
+        uint256 sharePrice = (a1 + a2 + yield_) / (a1 + a2);
+        assertGe(r1, a1 - sharePrice - 1, "alice lost principal");
+        assertGe(r2, a2 - sharePrice - 1, "bob lost principal");
 
         // Combined withdrawal should be close to total deposited + yield.
-        // Each deposit/withdraw conversion rounds down; with the +1 virtual offset
-        // these rounding errors can compound to ~10 wei worst-case across 5 operations.
+        // Each convertToAssets call rounds down by up to 1 share-price of assets.
+        // With 2 withdrawals: max rounding loss = 2 * sharePrice.
         uint256 totalDeposited = a1 + a2 + yield_;
         uint256 totalReturned = r1 + r2;
-        assertApproxEqAbs(totalReturned, totalDeposited, 10, "total returned diverges from total deposited + yield");
+        uint256 tolerance = 2 * sharePrice + 2;
+        assertApproxEqAbs(totalReturned, totalDeposited, tolerance, "total returned diverges from total deposited + yield");
     }
 }
