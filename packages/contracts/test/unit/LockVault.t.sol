@@ -87,8 +87,14 @@ contract LockVaultTest is Test {
 
     function test_lock_zeroShares_reverts() public {
         vm.prank(alice);
-        vm.expectRevert("LockVault: zero shares");
+        vm.expectRevert("LockVault: lock below minimum");
         lockVault.lock(0, LockVault.LockTier.THIRTY);
+    }
+
+    function test_lock_belowMinimum_reverts() public {
+        vm.prank(alice);
+        vm.expectRevert("LockVault: lock below minimum");
+        lockVault.lock(0.5e6, LockVault.LockTier.THIRTY); // 0.5 vUSDC < 1 vUSDC minimum
     }
 
     function test_lock_insufficientBalance_reverts() public {

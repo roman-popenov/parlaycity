@@ -39,6 +39,9 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
     /// @notice Minimum local buffer as fraction of totalAssets (bps). Default 25%.
     uint256 public yieldBufferBps = 2500;
 
+    /// @notice Minimum deposit amount (1 USDC). Mitigates first-depositor inflation attack.
+    uint256 public constant MIN_DEPOSIT = 1e6;
+
     // ── Events ───────────────────────────────────────────────────────────
 
     event Deposited(address indexed depositor, address indexed receiver, uint256 assets, uint256 shares);
@@ -154,26 +157,27 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
         return (totalAssets() * maxUtilizationBps) / 10_000;
     }
 
-    /// @notice Convert assets to shares.
+    /// @notice Convert assets to shares. Uses +1 virtual offset to mitigate inflation attack.
     function convertToShares(uint256 assets) public view returns (uint256) {
         uint256 supply = totalSupply();
         uint256 total = totalAssets();
         if (supply == 0 || total == 0) return assets; // 1:1
-        return (assets * supply) / total;
+        return (assets * (supply + 1)) / (total + 1);
     }
 
-    /// @notice Convert shares to assets.
+    /// @notice Convert shares to assets. Uses +1 virtual offset to mitigate inflation attack.
     function convertToAssets(uint256 shares) public view returns (uint256) {
         uint256 supply = totalSupply();
-        if (supply == 0) return shares; // 1:1
-        return (shares * totalAssets()) / supply;
+        uint256 total = totalAssets();
+        if (supply == 0 || total == 0) return shares; // 1:1
+        return (shares * (total + 1)) / (supply + 1);
     }
 
     // ── LP Functions ─────────────────────────────────────────────────────
 
     /// @notice Deposit USDC and receive vUSDC shares.
     function deposit(uint256 assets, address receiver) external nonReentrant whenNotPaused returns (uint256 shares) {
-        require(assets > 0, "HouseVault: zero deposit");
+        require(assets >= MIN_DEPOSIT, "HouseVault: deposit below minimum");
         require(receiver != address(0), "HouseVault: zero receiver");
 
         shares = convertToShares(assets);

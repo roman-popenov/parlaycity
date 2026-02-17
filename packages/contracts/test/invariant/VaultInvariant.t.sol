@@ -36,8 +36,9 @@ contract VaultHandler is Test {
     function deposit(uint256 actorIndex, uint256 amount) external {
         actorIndex = bound(actorIndex, 0, actors.length - 1);
         address actor = actors[actorIndex];
-        amount = bound(amount, 1, usdc.balanceOf(actor));
-        if (amount == 0) return;
+        uint256 bal = usdc.balanceOf(actor);
+        if (bal < 1e6) return; // below minimum deposit
+        amount = bound(amount, 1e6, bal);
 
         vm.prank(actor);
         vault.deposit(amount, actor);

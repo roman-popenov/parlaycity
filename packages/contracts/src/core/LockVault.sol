@@ -39,6 +39,7 @@ contract LockVault is Ownable, ReentrancyGuard {
 
     uint256 private constant PRECISION = 1e18;
     uint256 private constant BPS_BASE = 10_000;
+    uint256 public constant MIN_LOCK = 1e6; // 1 vUSDC
 
     // ── State ────────────────────────────────────────────────────────────
 
@@ -92,7 +93,7 @@ contract LockVault is Ownable, ReentrancyGuard {
 
     /// @notice Lock vUSDC shares for a given tier period.
     function lock(uint256 shares, LockTier tier) external nonReentrant returns (uint256 positionId) {
-        require(shares > 0, "LockVault: zero shares");
+        require(shares >= MIN_LOCK, "LockVault: lock below minimum");
 
         vUSDC.safeTransferFrom(msg.sender, address(this), shares);
 

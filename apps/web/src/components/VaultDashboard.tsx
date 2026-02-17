@@ -95,7 +95,7 @@ export function VaultDashboard() {
 
   const handleDeposit = async () => {
     const amount = parseFloat(depositAmount);
-    if (!amount || amount <= 0) return;
+    if (!amount || amount < 1) return;
     const success = await depositHook.deposit(amount);
     if (success) setDepositAmount("");
   };
@@ -141,7 +141,8 @@ export function VaultDashboard() {
   const depositAmountBigInt = safeParse(depositAmount);
   const withdrawAmountBigInt = safeParse(withdrawAmount);
   const lockAmountBigInt = safeParse(lockAmount);
-  const depositExceedsBalance = depositAmountBigInt > 0n && depositAmountBigInt > (usdcBalance ?? 0n);
+  const depositBelowMinimum = depositAmountBigInt > 0n && depositAmountBigInt < 1_000_000n;
+  const depositExceedsBalance = depositAmountBigInt > 0n && !depositBelowMinimum && depositAmountBigInt > (usdcBalance ?? 0n);
   const withdrawExceedsShares = withdrawAmountBigInt > 0n && withdrawAmountBigInt > userSharesBigInt;
   const withdrawExceedsLiquidity = withdrawAmountBigInt > 0n && !withdrawExceedsShares && withdrawAmountBigInt > withdrawableShares;
   const lockExceedsShares = lockAmountBigInt > 0n && lockAmountBigInt > userSharesBigInt;
@@ -254,27 +255,32 @@ export function VaultDashboard() {
               </button>
             )}
           </div>
+          {depositBelowMinimum && (
+            <p className="mb-2 text-center text-xs text-neon-red">Minimum deposit is 1 USDC</p>
+          )}
           {depositExceedsBalance && (
             <p className="mb-2 text-center text-xs text-neon-red">Exceeds your USDC balance</p>
           )}
           <button
             onClick={handleDeposit}
-            disabled={!isConnected || !hasUSDC || !depositAmount || depositExceedsBalance || depositHook.isPending || depositHook.isConfirming}
+            disabled={!isConnected || !hasUSDC || !depositAmount || depositBelowMinimum || depositExceedsBalance || depositHook.isPending || depositHook.isConfirming}
             className="w-full rounded-xl bg-gradient-to-r from-accent-blue to-accent-purple py-3 text-sm font-bold uppercase tracking-wider text-white transition-all hover:shadow-lg hover:shadow-accent-purple/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {!isConnected
               ? "Connect Wallet"
               : !hasUSDC
                 ? "No USDC Balance"
-                : depositExceedsBalance
-                  ? "Insufficient Balance"
-                  : depositHook.isPending
-                    ? "Signing..."
-                    : depositHook.isConfirming
-                      ? "Confirming..."
-                      : depositTxSuccess
-                        ? "Deposited!"
-                        : "Deposit"}
+                : depositBelowMinimum
+                  ? "Minimum 1 USDC"
+                  : depositExceedsBalance
+                    ? "Insufficient Balance"
+                    : depositHook.isPending
+                      ? "Signing..."
+                      : depositHook.isConfirming
+                        ? "Confirming..."
+                        : depositTxSuccess
+                          ? "Deposited!"
+                          : "Deposit"}
           </button>
           {depositHook.error && (
             <p className="mt-2 rounded-lg bg-neon-red/10 px-3 py-2 text-center text-xs text-neon-red">

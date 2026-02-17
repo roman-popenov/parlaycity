@@ -79,8 +79,50 @@ contract HouseVaultTest is Test {
 
     function test_deposit_revertsOnZero() public {
         vm.prank(alice);
-        vm.expectRevert("HouseVault: zero deposit");
+        vm.expectRevert("HouseVault: deposit below minimum");
         vault.deposit(0, alice);
+    }
+
+    function test_deposit_revertsIfBelowMinimum() public {
+        vm.prank(alice);
+        vm.expectRevert("HouseVault: deposit below minimum");
+        vault.deposit(0.5e6, alice); // 0.5 USDC < 1 USDC minimum
+    }
+
+    function test_deposit_minimumWorks() public {
+        vm.prank(alice);
+        uint256 shares = vault.deposit(1e6, alice); // exactly 1 USDC
+        assertEq(shares, 1e6);
+    }
+
+    function test_inflationAttack_mitigated() public {
+        // Attacker deposits minimum (1 USDC) as first depositor
+        vm.prank(alice);
+        vault.deposit(1e6, alice);
+        assertEq(vault.balanceOf(alice), 1e6); // 1M shares
+
+        // Attacker donates 1000 USDC directly to vault (inflation attempt)
+        usdc.mint(address(vault), 1000e6);
+        // Now: totalAssets = 1001 USDC, totalSupply = 1M shares
+
+        // Victim deposits 1 USDC
+        vm.prank(bob);
+        uint256 victimShares = vault.deposit(1e6, bob);
+
+        // Victim should get a meaningful amount of shares (not zero)
+        assertGt(victimShares, 0, "victim got zero shares");
+
+        // Victim's shares should be worth close to their deposit
+        uint256 victimValue = vault.convertToAssets(victimShares);
+        // With +1 offset and 1M existing shares, rounding loss is negligible
+        assertGt(victimValue, 0.99e6, "victim lost more than 1% to rounding");
+    }
+
+    function test_inflationAttack_weiDeposit_blocked() public {
+        // Attacker tries to deposit 1 wei -- blocked by minimum
+        vm.prank(alice);
+        vm.expectRevert("HouseVault: deposit below minimum");
+        vault.deposit(1, alice);
     }
 
     // ── Reserve / Release / Pay ──────────────────────────────────────────
