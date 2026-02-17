@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { PARLAY_CONFIG } from "@/lib/config";
 import { MOCK_LEGS, type MockLeg } from "@/lib/mock";
-import { useBuyTicket } from "@/lib/hooks";
+import { useBuyTicket, useUSDCBalance, useVaultStats } from "@/lib/hooks";
 import { MultiplierClimb } from "./MultiplierClimb";
 
 interface SelectedLeg {
@@ -21,6 +21,8 @@ function effectiveOdds(leg: MockLeg, outcome: number): number {
 export function ParlayBuilder() {
   const { isConnected } = useAccount();
   const { buyTicket, isPending, isConfirming, isSuccess, error } = useBuyTicket();
+  const { balance: usdcBalance } = useUSDCBalance();
+  const { freeLiquidity } = useVaultStats();
 
   const [selectedLegs, setSelectedLegs] = useState<SelectedLeg[]>([]);
   const [stake, setStake] = useState<string>("");
@@ -58,12 +60,16 @@ export function ParlayBuilder() {
   const feeAmount = (stakeNum * feeBps) / 10000;
   const potentialPayout = (stakeNum - feeAmount) * multiplier;
 
+  const freeLiquidityNum = freeLiquidity !== undefined ? Number(freeLiquidity) / 1e6 : 0;
+  const insufficientLiquidity = potentialPayout > 0 && potentialPayout > freeLiquidityNum;
+
   const canBuy =
     mounted &&
     isConnected &&
     selectedLegs.length >= PARLAY_CONFIG.minLegs &&
     selectedLegs.length <= PARLAY_CONFIG.maxLegs &&
-    stakeNum >= PARLAY_CONFIG.minStakeUSDC;
+    stakeNum >= PARLAY_CONFIG.minStakeUSDC &&
+    !insufficientLiquidity;
 
   const handleBuy = async () => {
     if (!canBuy) return;
@@ -110,30 +116,27 @@ export function ParlayBuilder() {
                   {leg.description}
                 </p>
                 <div className="flex items-center gap-2">
-                  <span className="mr-auto text-xs text-gray-500">
-                    {selected
-                      ? `${effectiveOdds(leg, selected.outcomeChoice).toFixed(2)}x`
-                      : `${leg.odds.toFixed(2)}x`}
-                  </span>
                   <button
                     onClick={() => toggleLeg(leg, 1)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                    className={`flex flex-1 items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
                       selected?.outcomeChoice === 1
                         ? "bg-neon-green/20 text-neon-green ring-1 ring-neon-green/30"
-                        : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
+                        : "bg-neon-green/5 text-neon-green/60 hover:bg-neon-green/10 hover:text-neon-green"
                     }`}
                   >
-                    Yes
+                    <span>Yes</span>
+                    <span className="ml-1 tabular-nums opacity-70">{effectiveOdds(leg, 1).toFixed(2)}x</span>
                   </button>
                   <button
                     onClick={() => toggleLeg(leg, 2)}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-all ${
+                    className={`flex flex-1 items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
                       selected?.outcomeChoice === 2
                         ? "bg-neon-red/20 text-neon-red ring-1 ring-neon-red/30"
-                        : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white"
+                        : "bg-neon-red/5 text-neon-red/60 hover:bg-neon-red/10 hover:text-neon-red"
                     }`}
                   >
-                    No
+                    <span>No</span>
+                    <span className="ml-1 tabular-nums opacity-70">{effectiveOdds(leg, 2).toFixed(2)}x</span>
                   </button>
                 </div>
               </div>
@@ -176,9 +179,16 @@ export function ParlayBuilder() {
 
           {/* Stake input */}
           <div>
-            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-gray-500">
-              Stake (USDC)
-            </label>
+            <div className="mb-1.5 flex items-center justify-between">
+              <label className="text-xs font-medium uppercase tracking-wider text-gray-500">
+                Stake (USDC)
+              </label>
+              {usdcBalance !== undefined && (
+                <span className="text-xs text-gray-500">
+                  Balance: {(Number(usdcBalance) / 1e6).toFixed(2)}
+                </span>
+              )}
+            </div>
             <div className="relative">
               <input
                 type="number"
@@ -187,11 +197,20 @@ export function ParlayBuilder() {
                 value={stake}
                 onChange={(e) => setStake(e.target.value)}
                 placeholder={`Min ${PARLAY_CONFIG.minStakeUSDC} USDC`}
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 text-lg font-semibold text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-blue/50"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-24 text-lg font-semibold text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-blue/50"
               />
-              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-gray-500">
-                USDC
-              </span>
+              <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2">
+                {usdcBalance !== undefined && usdcBalance > 0n && (
+                  <button
+                    type="button"
+                    onClick={() => setStake((Number(usdcBalance) / 1e6).toString())}
+                    className="rounded-md bg-accent-blue/20 px-2 py-0.5 text-xs font-semibold text-accent-blue transition-colors hover:bg-accent-blue/30"
+                  >
+                    MAX
+                  </button>
+                )}
+                <span className="text-sm text-gray-500">USDC</span>
+              </div>
             </div>
           </div>
 
@@ -239,13 +258,15 @@ export function ParlayBuilder() {
               ? "Connect Wallet"
               : selectedLegs.length < PARLAY_CONFIG.minLegs
                 ? `Select at least ${PARLAY_CONFIG.minLegs} legs`
-                : isPending
-                  ? "Waiting for approval..."
-                  : isConfirming
-                    ? "Confirming..."
-                    : isSuccess
-                      ? "Ticket Bought!"
-                      : "Buy Ticket"}
+                : insufficientLiquidity
+                  ? "Insufficient Vault Liquidity"
+                  : isPending
+                    ? "Waiting for approval..."
+                    : isConfirming
+                      ? "Confirming..."
+                      : isSuccess
+                        ? "Ticket Bought!"
+                        : "Buy Ticket"}
           </button>
 
           {/* Tx feedback */}
