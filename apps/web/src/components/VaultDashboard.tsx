@@ -159,10 +159,13 @@ export function VaultDashboard() {
   const withdrawExceedsLiquidity = withdrawAmountBigInt > 0n && !withdrawExceedsShares && withdrawAmountBigInt > withdrawableShares;
   const lockExceedsShares = lockAmountBigInt > 0n && lockAmountBigInt > userSharesBigInt;
 
-  // Post-withdrawal utilization warning
+  // Post-withdrawal utilization warning (convert shares to assets for correct unit basis)
+  const withdrawAmountAssets = userSharesBigInt > 0n
+    ? (withdrawAmountBigInt * userSharesValueBigInt) / userSharesBigInt
+    : 0n;
   const postWithdrawUtil = (() => {
-    if (withdrawAmountBigInt <= 0n || totalAssets <= 0n || totalReserved <= 0n) return 0;
-    const remaining = totalAssets > withdrawAmountBigInt ? totalAssets - withdrawAmountBigInt : 0n;
+    if (withdrawAmountAssets <= 0n || totalAssets <= 0n || totalReserved <= 0n) return 0;
+    const remaining = totalAssets > withdrawAmountAssets ? totalAssets - withdrawAmountAssets : 0n;
     if (remaining === 0n) return 100;
     return Number((totalReserved * 10000n) / remaining) / 100;
   })();

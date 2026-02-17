@@ -48,11 +48,11 @@ dev:
 	@./scripts/sync-env.sh
 	@echo "  Contracts deployed, .env.local synced"
 	@# Start services
-	@cd packages/services && nohup pnpm dev > ../../$(PID_DIR)/services.log 2>&1 & echo $$! > $(PID_DIR)/services.pid
+	@cd packages/services && nohup pnpm dev > ../../$(PID_DIR)/services.log 2>&1 & echo $$! > ../../$(PID_DIR)/services.pid
 	@echo "  Services started (pid $$(cat $(PID_DIR)/services.pid)) on :3001"
 	@sleep 1
 	@# Start web
-	@cd apps/web && nohup pnpm dev > ../../$(PID_DIR)/web.log 2>&1 & echo $$! > $(PID_DIR)/web.pid
+	@cd apps/web && nohup pnpm dev > ../../$(PID_DIR)/web.log 2>&1 & echo $$! > ../../$(PID_DIR)/web.pid
 	@echo "  Web started (pid $$(cat $(PID_DIR)/web.pid)) on :3000"
 	@sleep 3
 	@echo ""

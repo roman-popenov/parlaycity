@@ -295,6 +295,8 @@ export function useUserTickets() {
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const hasFetchedRef = useRef(false);
+  const fetchIdRef = useRef(0);
+  const inFlightRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchTickets = useCallback(async () => {
@@ -306,6 +308,10 @@ export function useUserTickets() {
       return;
     }
 
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    const localFetchId = ++fetchIdRef.current;
+
     // Only show loading spinner on first fetch, not on polls
     if (!hasFetchedRef.current) setIsLoading(true);
 
@@ -316,11 +322,14 @@ export function useUserTickets() {
         functionName: "ticketCount",
       });
 
+      if (localFetchId !== fetchIdRef.current) return;
+
       const total = Number(count as bigint);
       setTotalCount(total);
       const userTickets: { id: bigint; ticket: OnChainTicket }[] = [];
 
       for (let i = 0; i < total; i++) {
+        if (localFetchId !== fetchIdRef.current) return;
         try {
           const owner = await publicClient.readContract({
             address: contractAddresses.parlayEngine as `0x${string}`,
@@ -343,12 +352,17 @@ export function useUserTickets() {
         }
       }
 
+      if (localFetchId !== fetchIdRef.current) return;
       setTickets(userTickets);
       setError(null);
     } catch (err) {
+      if (localFetchId !== fetchIdRef.current) return;
       console.error("Failed to fetch tickets:", err);
       setError(String(err));
     } finally {
+      if (localFetchId === fetchIdRef.current) {
+        inFlightRef.current = false;
+      }
       setIsLoading(false);
       hasFetchedRef.current = true;
     }
@@ -815,6 +829,8 @@ export function useLockPositions() {
   const [positions, setPositions] = useState<{ id: bigint; position: LockPosition }[]>([]);
   const [userTotalLocked, setUserTotalLocked] = useState(0n);
   const [isLoading, setIsLoading] = useState(true);
+  const fetchIdRef = useRef(0);
+  const inFlightRef = useRef(false);
 
   const fetchPositions = useCallback(async () => {
     if (!address || !publicClient || !contractAddresses.lockVault) {
@@ -824,6 +840,10 @@ export function useLockPositions() {
       return;
     }
 
+    if (inFlightRef.current) return;
+    inFlightRef.current = true;
+    const localFetchId = ++fetchIdRef.current;
+
     try {
       const nextId = await publicClient.readContract({
         address: contractAddresses.lockVault as `0x${string}`,
@@ -831,10 +851,13 @@ export function useLockPositions() {
         functionName: "nextPositionId",
       });
 
+      if (localFetchId !== fetchIdRef.current) return;
+
       const total = Number(nextId as bigint);
       const userPositions: { id: bigint; position: LockPosition }[] = [];
 
       for (let i = 0; i < total; i++) {
+        if (localFetchId !== fetchIdRef.current) return;
         try {
           const data = await publicClient.readContract({
             address: contractAddresses.lockVault as `0x${string}`,
@@ -863,11 +886,16 @@ export function useLockPositions() {
         }
       }
 
+      if (localFetchId !== fetchIdRef.current) return;
       setPositions(userPositions);
       setUserTotalLocked(userPositions.reduce((sum, { position }) => sum + position.shares, 0n));
     } catch (err) {
+      if (localFetchId !== fetchIdRef.current) return;
       console.error("Failed to fetch lock positions:", err);
     } finally {
+      if (localFetchId === fetchIdRef.current) {
+        inFlightRef.current = false;
+      }
       setIsLoading(false);
     }
   }, [address, publicClient]);
