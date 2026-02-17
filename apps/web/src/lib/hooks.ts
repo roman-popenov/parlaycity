@@ -301,6 +301,11 @@ export function useBuyTicket() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
+  const resetSuccess = () => {
+    setIsSuccess(false);
+    setError(null);
+  };
+
   const buyTicket = async (
     legIds: bigint[],
     outcomes: number[],
@@ -341,15 +346,6 @@ export function useBuyTicket() {
 
       setIsConfirming(false);
       setIsSuccess(true);
-
-      // Reset approval to 0 (non-blocking)
-      writeContractAsync({
-        address: contractAddresses.usdc as `0x${string}`,
-        abi: USDC_ABI,
-        functionName: "approve",
-        args: [contractAddresses.parlayEngine as `0x${string}`, 0n],
-      }).catch(() => {});
-
       return true;
     } catch (err) {
       console.error("Buy ticket failed:", err);
@@ -363,6 +359,7 @@ export function useBuyTicket() {
 
   return {
     buyTicket,
+    resetSuccess,
     isPending,
     isConfirming,
     isSuccess,
@@ -412,15 +409,6 @@ export function useDepositVault() {
 
       setIsConfirming(false);
       setIsSuccess(true);
-
-      // Reset approval to 0 (non-blocking)
-      writeContractAsync({
-        address: contractAddresses.usdc as `0x${string}`,
-        abi: USDC_ABI,
-        functionName: "approve",
-        args: [contractAddresses.houseVault as `0x${string}`, 0n],
-      }).catch(() => {});
-
       return true;
     } catch (err) {
       console.error("Deposit failed:", err);
@@ -571,14 +559,6 @@ export function useLockVault() {
 
       setIsConfirming(false);
       setIsSuccess(true);
-
-      // Reset approval to 0 (non-blocking)
-      writeContractAsync({
-        address: contractAddresses.houseVault as `0x${string}`,
-        abi: USDC_ABI,
-        functionName: "approve",
-        args: [contractAddresses.lockVault as `0x${string}`, 0n],
-      }).catch(() => {});
     } catch (err) {
       console.error("Lock failed:", err);
       setError(err instanceof Error ? err : new Error(String(err)));

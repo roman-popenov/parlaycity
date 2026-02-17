@@ -20,7 +20,7 @@ function effectiveOdds(leg: MockLeg, outcome: number): number {
 
 export function ParlayBuilder() {
   const { isConnected } = useAccount();
-  const { buyTicket, isPending, isConfirming, isSuccess, error } = useBuyTicket();
+  const { buyTicket, resetSuccess, isPending, isConfirming, isSuccess, error } = useBuyTicket();
   const { balance: usdcBalance } = useUSDCBalance();
   const { freeLiquidity } = useVaultStats();
 
@@ -33,6 +33,7 @@ export function ParlayBuilder() {
 
   const toggleLeg = useCallback(
     (leg: MockLeg, outcome: number) => {
+      resetSuccess();
       setSelectedLegs((prev) => {
         const existing = prev.findIndex((s) => s.leg.id === leg.id);
         if (existing >= 0) {
@@ -48,7 +49,7 @@ export function ParlayBuilder() {
         return [...prev, { leg, outcomeChoice: outcome }];
       });
     },
-    []
+    [resetSuccess]
   );
 
   const multiplier = useMemo(() => {
@@ -195,7 +196,7 @@ export function ParlayBuilder() {
                 min={PARLAY_CONFIG.minStakeUSDC}
                 step="1"
                 value={stake}
-                onChange={(e) => setStake(e.target.value)}
+                onChange={(e) => { resetSuccess(); setStake(e.target.value); }}
                 placeholder={`Min ${PARLAY_CONFIG.minStakeUSDC} USDC`}
                 className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-24 text-lg font-semibold text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-blue/50"
               />
