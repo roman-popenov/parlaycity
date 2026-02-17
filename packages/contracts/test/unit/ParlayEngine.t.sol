@@ -526,4 +526,165 @@ contract ParlayEngineTest is Test {
         vm.expectRevert("ParlayEngine: invalid maxLegs");
         engine.setMaxLegs(1);
     }
+
+    // ── Edge Cases ──────────────────────────────────────────────────────────
+
+    function test_buyTicket_zeroStake_reverts() public {
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0;
+        legs[1] = 1;
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
+
+        vm.prank(alice);
+        vm.expectRevert("ParlayEngine: stake too low");
+        engine.buyTicket(legs, outcomes, 0);
+    }
+
+    function test_buyTicket_exactMaxLegs() public {
+        // maxLegs defaults to 5. Use high-prob legs so combined multiplier stays within maxPayout.
+        uint256 h0 = _createLeg("H0", 700_000); // 70%
+        uint256 h1 = _createLeg("H1", 700_000);
+        uint256 h2 = _createLeg("H2", 700_000);
+        uint256 h3 = _createLeg("H3", 700_000);
+        uint256 h4 = _createLeg("H4", 700_000);
+
+        uint256[] memory legs = new uint256[](5);
+        legs[0] = h0; legs[1] = h1; legs[2] = h2; legs[3] = h3; legs[4] = h4;
+        bytes32[] memory outcomes = new bytes32[](5);
+        for (uint256 i = 0; i < 5; i++) outcomes[i] = keccak256("yes");
+
+        vm.prank(alice);
+        uint256 ticketId = engine.buyTicket(legs, outcomes, 10e6);
+
+        ParlayEngine.Ticket memory t = engine.getTicket(ticketId);
+        assertEq(t.legIds.length, 5);
+        assertEq(uint8(t.status), uint8(ParlayEngine.TicketStatus.Active));
+    }
+
+    function test_buyTicket_emptyLegsArray_reverts() public {
+        uint256[] memory legs = new uint256[](0);
+        bytes32[] memory outcomes = new bytes32[](0);
+
+        vm.prank(alice);
+        vm.expectRevert("ParlayEngine: need >= 2 legs");
+        engine.buyTicket(legs, outcomes, 10e6);
+    }
+
+    function test_settleTicket_unresolvedLegs_reverts() public {
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0;
+        legs[1] = 1;
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
+
+        vm.prank(alice);
+        uint256 ticketId = engine.buyTicket(legs, outcomes, 10e6);
+
+        // Only resolve leg 0, leave leg 1 unresolved
+        oracle.resolve(0, LegStatus.Won, keccak256("yes"));
+
+        vm.expectRevert("ParlayEngine: leg not resolvable");
+        engine.settleTicket(ticketId);
+    }
+
+    function test_claimPayout_onVoidedTicket_reverts() public {
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0;
+        legs[1] = 1;
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
+
+        vm.prank(alice);
+        uint256 ticketId = engine.buyTicket(legs, outcomes, 10e6);
+
+        // Void both legs
+        oracle.resolve(0, LegStatus.Voided, bytes32(0));
+        oracle.resolve(1, LegStatus.Voided, bytes32(0));
+        engine.settleTicket(ticketId);
+
+        ParlayEngine.Ticket memory t = engine.getTicket(ticketId);
+        assertEq(uint8(t.status), uint8(ParlayEngine.TicketStatus.Voided));
+
+        vm.prank(alice);
+        vm.expectRevert("ParlayEngine: not won");
+        engine.claimPayout(ticketId);
+    }
+
+    function test_claimPayout_doubleClaim_reverts() public {
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0;
+        legs[1] = 1;
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
+
+        vm.prank(alice);
+        uint256 ticketId = engine.buyTicket(legs, outcomes, 10e6);
+
+        oracle.resolve(0, LegStatus.Won, keccak256("yes"));
+        oracle.resolve(1, LegStatus.Won, keccak256("yes"));
+        engine.settleTicket(ticketId);
+
+        // First claim succeeds
+        vm.prank(alice);
+        engine.claimPayout(ticketId);
+
+        // Second claim reverts (status is now Claimed, not Won)
+        vm.prank(alice);
+        vm.expectRevert("ParlayEngine: not won");
+        engine.claimPayout(ticketId);
+    }
+
+    function test_claimPayout_onLostTicket_reverts() public {
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0;
+        legs[1] = 1;
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
+
+        vm.prank(alice);
+        uint256 ticketId = engine.buyTicket(legs, outcomes, 10e6);
+
+        oracle.resolve(0, LegStatus.Won, keccak256("yes"));
+        oracle.resolve(1, LegStatus.Lost, keccak256("no"));
+        engine.settleTicket(ticketId);
+
+        vm.prank(alice);
+        vm.expectRevert("ParlayEngine: not won");
+        engine.claimPayout(ticketId);
+    }
+
+    function test_buyTicket_maxStake_succeeds() public {
+        // Alice has 1000 USDC, try large stake
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0; // 50%
+        legs[1] = 1; // 25%
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
+
+        // Large stake that stays within vault capacity
+        vm.prank(alice);
+        uint256 ticketId = engine.buyTicket(legs, outcomes, 50e6);
+
+        ParlayEngine.Ticket memory t = engine.getTicket(ticketId);
+        assertEq(t.stake, 50e6);
+        assertGt(t.potentialPayout, 0);
+    }
+
+    function test_settleTicket_invalidTicketId_reverts() public {
+        vm.expectRevert("ParlayEngine: invalid ticketId");
+        engine.settleTicket(9999);
+    }
+
+    function test_claimPayout_invalidTicketId_reverts() public {
+        vm.prank(alice);
+        vm.expectRevert("ParlayEngine: invalid ticketId");
+        engine.claimPayout(9999);
+    }
 }

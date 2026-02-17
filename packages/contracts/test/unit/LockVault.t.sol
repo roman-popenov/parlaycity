@@ -281,64 +281,7 @@ contract LockVaultTest is Test {
         lockVault.distributeFees(100e6);
     }
 
-    // ── Harvest ─────────────────────────────────────────────────────────
-
-    function test_harvest_settlesRewardsWithoutClosing() public {
-        vm.prank(alice);
-        uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
-
-        // Distribute 100 USDC
-        lockVault.distributeFees(100e6);
-
-        // Harvest — should settle rewards without closing position
-        vm.prank(alice);
-        lockVault.harvest(posId);
-
-        // Position should still be open
-        LockVault.LockPosition memory pos = lockVault.getPosition(posId);
-        assertEq(pos.shares, 1000e6);
-        assertEq(pos.owner, alice);
-        assertEq(lockVault.totalLockedShares(), 1000e6);
-
-        // Rewards should be in pendingRewards
-        assertApproxEqAbs(lockVault.pendingRewards(alice), 100e6, 2);
-
-        // Claim the harvested rewards
-        uint256 balBefore = usdc.balanceOf(alice);
-        vm.prank(alice);
-        lockVault.claimFees();
-        assertApproxEqAbs(usdc.balanceOf(alice) - balBefore, 100e6, 2);
-    }
-
-    function test_harvest_preventsDoubleCount() public {
-        vm.prank(alice);
-        uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
-
-        lockVault.distributeFees(100e6);
-
-        // Harvest once
-        vm.prank(alice);
-        lockVault.harvest(posId);
-
-        uint256 rewardsAfterFirst = lockVault.pendingRewards(alice);
-
-        // Harvest again without new fees — should not add more
-        vm.prank(alice);
-        lockVault.harvest(posId);
-
-        assertEq(lockVault.pendingRewards(alice), rewardsAfterFirst);
-    }
-
-    function test_harvest_revertsForNonOwner() public {
-        vm.prank(alice);
-        uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
-
-        vm.prank(bob);
-        vm.expectRevert("LockVault: not owner");
-        lockVault.harvest(posId);
-    }
-
-    // ── settleRewards ─────────────────────────────────────────────────
+    // ── settleRewards (consolidated from former harvest) ───────────────
 
     function test_settleRewards_checkpointsWithoutUnlocking() public {
         vm.prank(alice);
@@ -424,5 +367,97 @@ contract LockVaultTest is Test {
         assertEq(vault.balanceOf(address(lockVault)), 0);
         // Penalty shares (500e6) transferred to HouseVault (increases LP value)
         assertEq(vault.balanceOf(address(vault)) - vaultSharesBefore, 500e6);
+    }
+
+    // ── Edge Cases ──────────────────────────────────────────────────────
+
+    function test_settleRewards_zeroReward_noRevert() public {
+        vm.prank(alice);
+        uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
+
+        // Settle without distributing any fees — should not revert
+        vm.prank(alice);
+        lockVault.settleRewards(posId);
+
+        assertEq(lockVault.pendingRewards(alice), 0);
+    }
+
+    function test_unlock_zeroAccumulatedRewards() public {
+        vm.prank(alice);
+        uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
+
+        vm.warp(block.timestamp + 31 days);
+
+        // Unlock without any fee distributions — reward accounting should be clean
+        vm.prank(alice);
+        lockVault.unlock(posId);
+
+        assertEq(lockVault.pendingRewards(alice), 0);
+        assertEq(vault.balanceOf(alice), 10_000e6); // all shares returned
+    }
+
+    function test_earlyWithdraw_settlesRewards() public {
+        vm.prank(alice);
+        uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
+
+        lockVault.distributeFees(100e6);
+
+        vm.warp(block.timestamp + 15 days);
+
+        vm.prank(alice);
+        lockVault.earlyWithdraw(posId);
+
+        // Rewards should still have been settled via _settleRewards
+        assertApproxEqAbs(lockVault.pendingRewards(alice), 100e6, 2);
+    }
+
+    function test_lock_multiplePositions_sameUser() public {
+        vm.prank(alice);
+        uint256 pos0 = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
+        vm.prank(alice);
+        uint256 pos1 = lockVault.lock(2000e6, LockVault.LockTier.NINETY);
+
+        assertEq(lockVault.totalLockedShares(), 3000e6);
+
+        lockVault.distributeFees(260e6);
+
+        // Unlock first position only
+        vm.warp(block.timestamp + 31 days);
+        vm.prank(alice);
+        lockVault.unlock(pos0);
+
+        assertEq(lockVault.totalLockedShares(), 2000e6);
+
+        // Second position rewards should be intact
+        uint256 pending1 = lockVault.pendingReward(pos1);
+        assertGt(pending1, 0, "second position should have pending rewards");
+    }
+
+    function test_unlock_exactMaturityBoundary() public {
+        vm.prank(alice);
+        uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
+
+        LockVault.LockPosition memory pos = lockVault.getPosition(posId);
+
+        // Warp to exactly unlockAt
+        vm.warp(pos.unlockAt);
+
+        // Should succeed at exact maturity timestamp
+        vm.prank(alice);
+        lockVault.unlock(posId);
+
+        assertEq(lockVault.totalLockedShares(), 0);
+    }
+
+    function test_settleRewards_emitsHarvestedEvent() public {
+        vm.prank(alice);
+        uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
+
+        lockVault.distributeFees(100e6);
+
+        vm.prank(alice);
+        vm.expectEmit(true, true, false, false);
+        emit LockVault.Harvested(posId, alice, 0); // amount checked loosely
+        lockVault.settleRewards(posId);
     }
 }

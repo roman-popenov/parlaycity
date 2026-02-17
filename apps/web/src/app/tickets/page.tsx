@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useUserTickets, useLegDescriptions, useLegStatuses, type OnChainTicket, type LegInfo, type LegOracleResult } from "@/lib/hooks";
 import { TicketCard, type TicketData, type TicketLeg } from "@/components/TicketCard";
-import { mapStatus } from "@/lib/utils";
+import { mapStatus, parseOutcomeChoice } from "@/lib/utils";
 
 function toTicketData(
   id: bigint,
@@ -21,14 +21,15 @@ function toTicketData(
     legs: t.legIds.map((legId, i): TicketLeg => {
       const leg = legMap.get(legId.toString());
       const ppm = leg ? Number(leg.probabilityPPM) / 1_000_000 : 0;
-      const isNo = Number(t.outcomes[i]) === 2;
-      const effectiveProb = isNo ? 1 - ppm : ppm;
+      const outcomeChoice = parseOutcomeChoice(t.outcomes[i]);
+      const isNo = outcomeChoice === 2;
+      const effectiveProb = outcomeChoice === 2 ? 1 - ppm : outcomeChoice === 1 ? ppm : 0;
       const odds = effectiveProb > 0 ? 1 / effectiveProb : multiplier ** (1 / t.legIds.length);
       const oracleResult = legStatuses.get(legId.toString());
       return {
         description: leg?.question ?? `Leg #${legId.toString()}`,
         odds,
-        outcomeChoice: Number(t.outcomes[i]) || 1,
+        outcomeChoice,
         resolved: oracleResult?.resolved ?? false,
         result: oracleResult?.status ?? 0,
       };

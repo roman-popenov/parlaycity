@@ -247,4 +247,94 @@ contract HouseVaultTest is Test {
         vm.expectRevert("HouseVault: caller is not engine");
         vault.payWinner(alice, 1);
     }
+
+    // ── Edge Cases ────────────────────────────────────────────────────
+
+    function test_withdraw_zeroShares_reverts() public {
+        vm.prank(alice);
+        vault.deposit(1000e6, alice);
+
+        vm.prank(alice);
+        vm.expectRevert("HouseVault: zero shares");
+        vault.withdraw(0, alice);
+    }
+
+    function test_reservePayout_freeLiquidity_boundary() public {
+        vm.prank(alice);
+        vault.deposit(100e6, alice);
+
+        // Max reservable = 80% of 100 = 80, in chunks of maxPayout (5)
+        for (uint256 i = 0; i < 16; i++) {
+            vm.prank(engine);
+            vault.reservePayout(5e6);
+        }
+        assertEq(vault.freeLiquidity(), 20e6);
+
+        // Cap reached — next reservation fails
+        vm.prank(engine);
+        vm.expectRevert("HouseVault: utilization cap exceeded");
+        vault.reservePayout(5e6);
+    }
+
+    function test_refundVoided_happyPath() public {
+        vm.prank(alice);
+        vault.deposit(1000e6, alice);
+
+        vm.prank(engine);
+        vault.reservePayout(50e6);
+
+        uint256 bobBefore = usdc.balanceOf(bob);
+        vm.prank(engine);
+        vault.refundVoided(bob, 10e6);
+        assertEq(usdc.balanceOf(bob), bobBefore + 10e6);
+    }
+
+    function test_refundVoided_onlyEngine() public {
+        vm.prank(alice);
+        vm.expectRevert("HouseVault: caller is not engine");
+        vault.refundVoided(alice, 1);
+    }
+
+    function test_setMaxUtilizationBps_updatesAndEmits() public {
+        vm.expectEmit(false, false, false, true);
+        emit HouseVault.MaxUtilizationBpsSet(5000);
+        vault.setMaxUtilizationBps(5000);
+        assertEq(vault.maxUtilizationBps(), 5000);
+    }
+
+    function test_setMaxUtilizationBps_aboveTenThousand_reverts() public {
+        vm.expectRevert("HouseVault: invalid bps");
+        vault.setMaxUtilizationBps(10_001);
+    }
+
+    function test_setMaxPayoutBps_updatesAndEmits() public {
+        vm.expectEmit(false, false, false, true);
+        emit HouseVault.MaxPayoutBpsSet(1000);
+        vault.setMaxPayoutBps(1000);
+        assertEq(vault.maxPayoutBps(), 1000);
+    }
+
+    function test_setYieldBufferBps_updatesAndEmits() public {
+        vm.expectEmit(false, false, false, true);
+        emit HouseVault.YieldBufferBpsSet(5000);
+        vault.setYieldBufferBps(5000);
+        assertEq(vault.yieldBufferBps(), 5000);
+    }
+
+    function test_setYieldBufferBps_aboveTenThousand_reverts() public {
+        vm.expectRevert("HouseVault: invalid buffer bps");
+        vault.setYieldBufferBps(10_001);
+    }
+
+    function test_pause_thenUnpause_resumesOps() public {
+        vault.pause();
+        vm.prank(alice);
+        vm.expectRevert();
+        vault.deposit(100e6, alice);
+
+        vault.unpause();
+        vm.prank(alice);
+        uint256 shares = vault.deposit(100e6, alice);
+        assertGt(shares, 0);
+    }
 }

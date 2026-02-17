@@ -8,7 +8,7 @@ export type TicketStatus = "Active" | "Won" | "Lost" | "Voided" | "Claimed";
 export interface TicketLeg {
   description: string;
   odds: number;
-  outcomeChoice: number; // 1 = yes, 2 = no
+  outcomeChoice: number; // 1 = yes, 2 = no, 0 = unknown
   resolved: boolean;
   result: number; // 0 = unresolved, 1 = Won, 2 = Lost, 3 = Voided (oracle LegStatus)
 }
@@ -32,6 +32,7 @@ const STATUS_STYLES: Record<TicketStatus, string> = {
 
 function getLegStatus(leg: TicketLeg): "win" | "loss" | "voided" | "pending" {
   if (!leg.resolved) return "pending";
+  if (leg.outcomeChoice !== 1 && leg.outcomeChoice !== 2) return "pending";
   if (leg.result === 3) return "voided";
   const isNoBet = leg.outcomeChoice === 2;
   // Oracle: 1=Won (yes side won), 2=Lost (no side won)
@@ -92,7 +93,7 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
                 </p>
                 <p className="text-xs text-gray-500">
                   {leg.odds.toFixed(1)}x &middot;{" "}
-                  {leg.outcomeChoice === 1 ? "YES" : "NO"}
+                  {leg.outcomeChoice === 1 ? "YES" : leg.outcomeChoice === 2 ? "NO" : "?"}
                 </p>
               </div>
             </div>

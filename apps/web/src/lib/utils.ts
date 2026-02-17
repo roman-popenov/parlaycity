@@ -10,3 +10,12 @@ export function mapStatus(statusCode: number): TicketStatus {
     default: return "Active";
   }
 }
+
+export function parseOutcomeChoice(outcome: `0x${string}`): number {
+  try {
+    const value = Number(BigInt(outcome));
+    return value === 1 || value === 2 ? value : 0;
+  } catch {
+    return 0;
+  }
+}

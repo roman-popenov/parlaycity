@@ -266,4 +266,74 @@ contract OptimisticOracleTest is Test {
         // Challenger net loss = -BOND
         assertEq(challengerAfter, challengerBefore - BOND);
     }
+
+    // ── Edge Cases ────────────────────────────────────────────────────────
+
+    function test_finalize_alreadyFinalized_reverts() public {
+        vm.prank(proposer);
+        oracle.propose(1, LegStatus.Won, keccak256("yes"));
+
+        vm.warp(block.timestamp + LIVENESS);
+        oracle.finalize(1);
+
+        // Second finalize should revert (state is now Finalized, not Proposed)
+        vm.expectRevert("OptimisticOracle: not proposed");
+        oracle.finalize(1);
+    }
+
+    function test_challenge_nonExistentProposal_reverts() public {
+        // No proposal made for legId 99
+        vm.prank(challenger);
+        vm.expectRevert("OptimisticOracle: not proposed");
+        oracle.challenge(99);
+    }
+
+    function test_resolveDispute_alreadyResolved_reverts() public {
+        vm.prank(proposer);
+        oracle.propose(1, LegStatus.Won, keccak256("yes"));
+        vm.prank(challenger);
+        oracle.challenge(1);
+
+        // Resolve once
+        oracle.resolveDispute(1, LegStatus.Won, keccak256("yes"), true);
+
+        // Resolve again — state is Finalized, not Challenged
+        vm.expectRevert("OptimisticOracle: not challenged");
+        oracle.resolveDispute(1, LegStatus.Won, keccak256("yes"), true);
+    }
+
+    function test_propose_afterFinalization_reverts() public {
+        vm.prank(proposer);
+        oracle.propose(1, LegStatus.Won, keccak256("yes"));
+        vm.warp(block.timestamp + LIVENESS);
+        oracle.finalize(1);
+
+        // Propose again on same legId — already finalized
+        vm.prank(proposer);
+        vm.expectRevert("OptimisticOracle: already finalized");
+        oracle.propose(1, LegStatus.Lost, keccak256("no"));
+    }
+
+    function test_getStatus_whileChallenged_returnsUnresolved() public {
+        vm.prank(proposer);
+        oracle.propose(1, LegStatus.Won, keccak256("yes"));
+        vm.prank(challenger);
+        oracle.challenge(1);
+
+        // During dispute, leg should not be resolvable
+        assertFalse(oracle.canResolve(1));
+        (LegStatus status, bytes32 outcome) = oracle.getStatus(1);
+        assertEq(uint8(status), uint8(LegStatus.Unresolved));
+        assertEq(outcome, bytes32(0));
+    }
+
+    function test_resolveDispute_cannotResolveAsUnresolved() public {
+        vm.prank(proposer);
+        oracle.propose(1, LegStatus.Won, keccak256("yes"));
+        vm.prank(challenger);
+        oracle.challenge(1);
+
+        vm.expectRevert("OptimisticOracle: cannot resolve as Unresolved");
+        oracle.resolveDispute(1, LegStatus.Unresolved, bytes32(0), true);
+    }
 }

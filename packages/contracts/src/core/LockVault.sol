@@ -164,19 +164,15 @@ contract LockVault is Ownable, ReentrancyGuard {
         emit EarlyWithdraw(positionId, msg.sender, returned, penaltyShares);
     }
 
-    /// @notice Harvest accumulated rewards without closing the position.
-    function harvest(uint256 positionId) external nonReentrant {
+    /// @notice Settle accrued rewards for an active position without unlocking.
+    ///         Replaces the former `harvest()` — identical behavior, single entry point.
+    function settleRewards(uint256 positionId) external nonReentrant {
         LockPosition storage pos = positions[positionId];
         require(pos.owner == msg.sender, "LockVault: not owner");
         require(pos.shares > 0, "LockVault: empty position");
-
         uint256 pendingBefore = pendingRewards[msg.sender];
         _settleRewards(positionId);
         uint256 reward = pendingRewards[msg.sender] - pendingBefore;
-
-        uint256 weighted = (pos.shares * pos.feeMultiplierBps) / BPS_BASE;
-        pos.rewardDebt = (weighted * accRewardPerWeightedShare) / PRECISION;
-
         emit Harvested(positionId, msg.sender, reward);
     }
 
@@ -204,14 +200,6 @@ contract LockVault is Ownable, ReentrancyGuard {
         usdc.safeTransfer(msg.sender, amount);
 
         emit RewardsClaimed(msg.sender, amount);
-    }
-
-    /// @notice Settle accrued rewards for an active position without unlocking.
-    function settleRewards(uint256 positionId) external nonReentrant {
-        LockPosition storage pos = positions[positionId];
-        require(pos.owner == msg.sender, "LockVault: not owner");
-        require(pos.shares > 0, "LockVault: empty position");
-        _settleRewards(positionId);
     }
 
     /// @notice Sweep accumulated penalty shares to a receiver for redistribution.
