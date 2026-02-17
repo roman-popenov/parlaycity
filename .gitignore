@@ -50,3 +50,6 @@ lcov.info
 
 # Task tracking
 TASKS.md
+
+# Dev PID files
+.pids/
