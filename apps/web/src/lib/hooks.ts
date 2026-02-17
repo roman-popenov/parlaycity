@@ -344,7 +344,10 @@ export function useBuyTicket() {
         functionName: "approve",
         args: [contractAddresses.parlayEngine as `0x${string}`, stakeAmount],
       });
-      await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      if (approveReceipt.status === "reverted") {
+        throw new Error("Approve transaction reverted on-chain");
+      }
 
       // Encode outcomes as bytes32[]
       const outcomesBytes32 = outcomes.map((o) => pad(toHex(o), { size: 32 })) as `0x${string}`[];
@@ -414,7 +417,10 @@ export function useDepositVault() {
         functionName: "approve",
         args: [contractAddresses.houseVault as `0x${string}`, amount],
       });
-      await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      if (approveReceipt.status === "reverted") {
+        throw new Error("Approve transaction reverted on-chain");
+      }
 
       // Deposit into vault
       setIsPending(false);
@@ -572,7 +578,10 @@ export function useLockVault() {
         functionName: "approve",
         args: [contractAddresses.lockVault as `0x${string}`, shares],
       });
-      await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash });
+      if (approveReceipt.status === "reverted") {
+        throw new Error("Approve transaction reverted on-chain");
+      }
 
       // Lock shares
       setIsPending(false);
