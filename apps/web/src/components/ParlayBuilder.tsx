@@ -63,6 +63,8 @@ export function ParlayBuilder() {
 
   const freeLiquidityNum = freeLiquidity !== undefined ? Number(freeLiquidity) / 1e6 : 0;
   const insufficientLiquidity = potentialPayout > 0 && potentialPayout > freeLiquidityNum;
+  const usdcBalanceNum = usdcBalance !== undefined ? Number(usdcBalance) / 1e6 : 0;
+  const insufficientBalance = stakeNum > 0 && usdcBalance !== undefined && stakeNum > usdcBalanceNum;
 
   const canBuy =
     mounted &&
@@ -70,7 +72,8 @@ export function ParlayBuilder() {
     selectedLegs.length >= PARLAY_CONFIG.minLegs &&
     selectedLegs.length <= PARLAY_CONFIG.maxLegs &&
     stakeNum >= PARLAY_CONFIG.minStakeUSDC &&
-    !insufficientLiquidity;
+    !insufficientLiquidity &&
+    !insufficientBalance;
 
   const handleBuy = async () => {
     if (!canBuy) return;
@@ -259,9 +262,11 @@ export function ParlayBuilder() {
               ? "Connect Wallet"
               : selectedLegs.length < PARLAY_CONFIG.minLegs
                 ? `Select at least ${PARLAY_CONFIG.minLegs} legs`
-                : insufficientLiquidity
-                  ? "Insufficient Vault Liquidity"
-                  : isPending
+                : insufficientBalance
+                  ? "Insufficient USDC Balance"
+                  : insufficientLiquidity
+                    ? "Insufficient Vault Liquidity"
+                    : isPending
                     ? "Waiting for approval..."
                     : isConfirming
                       ? "Confirming..."

@@ -88,6 +88,11 @@ export function VaultDashboard() {
   const utilization = vaultStats.totalAssets ? vaultStats.utilization : 0;
   const freeLiquidity = vaultStats.freeLiquidity ?? 0n;
 
+  // Cap withdrawable shares to what free liquidity can cover
+  const withdrawableShares = userSharesValueBigInt > 0n && userSharesValueBigInt > freeLiquidity
+    ? (userSharesBigInt * freeLiquidity) / userSharesValueBigInt
+    : userSharesBigInt;
+
   const handleDeposit = async () => {
     const amount = parseFloat(depositAmount);
     if (!amount || amount <= 0) return;
@@ -108,9 +113,11 @@ export function VaultDashboard() {
     if (!amount || amount <= 0) return;
     const shares = parseUnits(amount.toString(), 6);
     const success = await lockHook.lock(shares, lockTier);
-    if (success) setLockAmount("");
-    await refetchPositions();
-    lockStats.refetch();
+    if (success) {
+      setLockAmount("");
+      await refetchPositions();
+      lockStats.refetch();
+    }
   };
 
   const handleUnlock = async (positionId: bigint) => {
@@ -136,6 +143,7 @@ export function VaultDashboard() {
   const lockAmountBigInt = safeParse(lockAmount);
   const depositExceedsBalance = depositAmountBigInt > 0n && depositAmountBigInt > (usdcBalance ?? 0n);
   const withdrawExceedsShares = withdrawAmountBigInt > 0n && withdrawAmountBigInt > userSharesBigInt;
+  const withdrawExceedsLiquidity = withdrawAmountBigInt > 0n && !withdrawExceedsShares && withdrawAmountBigInt > withdrawableShares;
   const lockExceedsShares = lockAmountBigInt > 0n && lockAmountBigInt > userSharesBigInt;
 
   return (
@@ -292,7 +300,7 @@ export function VaultDashboard() {
           </p>
           <div className="mb-2 flex items-center justify-between text-xs text-gray-500">
             <span>Available Shares</span>
-            <span className="font-semibold text-white">{formatUSDC(userSharesBigInt)} vUSDC</span>
+            <span className="font-semibold text-white">{formatUSDC(withdrawableShares)} vUSDC</span>
           </div>
           <div className="relative mb-4">
             <input
@@ -307,7 +315,7 @@ export function VaultDashboard() {
             />
             {hasShares && (
               <button
-                onClick={() => setWithdrawAmount(formatUnits(userSharesBigInt, 6))}
+                onClick={() => setWithdrawAmount(formatUnits(withdrawableShares, 6))}
                 className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md bg-accent-blue/20 px-2 py-1 text-xs font-semibold text-accent-blue transition-colors hover:bg-accent-blue/30"
               >
                 Max
@@ -317,9 +325,12 @@ export function VaultDashboard() {
           {withdrawExceedsShares && (
             <p className="mb-2 text-center text-xs text-neon-red">Exceeds your vault shares</p>
           )}
+          {withdrawExceedsLiquidity && (
+            <p className="mb-2 text-center text-xs text-neon-red">Exceeds available vault liquidity</p>
+          )}
           <button
             onClick={handleWithdraw}
-            disabled={!isConnected || !hasShares || !withdrawAmount || withdrawExceedsShares || withdrawHook.isPending || withdrawHook.isConfirming}
+            disabled={!isConnected || !hasShares || !withdrawAmount || withdrawExceedsShares || withdrawExceedsLiquidity || withdrawHook.isPending || withdrawHook.isConfirming}
             className="w-full rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-bold uppercase tracking-wider text-white transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {!isConnected
@@ -328,7 +339,9 @@ export function VaultDashboard() {
                 ? "No Shares"
                 : withdrawExceedsShares
                   ? "Insufficient Shares"
-                  : withdrawHook.isPending
+                  : withdrawExceedsLiquidity
+                    ? "Insufficient Liquidity"
+                    : withdrawHook.isPending
                     ? "Signing..."
                     : withdrawHook.isConfirming
                       ? "Confirming..."
