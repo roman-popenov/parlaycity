@@ -316,24 +316,14 @@ export function useBuyTicket() {
     try {
       const stakeAmount = parseUnits(stakeUsdc.toString(), 6);
 
-      // Check current allowance
-      const allowance = await publicClient.readContract({
+      // Approve exact amount
+      const approveHash = await writeContractAsync({
         address: contractAddresses.usdc as `0x${string}`,
         abi: USDC_ABI,
-        functionName: "allowance",
-        args: [address, contractAddresses.parlayEngine as `0x${string}`],
+        functionName: "approve",
+        args: [contractAddresses.parlayEngine as `0x${string}`, stakeAmount],
       });
-
-      // Approve if needed
-      if ((allowance as bigint) < stakeAmount) {
-        const approveHash = await writeContractAsync({
-          address: contractAddresses.usdc as `0x${string}`,
-          abi: USDC_ABI,
-          functionName: "approve",
-          args: [contractAddresses.parlayEngine as `0x${string}`, stakeAmount],
-        });
-        await publicClient.waitForTransactionReceipt({ hash: approveHash });
-      }
+      await publicClient.waitForTransactionReceipt({ hash: approveHash });
 
       // Encode outcomes as bytes32[]
       const outcomesBytes32 = outcomes.map((o) => pad(toHex(o), { size: 32 })) as `0x${string}`[];
@@ -349,7 +339,17 @@ export function useBuyTicket() {
       });
       await publicClient.waitForTransactionReceipt({ hash: buyHash });
 
+      setIsConfirming(false);
       setIsSuccess(true);
+
+      // Reset approval to 0 (non-blocking)
+      writeContractAsync({
+        address: contractAddresses.usdc as `0x${string}`,
+        abi: USDC_ABI,
+        functionName: "approve",
+        args: [contractAddresses.parlayEngine as `0x${string}`, 0n],
+      }).catch(() => {});
+
       return true;
     } catch (err) {
       console.error("Buy ticket failed:", err);
@@ -379,8 +379,8 @@ export function useDepositVault() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const deposit = async (amountUsdc: number) => {
-    if (!address || !publicClient) return;
+  const deposit = async (amountUsdc: number): Promise<boolean> => {
+    if (!address || !publicClient) return false;
 
     setIsPending(true);
     setIsConfirming(false);
@@ -390,24 +390,14 @@ export function useDepositVault() {
     try {
       const amount = parseUnits(amountUsdc.toString(), 6);
 
-      // Check current allowance
-      const allowance = await publicClient.readContract({
+      // Approve exact amount
+      const approveHash = await writeContractAsync({
         address: contractAddresses.usdc as `0x${string}`,
         abi: USDC_ABI,
-        functionName: "allowance",
-        args: [address, contractAddresses.houseVault as `0x${string}`],
+        functionName: "approve",
+        args: [contractAddresses.houseVault as `0x${string}`, amount],
       });
-
-      // Approve if needed
-      if ((allowance as bigint) < amount) {
-        const approveHash = await writeContractAsync({
-          address: contractAddresses.usdc as `0x${string}`,
-          abi: USDC_ABI,
-          functionName: "approve",
-          args: [contractAddresses.houseVault as `0x${string}`, amount],
-        });
-        await publicClient.waitForTransactionReceipt({ hash: approveHash });
-      }
+      await publicClient.waitForTransactionReceipt({ hash: approveHash });
 
       // Deposit into vault
       setIsPending(false);
@@ -420,10 +410,22 @@ export function useDepositVault() {
       });
       await publicClient.waitForTransactionReceipt({ hash: depositHash });
 
+      setIsConfirming(false);
       setIsSuccess(true);
+
+      // Reset approval to 0 (non-blocking)
+      writeContractAsync({
+        address: contractAddresses.usdc as `0x${string}`,
+        abi: USDC_ABI,
+        functionName: "approve",
+        args: [contractAddresses.houseVault as `0x${string}`, 0n],
+      }).catch(() => {});
+
+      return true;
     } catch (err) {
       console.error("Deposit failed:", err);
       setError(err instanceof Error ? err : new Error(String(err)));
+      return false;
     } finally {
       setIsPending(false);
       setIsConfirming(false);
@@ -442,8 +444,8 @@ export function useWithdrawVault() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const withdraw = async (amountUsdc: number) => {
-    if (!address || !publicClient) return;
+  const withdraw = async (amountUsdc: number): Promise<boolean> => {
+    if (!address || !publicClient) return false;
 
     setIsPending(true);
     setIsConfirming(false);
@@ -463,10 +465,13 @@ export function useWithdrawVault() {
       });
       await publicClient.waitForTransactionReceipt({ hash: withdrawHash });
 
+      setIsConfirming(false);
       setIsSuccess(true);
+      return true;
     } catch (err) {
       console.error("Withdraw failed:", err);
       setError(err instanceof Error ? err : new Error(String(err)));
+      return false;
     } finally {
       setIsPending(false);
       setIsConfirming(false);
@@ -544,15 +549,16 @@ export function useLockVault() {
     setError(null);
 
     try {
-      // Approve vUSDC transfer to lockVault
+      // Approve exact vUSDC transfer to lockVault
       const approveHash = await writeContractAsync({
         address: contractAddresses.houseVault as `0x${string}`,
-        abi: USDC_ABI, // ERC20 approve
+        abi: USDC_ABI,
         functionName: "approve",
         args: [contractAddresses.lockVault as `0x${string}`, shares],
       });
       await publicClient.waitForTransactionReceipt({ hash: approveHash });
 
+      // Lock shares
       setIsPending(false);
       setIsConfirming(true);
       const lockHash = await writeContractAsync({
@@ -563,7 +569,16 @@ export function useLockVault() {
       });
       await publicClient.waitForTransactionReceipt({ hash: lockHash });
 
+      setIsConfirming(false);
       setIsSuccess(true);
+
+      // Reset approval to 0 (non-blocking)
+      writeContractAsync({
+        address: contractAddresses.houseVault as `0x${string}`,
+        abi: USDC_ABI,
+        functionName: "approve",
+        args: [contractAddresses.lockVault as `0x${string}`, 0n],
+      }).catch(() => {});
     } catch (err) {
       console.error("Lock failed:", err);
       setError(err instanceof Error ? err : new Error(String(err)));

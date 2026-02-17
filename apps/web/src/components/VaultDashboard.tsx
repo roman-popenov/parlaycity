@@ -69,6 +69,19 @@ export function VaultDashboard() {
 
   const userSharesBigInt = (userShares as bigint) ?? 0n;
   const userSharesValueBigInt = (sharesValue as bigint) ?? 0n;
+
+  // Convert locked shares to asset value
+  const totalShares = userSharesBigInt + (userTotalLocked ?? 0n);
+  const { data: lockedValue } = useReadContract({
+    address: contractAddresses.houseVault as `0x${string}`,
+    abi: HOUSE_VAULT_ABI,
+    functionName: "convertToAssets",
+    args: userTotalLocked ? [userTotalLocked] : undefined,
+    query: { enabled: !!userTotalLocked && userTotalLocked > 0n, refetchInterval: 5000 },
+  });
+  const lockedValueBigInt = (lockedValue as bigint) ?? 0n;
+  const totalPositionValue = userSharesValueBigInt + lockedValueBigInt;
+
   const hasShares = userSharesBigInt > 0n;
 
   const totalAssets = vaultStats.totalAssets ?? 0n;
@@ -79,14 +92,16 @@ export function VaultDashboard() {
   const handleDeposit = async () => {
     const amount = parseFloat(depositAmount);
     if (!amount || amount <= 0) return;
-    await depositHook.deposit(amount);
+    const success = await depositHook.deposit(amount);
+    if (success) setDepositAmount("");
   };
 
   const handleWithdraw = async () => {
     const amount = parseFloat(withdrawAmount);
     if (!amount || amount <= 0) return;
     if (!hasShares) return;
-    await withdrawHook.withdraw(amount);
+    const success = await withdrawHook.withdraw(amount);
+    if (success) setWithdrawAmount("");
   };
 
   const handleLock = async () => {
@@ -133,7 +148,7 @@ export function VaultDashboard() {
         <StatCard label="Free Liquidity" value={`$${formatUSDC(freeLiquidity)}`} accent="green" />
         <StatCard
           label="Your Position"
-          value={hasShares ? `$${formatUSDC(userSharesValueBigInt)}` : "$0.00"}
+          value={totalPositionValue > 0n ? `$${formatUSDC(totalPositionValue)}` : "$0.00"}
           accent="blue"
         />
       </div>
