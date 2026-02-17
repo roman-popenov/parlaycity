@@ -301,6 +301,8 @@ export function useUserTickets() {
 
   const fetchTickets = useCallback(async () => {
     if (!address || !publicClient || !contractAddresses.parlayEngine) {
+      ++fetchIdRef.current;
+      inFlightRef.current = false;
       setTickets([]);
       setTotalCount(0);
       setIsLoading(false);
@@ -362,9 +364,9 @@ export function useUserTickets() {
     } finally {
       if (localFetchId === fetchIdRef.current) {
         inFlightRef.current = false;
+        setIsLoading(false);
+        hasFetchedRef.current = true;
       }
-      setIsLoading(false);
-      hasFetchedRef.current = true;
     }
   }, [address, publicClient]);
 
@@ -834,6 +836,8 @@ export function useLockPositions() {
 
   const fetchPositions = useCallback(async () => {
     if (!address || !publicClient || !contractAddresses.lockVault) {
+      ++fetchIdRef.current;
+      inFlightRef.current = false;
       setPositions([]);
       setUserTotalLocked(0n);
       setIsLoading(false);
@@ -895,8 +899,8 @@ export function useLockPositions() {
     } finally {
       if (localFetchId === fetchIdRef.current) {
         inFlightRef.current = false;
+        setIsLoading(false);
       }
-      setIsLoading(false);
     }
   }, [address, publicClient]);
 

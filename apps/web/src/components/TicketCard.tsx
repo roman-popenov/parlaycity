@@ -87,10 +87,16 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
               <div className="group relative flex-shrink-0">
                 <div
                   className={`flex h-7 w-7 cursor-help items-center justify-center rounded-full text-xs font-bold ${LEG_STATUS_CONFIG[status].style}`}
+                  tabIndex={0}
+                  aria-label={LEG_STATUS_CONFIG[status].tooltip}
+                  title={LEG_STATUS_CONFIG[status].tooltip}
                 >
                   {LEG_STATUS_CONFIG[status].label}
                 </div>
-                <div className="pointer-events-none absolute left-full top-1/2 z-10 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-gray-800 px-2.5 py-1.5 text-xs font-medium text-gray-200 opacity-0 shadow-lg transition-opacity group-hover:opacity-100">
+                <div
+                  className="pointer-events-none absolute left-full top-1/2 z-10 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-gray-800 px-2.5 py-1.5 text-xs font-medium text-gray-200 opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                  aria-hidden="true"
+                >
                   {LEG_STATUS_CONFIG[status].tooltip}
                   <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-800" />
                 </div>
