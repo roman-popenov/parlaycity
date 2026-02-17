@@ -71,7 +71,6 @@ export function VaultDashboard() {
   const userSharesValueBigInt = (sharesValue as bigint) ?? 0n;
 
   // Convert locked shares to asset value
-  const totalShares = userSharesBigInt + (userTotalLocked ?? 0n);
   const { data: lockedValue } = useReadContract({
     address: contractAddresses.houseVault as `0x${string}`,
     abi: HOUSE_VAULT_ABI,
@@ -108,8 +107,8 @@ export function VaultDashboard() {
     const amount = parseFloat(lockAmount);
     if (!amount || amount <= 0) return;
     const shares = parseUnits(amount.toString(), 6);
-    await lockHook.lock(shares, lockTier);
-    setLockAmount("");
+    const success = await lockHook.lock(shares, lockTier);
+    if (success) setLockAmount("");
     await refetchPositions();
     lockStats.refetch();
   };

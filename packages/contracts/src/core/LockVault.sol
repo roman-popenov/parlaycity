@@ -153,8 +153,12 @@ contract LockVault is Ownable, ReentrancyGuard {
 
         _removePosition(positionId);
 
-        // Return net shares to user; penalty shares stay in vault (benefit remaining LPs)
+        // Return net shares to user; send penalty shares back to HouseVault
+        // (increases asset-to-share ratio, benefiting all LP holders)
         vUSDC.safeTransfer(msg.sender, returned);
+        if (penaltyShares > 0) {
+            vUSDC.safeTransfer(address(vault), penaltyShares);
+        }
         emit EarlyWithdraw(positionId, msg.sender, returned, penaltyShares);
     }
 
@@ -164,12 +168,13 @@ contract LockVault is Ownable, ReentrancyGuard {
         require(pos.owner == msg.sender, "LockVault: not owner");
         require(pos.shares > 0, "LockVault: empty position");
 
+        uint256 pendingBefore = pendingRewards[msg.sender];
         _settleRewards(positionId);
+        uint256 reward = pendingRewards[msg.sender] - pendingBefore;
 
         uint256 weighted = (pos.shares * pos.feeMultiplierBps) / BPS_BASE;
         pos.rewardDebt = (weighted * accRewardPerWeightedShare) / PRECISION;
 
-        uint256 reward = pendingRewards[msg.sender];
         emit Harvested(positionId, msg.sender, reward);
     }
 

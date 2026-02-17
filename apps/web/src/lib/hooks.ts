@@ -528,8 +528,8 @@ export function useLockVault() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<Error | null>(null);
 
-  const lock = async (shares: bigint, tier: number) => {
-    if (!address || !publicClient || !contractAddresses.lockVault) return;
+  const lock = async (shares: bigint, tier: number): Promise<boolean> => {
+    if (!address || !publicClient || !contractAddresses.lockVault) return false;
 
     setIsPending(true);
     setIsConfirming(false);
@@ -559,9 +559,11 @@ export function useLockVault() {
 
       setIsConfirming(false);
       setIsSuccess(true);
+      return true;
     } catch (err) {
       console.error("Lock failed:", err);
       setError(err instanceof Error ? err : new Error(String(err)));
+      return false;
     } finally {
       setIsPending(false);
       setIsConfirming(false);

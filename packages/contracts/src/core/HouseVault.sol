@@ -46,6 +46,7 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
     event PayoutReserved(uint256 amount, uint256 newTotalReserved);
     event PayoutReleased(uint256 amount, uint256 newTotalReserved);
     event WinnerPaid(address indexed winner, uint256 amount);
+    event VoidedRefund(address indexed user, uint256 amount);
     event EngineSet(address indexed engine);
     event MaxUtilizationBpsSet(uint256 bps);
     event MaxPayoutBpsSet(uint256 bps);
@@ -222,6 +223,12 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
         totalReserved -= amount;
         asset.safeTransfer(winner, amount);
         emit WinnerPaid(winner, amount);
+    }
+
+    /// @notice Refund stake for a voided ticket (no reservation needed). Only callable by ParlayEngine.
+    function refundVoided(address user, uint256 amount) external onlyEngine nonReentrant {
+        asset.safeTransfer(user, amount);
+        emit VoidedRefund(user, amount);
     }
 
     // ── Yield Functions ───────────────────────────────────────────────────

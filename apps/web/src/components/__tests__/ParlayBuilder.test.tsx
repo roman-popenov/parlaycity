@@ -11,10 +11,21 @@ vi.mock("wagmi", () => ({
 vi.mock("@/lib/hooks", () => ({
   useBuyTicket: vi.fn(() => ({
     buyTicket: vi.fn(),
+    resetSuccess: vi.fn(),
     isPending: false,
     isConfirming: false,
     isSuccess: false,
     error: null,
+  })),
+  useUSDCBalance: vi.fn(() => ({
+    balance: undefined,
+    refetch: vi.fn(),
+  })),
+  useVaultStats: vi.fn(() => ({
+    freeLiquidity: undefined,
+    totalAssets: undefined,
+    totalReserved: undefined,
+    refetch: vi.fn(),
   })),
 }));
 

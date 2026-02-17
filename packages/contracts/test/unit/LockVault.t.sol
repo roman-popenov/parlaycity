@@ -332,13 +332,13 @@ contract LockVaultTest is Test {
         lockVault.harvest(posId);
     }
 
-    // ── Penalty shares stay in vault ─────────────────────────────────────
+    // ── Penalty shares go to HouseVault ────────────────────────────────
 
-    function test_earlyWithdraw_penaltySharesStayInContract() public {
+    function test_earlyWithdraw_penaltySharesGoToHouseVault() public {
         vm.prank(alice);
         lockVault.lock(10_000e6, LockVault.LockTier.THIRTY);
 
-        uint256 lockVaultSharesBefore = vault.balanceOf(address(lockVault));
+        uint256 vaultSharesBefore = vault.balanceOf(address(vault));
 
         // Warp 15 days (50% through)
         vm.warp(block.timestamp + 15 days);
@@ -346,10 +346,9 @@ contract LockVaultTest is Test {
         vm.prank(alice);
         lockVault.earlyWithdraw(0);
 
-        uint256 lockVaultSharesAfter = vault.balanceOf(address(lockVault));
-        // Penalty shares (500e6) stay in the lock vault contract
-        assertEq(lockVaultSharesAfter, 500e6);
-        // Total from lockVault perspective: removed full position but only sent back 9500
-        assertEq(lockVaultSharesBefore - lockVaultSharesAfter, 9500e6);
+        // LockVault should be empty (all shares transferred out)
+        assertEq(vault.balanceOf(address(lockVault)), 0);
+        // Penalty shares (500e6) transferred to HouseVault (increases LP value)
+        assertEq(vault.balanceOf(address(vault)) - vaultSharesBefore, 500e6);
     }
 }

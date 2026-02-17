@@ -32,6 +32,7 @@ contract OptimisticOracleAdapter is IOracleAdapter, Ownable, ReentrancyGuard {
         ProposalState state;
         address challenger;
         uint256 bondPosted;
+        uint256 livenessPosted;
     }
 
     // ── State ────────────────────────────────────────────────────────────
@@ -89,7 +90,8 @@ contract OptimisticOracleAdapter is IOracleAdapter, Ownable, ReentrancyGuard {
             proposedAt: block.timestamp,
             state: ProposalState.Proposed,
             challenger: address(0),
-            bondPosted: bondAmount
+            bondPosted: bondAmount,
+            livenessPosted: livenessWindow
         });
 
         emit Proposed(legId, msg.sender, status, outcome);
@@ -101,7 +103,7 @@ contract OptimisticOracleAdapter is IOracleAdapter, Ownable, ReentrancyGuard {
     function challenge(uint256 legId) external nonReentrant {
         Proposal storage p = proposals[legId];
         require(p.state == ProposalState.Proposed, "OptimisticOracle: not proposed");
-        require(block.timestamp < p.proposedAt + livenessWindow, "OptimisticOracle: liveness expired");
+        require(block.timestamp < p.proposedAt + p.livenessPosted, "OptimisticOracle: liveness expired");
         require(msg.sender != p.proposer, "OptimisticOracle: cannot self-challenge");
 
         bondToken.safeTransferFrom(msg.sender, address(this), p.bondPosted);
@@ -117,7 +119,7 @@ contract OptimisticOracleAdapter is IOracleAdapter, Ownable, ReentrancyGuard {
     function finalize(uint256 legId) external nonReentrant {
         Proposal storage p = proposals[legId];
         require(p.state == ProposalState.Proposed, "OptimisticOracle: not proposed");
-        require(block.timestamp >= p.proposedAt + livenessWindow, "OptimisticOracle: liveness not expired");
+        require(block.timestamp >= p.proposedAt + p.livenessPosted, "OptimisticOracle: liveness not expired");
 
         p.state = ProposalState.Finalized;
         _finalStatus[legId] = p.proposedStatus;

@@ -37,7 +37,7 @@ contract OptimisticOracleTest is Test {
         vm.prank(proposer);
         oracle.propose(1, LegStatus.Won, keccak256("yes"));
 
-        (,,,,OptimisticOracleAdapter.ProposalState state,,) = oracle.proposals(1);
+        (,,,,OptimisticOracleAdapter.ProposalState state,,,) = oracle.proposals(1);
         assertEq(uint8(state), uint8(OptimisticOracleAdapter.ProposalState.Proposed));
 
         // Bond should have been taken
@@ -101,7 +101,7 @@ contract OptimisticOracleTest is Test {
         vm.prank(challenger);
         oracle.challenge(1);
 
-        (,,,,OptimisticOracleAdapter.ProposalState state, address ch,) = oracle.proposals(1);
+        (,,,,OptimisticOracleAdapter.ProposalState state, address ch,,) = oracle.proposals(1);
         assertEq(uint8(state), uint8(OptimisticOracleAdapter.ProposalState.Challenged));
         assertEq(ch, challenger);
 
@@ -226,6 +226,25 @@ contract OptimisticOracleTest is Test {
     }
 
     // ── Slashing ─────────────────────────────────────────────────────────
+
+    function test_livenessSnapshot_usesOriginalWindow() public {
+        vm.prank(proposer);
+        oracle.propose(3, LegStatus.Won, keccak256("yes"));
+
+        // Shorten liveness window after proposal
+        oracle.setLivenessWindow(60); // 1 minute instead of 30 min
+
+        // Advance 2 minutes — past new global window but before original 30 min
+        vm.warp(block.timestamp + 120);
+
+        // Should NOT be finalizable yet (proposal was made under 30 min window)
+        vm.expectRevert("OptimisticOracle: liveness not expired");
+        oracle.finalize(3);
+
+        // Challenge should still be possible (within original 30 min window)
+        vm.prank(challenger);
+        oracle.challenge(3);
+    }
 
     function test_slashing_loserBondGoesToWinner() public {
         uint256 proposerBefore = usdc.balanceOf(proposer);

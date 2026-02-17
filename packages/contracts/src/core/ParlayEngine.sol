@@ -274,6 +274,11 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
                 // Not enough legs for a valid parlay, void the ticket
                 ticket.status = TicketStatus.Voided;
                 vault.releasePayout(originalPayout);
+                // Refund stake minus fee (fee stays in vault as house profit)
+                uint256 refundAmount = ticket.stake - ticket.feePaid;
+                if (refundAmount > 0) {
+                    vault.refundVoided(ownerOf(ticketId), refundAmount);
+                }
             } else {
                 // Recalculate multiplier with only the non-voided legs
                 uint256[] memory remainingProbs = new uint256[](remainingLegs);
