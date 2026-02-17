@@ -349,13 +349,11 @@ contract LockVaultTest is Test {
         lockVault.sweepPenaltyShares(address(vault));
     }
 
-    // ── Penalty shares go to HouseVault ────────────────────────────────
+    // ── Penalty shares retained in LockVault for sweeping ─────────────
 
-    function test_earlyWithdraw_penaltySharesGoToHouseVault() public {
+    function test_earlyWithdraw_penaltySharesStayInLockVault() public {
         vm.prank(alice);
         lockVault.lock(10_000e6, LockVault.LockTier.THIRTY);
-
-        uint256 vaultSharesBefore = vault.balanceOf(address(vault));
 
         // Warp 15 days (50% through)
         vm.warp(block.timestamp + 15 days);
@@ -363,10 +361,75 @@ contract LockVaultTest is Test {
         vm.prank(alice);
         lockVault.earlyWithdraw(0);
 
-        // LockVault should be empty (all shares transferred out)
+        // Penalty shares (500e6) stay in LockVault as surplus
+        // totalLockedShares is now 0, so entire balance is sweepable
+        assertEq(vault.balanceOf(address(lockVault)), 500e6);
+        assertEq(lockVault.totalLockedShares(), 0);
+    }
+
+    function test_earlyWithdraw_penaltySharesSweepable() public {
+        vm.prank(alice);
+        lockVault.lock(10_000e6, LockVault.LockTier.THIRTY);
+
+        vm.warp(block.timestamp + 15 days);
+
+        vm.prank(alice);
+        lockVault.earlyWithdraw(0);
+
+        // Owner can sweep penalty shares to any receiver
+        address receiver = makeAddr("receiver");
+        lockVault.sweepPenaltyShares(receiver);
+        assertEq(vault.balanceOf(receiver), 500e6);
         assertEq(vault.balanceOf(address(lockVault)), 0);
-        // Penalty shares (500e6) transferred to HouseVault (increases LP value)
-        assertEq(vault.balanceOf(address(vault)) - vaultSharesBefore, 500e6);
+    }
+
+    function test_earlyWithdraw_penaltySharesAccumulate() public {
+        // Alice and Bob both lock, both early withdraw
+        vm.prank(alice);
+        lockVault.lock(10_000e6, LockVault.LockTier.THIRTY);
+        vm.prank(bob);
+        lockVault.lock(10_000e6, LockVault.LockTier.THIRTY);
+
+        vm.warp(block.timestamp + 15 days);
+
+        vm.prank(alice);
+        lockVault.earlyWithdraw(0);
+        vm.prank(bob);
+        lockVault.earlyWithdraw(1);
+
+        // Both penalties (500e6 each) accumulate in LockVault
+        assertEq(vault.balanceOf(address(lockVault)), 1000e6);
+        assertEq(lockVault.totalLockedShares(), 0);
+
+        // Single sweep collects all accumulated penalties
+        address receiver = makeAddr("receiver");
+        lockVault.sweepPenaltyShares(receiver);
+        assertEq(vault.balanceOf(receiver), 1000e6);
+    }
+
+    function test_sweepPenaltyShares_onlyExcessOverLocked() public {
+        // Alice locks 10k, Bob locks 5k
+        vm.prank(alice);
+        lockVault.lock(10_000e6, LockVault.LockTier.THIRTY);
+        vm.prank(bob);
+        lockVault.lock(5_000e6, LockVault.LockTier.THIRTY);
+
+        vm.warp(block.timestamp + 15 days);
+
+        // Only Alice early withdraws — penalty = 500e6
+        vm.prank(alice);
+        lockVault.earlyWithdraw(0);
+
+        // LockVault balance = 5000 (bob's locked) + 500 (alice's penalty)
+        assertEq(vault.balanceOf(address(lockVault)), 5500e6);
+        assertEq(lockVault.totalLockedShares(), 5000e6);
+
+        // Sweep only gets the 500 surplus, not Bob's locked 5000
+        address receiver = makeAddr("receiver");
+        lockVault.sweepPenaltyShares(receiver);
+        assertEq(vault.balanceOf(receiver), 500e6);
+        // Bob's shares still safe
+        assertEq(vault.balanceOf(address(lockVault)), 5000e6);
     }
 
     // ── Edge Cases ──────────────────────────────────────────────────────

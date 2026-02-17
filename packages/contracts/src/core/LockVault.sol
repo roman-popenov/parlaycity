@@ -155,12 +155,9 @@ contract LockVault is Ownable, ReentrancyGuard {
 
         _removePosition(positionId);
 
-        // Return net shares to user; send penalty shares back to HouseVault
-        // (increases asset-to-share ratio, benefiting all LP holders)
+        // Return net shares to user; penalty shares stay in contract and
+        // accumulate as surplus (balance - totalLockedShares) for sweeping.
         vUSDC.safeTransfer(msg.sender, returned);
-        if (penaltyShares > 0) {
-            vUSDC.safeTransfer(address(vault), penaltyShares);
-        }
         emit EarlyWithdraw(positionId, msg.sender, returned, penaltyShares);
     }
 

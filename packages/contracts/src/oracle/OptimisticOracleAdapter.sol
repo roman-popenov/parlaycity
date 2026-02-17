@@ -108,10 +108,11 @@ contract OptimisticOracleAdapter is IOracleAdapter, Ownable, ReentrancyGuard {
         require(block.timestamp < p.proposedAt + p.livenessPosted, "OptimisticOracle: liveness expired");
         require(msg.sender != p.proposer, "OptimisticOracle: cannot self-challenge");
 
-        bondToken.safeTransferFrom(msg.sender, address(this), bondAmount);
+        uint256 requiredBond = p.bondPosted;
+        bondToken.safeTransferFrom(msg.sender, address(this), requiredBond);
         p.state = ProposalState.Challenged;
         p.challenger = msg.sender;
-        p.challengerBond = bondAmount;
+        p.challengerBond = requiredBond;
 
         emit Challenged(legId, msg.sender);
     }

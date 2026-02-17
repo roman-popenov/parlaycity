@@ -176,8 +176,8 @@ contract LockVaultInvariantTest is Test {
         }
     }
 
-    /// @notice Penalty shares from early withdrawals go to HouseVault.
-    ///         The difference between vUSDC balance and totalLockedShares is penalty surplus.
+    /// @notice Penalty shares from early withdrawals stay in LockVault.
+    ///         The surplus (balance - totalLockedShares) is always non-negative.
     function invariant_penaltySurplusNonNegative() public view {
         uint256 vUSDCBalance = vault.balanceOf(address(lockVault));
         uint256 locked = lockVault.totalLockedShares();

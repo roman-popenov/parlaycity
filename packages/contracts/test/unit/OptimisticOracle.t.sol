@@ -199,16 +199,55 @@ contract OptimisticOracleTest is Test {
         // Owner changes bond after proposal
         oracle.setBondAmount(50e6);
 
-        // Challenge pays the current bondAmount (50), tracked as challengerBond
+        // Challenge pays the proposer's snapshotted bond (10), not the current global (50)
         vm.prank(challenger);
         oracle.challenge(1);
 
-        // Challenger should have paid 50 USDC (the current bond, not the proposer's original 10)
-        assertEq(usdc.balanceOf(challenger), 950e6);
+        // Challenger should have paid 10 USDC (proposer's bond), not 50
+        assertEq(usdc.balanceOf(challenger), 990e6);
 
-        // Owner resolves: proposer wins -> gets proposerBond + challengerBond = 10 + 50 = 60
+        // Owner resolves: proposer wins -> gets proposerBond + challengerBond = 10 + 10 = 20
         oracle.resolveDispute(1, LegStatus.Won, keccak256("yes"), true);
-        assertEq(usdc.balanceOf(proposer), 990e6 + 10e6 + 50e6); // 1050
+        assertEq(usdc.balanceOf(proposer), 990e6 + 10e6 + 10e6); // 1010
+    }
+
+    function test_challenge_bondMatchesProposerAfterIncrease() public {
+        // Propose with bond=10
+        vm.prank(proposer);
+        oracle.propose(1, LegStatus.Won, keccak256("yes"));
+
+        // Admin raises bond to 50
+        oracle.setBondAmount(50e6);
+
+        // Challenger still pays 10 (snapshotted), contract holds exactly 20
+        vm.prank(challenger);
+        oracle.challenge(1);
+        assertEq(usdc.balanceOf(address(oracle)), 20e6);
+
+        // Challenger wins — gets full 20 (no stuck funds)
+        oracle.resolveDispute(1, LegStatus.Lost, keccak256("no"), false);
+        assertEq(usdc.balanceOf(challenger), 990e6 + 20e6); // 1010
+        assertEq(usdc.balanceOf(address(oracle)), 0);
+    }
+
+    function test_challenge_bondMatchesProposerAfterDecrease() public {
+        // Propose with bond=10
+        vm.prank(proposer);
+        oracle.propose(1, LegStatus.Won, keccak256("yes"));
+
+        // Admin lowers bond to 1
+        oracle.setBondAmount(1e6);
+
+        // Challenger still pays 10 (snapshotted from proposer), not 1
+        vm.prank(challenger);
+        oracle.challenge(1);
+        assertEq(usdc.balanceOf(challenger), 990e6);
+        assertEq(usdc.balanceOf(address(oracle)), 20e6);
+
+        // Proposer wins — gets exact 20 (no shortfall)
+        oracle.resolveDispute(1, LegStatus.Won, keccak256("yes"), true);
+        assertEq(usdc.balanceOf(proposer), 990e6 + 20e6); // 1010
+        assertEq(usdc.balanceOf(address(oracle)), 0);
     }
 
     function test_bondSnapshot_finalizeReturnsOriginalBond() public {

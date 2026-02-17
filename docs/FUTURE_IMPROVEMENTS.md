@@ -89,10 +89,48 @@ This makes deployments configurable without post-deploy admin calls.
 
 ---
 
+## 6. LockVault Economic Model Redesign
+
+**Current state:** Users lock vUSDC shares for 30/60/90 days and receive a tier multiplier (1.1x/1.25x/1.5x) on fee distributions. Early withdrawal incurs a linear penalty on the locked principal. The locked capital is idle — it doesn't increase the vault's betting capacity or generate yield.
+
+**Problems with the current model:**
+
+1. **Tier multipliers are detached from real yield.** The 1.1x-1.5x weight boost on fee distributions can pay out more than the actual yield the locked capital generates, especially when fee volume is high relative to TVL. This makes the multipliers an unbacked promise.
+
+2. **Locked capital doesn't improve vault capacity.** Locked vUSDC sits in the LockVault contract and doesn't count toward HouseVault's `totalAssets()` or `freeLiquidity()`. Locking actually *reduces* the vault's ability to underwrite bets, hurting both LPs and bettors.
+
+3. **Early withdrawal penalty is on principal, not yield.** Losing 5-10% of deposited capital for exiting early is a steep cost, especially if the yield earned during the lock period was minimal. Penalties should be proportional to the benefit received.
+
+**Proposed redesign:**
+
+- **Locked shares should remain productive.** Instead of transferring vUSDC out of HouseVault, the LockVault could track lock commitments as a lien on shares — the capital stays in HouseVault contributing to TVL and betting capacity, while the lock prevents the user from withdrawing.
+
+- **Yield-based rewards instead of multiplier-weighted fees.** Deploy locked capital into yield strategies (Aave, Compound, etc.) via the existing `IYieldAdapter` interface. Lock tier determines the *share of yield*, not an arbitrary multiplier. A 90-day locker gets a larger slice of actual yield generated, not a 1.5x weight on fee distributions.
+
+- **Penalty applies to accrued yield, not principal.** Early withdrawal forfeits a portion of the *yield earned* during the lock, not the original deposit. This makes the risk/reward proportional — users risk their upside, not their capital.
+
+- **Graduated unlock.** Instead of cliff unlock at maturity, allow partial unlocks (e.g., 25% after 1/4 of the period) to reduce the all-or-nothing early withdrawal problem.
+
+**Implementation sketch:**
+```
+LockVault v2:
+- lock() creates a commitment record (no vUSDC transfer)
+- HouseVault tracks locked vs unlocked shares internally
+- Yield adapter deploys locked portion
+- settleRewards() distributes actual yield pro-rata by tier weight
+- earlyWithdraw() forfeits (tier_weight * remaining_time / total_time) of accrued yield
+- unlock() returns full principal + accrued yield
+```
+
+This requires coordinating with HouseVault changes (internal lock tracking, yield allocation) and is a significant refactor.
+
+---
+
 ## Priority Order
 
-1. **Admin dashboard** -- Low effort, high value for demo polish
-2. **Constructor params** -- Trivial change, improves deploy flexibility
-3. **Dynamic fee scaling** -- Medium effort, strong DeFi mechanic
-4. **Dynamic max payout** -- Medium effort, unlocks larger tickets
-5. **Jackpot pool** -- High effort, major feature expansion
+1. **LockVault economic redesign** -- High priority, current model has structural issues
+2. **Admin dashboard** -- Low effort, high value for demo polish
+3. **Constructor params** -- Trivial change, improves deploy flexibility
+4. **Dynamic fee scaling** -- Medium effort, strong DeFi mechanic
+5. **Dynamic max payout** -- Medium effort, unlocks larger tickets
+6. **Jackpot pool** -- High effort, major feature expansion
