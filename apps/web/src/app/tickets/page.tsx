@@ -4,17 +4,7 @@ import { useMemo } from "react";
 import Link from "next/link";
 import { useUserTickets, useLegDescriptions, type OnChainTicket, type LegInfo } from "@/lib/hooks";
 import { TicketCard, type TicketData, type TicketLeg } from "@/components/TicketCard";
-
-function mapStatus(statusCode: number): "Active" | "Won" | "Lost" | "Voided" | "Claimed" {
-  switch (statusCode) {
-    case 0: return "Active";
-    case 1: return "Won";
-    case 2: return "Lost";
-    case 3: return "Voided";
-    case 4: return "Claimed";
-    default: return "Active";
-  }
-}
+import { mapStatus } from "@/lib/utils";
 
 function toTicketData(
   id: bigint,

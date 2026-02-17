@@ -34,8 +34,10 @@ app.use("/quote", quoteRouter);
 app.use("/exposure", hedgerRouter);
 app.use("/premium", premiumRouter);
 
-app.listen(PORT, () => {
-  console.log(`ParlayCity services running on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== "test") {
+  app.listen(PORT, () => {
+    console.log(`ParlayCity services running on port ${PORT}`);
+  });
+}
 
 export default app;

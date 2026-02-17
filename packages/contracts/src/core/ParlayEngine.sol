@@ -168,7 +168,12 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
                 require(legIds[i] != legIds[j], "ParlayEngine: duplicate leg");
             }
 
-            probsPPM[i] = leg.probabilityPPM;
+            // Use complement probability for "No" bets (outcome == 0x02)
+            if (outcomes[i] == bytes32(uint256(2))) {
+                probsPPM[i] = 1_000_000 - leg.probabilityPPM;
+            } else {
+                probsPPM[i] = leg.probabilityPPM;
+            }
         }
 
         // --- Compute pricing ---
@@ -229,17 +234,28 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
 
             (LegStatus legStatus,) = oracle.getStatus(ticket.legIds[i]);
 
-            if (legStatus == LegStatus.Lost) {
+            // Determine if the bettor's chosen side won:
+            // Yes bet (outcome != 0x02): wins when leg status is Won
+            // No bet  (outcome == 0x02): wins when leg status is Lost
+            bool isNoBet = ticket.outcomes[i] == bytes32(uint256(2));
+            bool bettorWon;
+
+            if (legStatus == LegStatus.Voided) {
+                voidedCount++;
+                allWon = false;
+                continue;
+            } else if (legStatus == LegStatus.Won) {
+                bettorWon = !isNoBet; // Yes bettor wins, No bettor loses
+            } else if (legStatus == LegStatus.Lost) {
+                bettorWon = isNoBet;  // No bettor wins, Yes bettor loses
+            } else {
+                revert("ParlayEngine: unexpected leg status");
+            }
+
+            if (!bettorWon) {
                 anyLost = true;
                 allWon = false;
                 break;
-            } else if (legStatus == LegStatus.Voided) {
-                voidedCount++;
-                allWon = false;
-            } else if (legStatus == LegStatus.Won) {
-                // continue checking
-            } else {
-                revert("ParlayEngine: unexpected leg status");
             }
         }
 
@@ -267,17 +283,18 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
                     IOracleAdapter oracle = IOracleAdapter(leg.oracleAdapter);
                     (LegStatus legStatus,) = oracle.getStatus(ticket.legIds[i]);
                     if (legStatus != LegStatus.Voided) {
-                        remainingProbs[idx++] = leg.probabilityPPM;
+                        // Use complement for No bets, same as in buyTicket
+                        if (ticket.outcomes[i] == bytes32(uint256(2))) {
+                            remainingProbs[idx++] = 1_000_000 - leg.probabilityPPM;
+                        } else {
+                            remainingProbs[idx++] = leg.probabilityPPM;
+                        }
                     }
                 }
 
                 uint256 newMultiplier = ParlayMath.computeMultiplier(remainingProbs);
-                uint256 totalEdgeBps = ParlayMath.computeEdge(remainingLegs, baseFee, perLegFee);
                 uint256 effectiveStake = ticket.stake - ticket.feePaid;
                 uint256 newPayout = ParlayMath.computePayout(effectiveStake, newMultiplier);
-
-                // Apply edge
-                newPayout = (newPayout * (10_000 - totalEdgeBps)) / 10_000;
 
                 if (newPayout < originalPayout) {
                     vault.releasePayout(originalPayout - newPayout);

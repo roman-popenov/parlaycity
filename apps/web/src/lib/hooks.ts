@@ -243,8 +243,8 @@ export function useBuyTicket() {
     legIds: bigint[],
     outcomes: number[],
     stakeUsdc: number
-  ) => {
-    if (!address || !publicClient) return;
+  ): Promise<boolean> => {
+    if (!address || !publicClient) return false;
 
     setIsPending(true);
     setIsConfirming(false);
@@ -288,9 +288,11 @@ export function useBuyTicket() {
       await publicClient.waitForTransactionReceipt({ hash: buyHash });
 
       setIsSuccess(true);
+      return true;
     } catch (err) {
       console.error("Buy ticket failed:", err);
       setError(err instanceof Error ? err : new Error(String(err)));
+      return false;
     } finally {
       setIsPending(false);
       setIsConfirming(false);

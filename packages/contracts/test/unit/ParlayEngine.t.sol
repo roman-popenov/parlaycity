@@ -449,6 +449,73 @@ contract ParlayEngineTest is Test {
         engine.setMinStake(0.5e6);
     }
 
+    // ── No Bets ──────────────────────────────────────────────────────────
+
+    function test_noBet_winsWhenLegLost() public {
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0; // 50%
+        legs[1] = 1; // 25%
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = bytes32(uint256(1)); // Yes on leg 0
+        outcomes[1] = bytes32(uint256(2)); // No on leg 1
+
+        vm.prank(alice);
+        uint256 ticketId = engine.buyTicket(legs, outcomes, 10e6);
+
+        // Leg 0 won (Yes bettor wins), Leg 1 lost (No bettor wins)
+        oracle.resolve(0, LegStatus.Won, keccak256("yes"));
+        oracle.resolve(1, LegStatus.Lost, keccak256("no"));
+
+        engine.settleTicket(ticketId);
+        ParlayEngine.Ticket memory t = engine.getTicket(ticketId);
+        assertEq(uint8(t.status), uint8(ParlayEngine.TicketStatus.Won));
+    }
+
+    function test_noBet_losesWhenLegWon() public {
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0;
+        legs[1] = 1;
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = bytes32(uint256(1)); // Yes
+        outcomes[1] = bytes32(uint256(2)); // No
+
+        vm.prank(alice);
+        uint256 ticketId = engine.buyTicket(legs, outcomes, 10e6);
+
+        // Leg 0 won (Yes wins), Leg 1 won (No bettor loses)
+        oracle.resolve(0, LegStatus.Won, keccak256("yes"));
+        oracle.resolve(1, LegStatus.Won, keccak256("yes"));
+
+        engine.settleTicket(ticketId);
+        ParlayEngine.Ticket memory t = engine.getTicket(ticketId);
+        assertEq(uint8(t.status), uint8(ParlayEngine.TicketStatus.Lost));
+    }
+
+    function test_noBet_usesComplementProbability() public {
+        // Leg 1 has 25% prob -> No bet should use 75% (750_000 PPM)
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0; // 50%
+        legs[1] = 1; // 25% -> No gives 75%
+        bytes32[] memory outcomesYes = new bytes32[](2);
+        outcomesYes[0] = bytes32(uint256(1));
+        outcomesYes[1] = bytes32(uint256(1));
+
+        bytes32[] memory outcomesNo = new bytes32[](2);
+        outcomesNo[0] = bytes32(uint256(1));
+        outcomesNo[1] = bytes32(uint256(2)); // No bet on leg 1
+
+        vm.prank(alice);
+        uint256 ticketYes = engine.buyTicket(legs, outcomesYes, 10e6);
+        vm.prank(alice);
+        uint256 ticketNo = engine.buyTicket(legs, outcomesNo, 10e6);
+
+        ParlayEngine.Ticket memory tYes = engine.getTicket(ticketYes);
+        ParlayEngine.Ticket memory tNo = engine.getTicket(ticketNo);
+
+        // No bet on 25% leg -> lower multiplier since complement (75%) is more likely
+        assertTrue(tNo.multiplierX1e6 < tYes.multiplierX1e6, "No-bet multiplier < Yes-bet multiplier");
+    }
+
     function test_setMaxLegs_boundsCheck() public {
         engine.setMaxLegs(10);
         assertEq(engine.maxLegs(), 10);

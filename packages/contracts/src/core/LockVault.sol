@@ -70,6 +70,7 @@ contract LockVault is Ownable, ReentrancyGuard {
     event EarlyWithdraw(uint256 indexed positionId, address indexed owner, uint256 sharesReturned, uint256 penaltyShares);
     event FeesDistributed(uint256 amount, uint256 newAccRewardPerWeightedShare);
     event RewardsClaimed(address indexed user, uint256 amount);
+    event Harvested(uint256 indexed positionId, address indexed owner, uint256 reward);
     event BasePenaltyUpdated(uint256 oldPenalty, uint256 newPenalty);
 
     // ── Constructor ──────────────────────────────────────────────────────
@@ -155,6 +156,21 @@ contract LockVault is Ownable, ReentrancyGuard {
         // Return net shares to user; penalty shares stay in vault (benefit remaining LPs)
         vUSDC.safeTransfer(msg.sender, returned);
         emit EarlyWithdraw(positionId, msg.sender, returned, penaltyShares);
+    }
+
+    /// @notice Harvest accumulated rewards without closing the position.
+    function harvest(uint256 positionId) external nonReentrant {
+        LockPosition storage pos = positions[positionId];
+        require(pos.owner == msg.sender, "LockVault: not owner");
+        require(pos.shares > 0, "LockVault: empty position");
+
+        _settleRewards(positionId);
+
+        uint256 weighted = (pos.shares * pos.feeMultiplierBps) / BPS_BASE;
+        pos.rewardDebt = (weighted * accRewardPerWeightedShare) / PRECISION;
+
+        uint256 reward = pendingRewards[msg.sender];
+        emit Harvested(positionId, msg.sender, reward);
     }
 
     /// @notice Distribute fee income proportionally to weighted locked shares.

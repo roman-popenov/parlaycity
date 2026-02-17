@@ -37,7 +37,7 @@ contract OptimisticOracleTest is Test {
         vm.prank(proposer);
         oracle.propose(1, LegStatus.Won, keccak256("yes"));
 
-        (,,,,OptimisticOracleAdapter.ProposalState state,) = oracle.proposals(1);
+        (,,,,OptimisticOracleAdapter.ProposalState state,,) = oracle.proposals(1);
         assertEq(uint8(state), uint8(OptimisticOracleAdapter.ProposalState.Proposed));
 
         // Bond should have been taken
@@ -101,7 +101,7 @@ contract OptimisticOracleTest is Test {
         vm.prank(challenger);
         oracle.challenge(1);
 
-        (,,,,OptimisticOracleAdapter.ProposalState state, address ch) = oracle.proposals(1);
+        (,,,,OptimisticOracleAdapter.ProposalState state, address ch,) = oracle.proposals(1);
         assertEq(uint8(state), uint8(OptimisticOracleAdapter.ProposalState.Challenged));
         assertEq(ch, challenger);
 
@@ -187,6 +187,42 @@ contract OptimisticOracleTest is Test {
         vm.prank(proposer);
         vm.expectRevert();
         oracle.resolveDispute(1, LegStatus.Won, keccak256("yes"), true);
+    }
+
+    // ── Slashing ─────────────────────────────────────────────────────────
+
+    function test_bondSnapshot_usesOriginalBond() public {
+        // Propose with bond=10
+        vm.prank(proposer);
+        oracle.propose(1, LegStatus.Won, keccak256("yes"));
+
+        // Owner changes bond after proposal
+        oracle.setBondAmount(50e6);
+
+        // Challenge uses the snapshotted bond (10), not current (50)
+        vm.prank(challenger);
+        oracle.challenge(1);
+
+        // Challenger should have paid the original 10 USDC bond
+        assertEq(usdc.balanceOf(challenger), 990e6);
+
+        // Owner resolves: proposer wins -> gets 2*original bond (20)
+        oracle.resolveDispute(1, LegStatus.Won, keccak256("yes"), true);
+        assertEq(usdc.balanceOf(proposer), 990e6 + 2 * BOND);
+    }
+
+    function test_bondSnapshot_finalizeReturnsOriginalBond() public {
+        vm.prank(proposer);
+        oracle.propose(2, LegStatus.Won, keccak256("yes"));
+
+        // Owner changes bond
+        oracle.setBondAmount(100e6);
+
+        vm.warp(block.timestamp + LIVENESS);
+        oracle.finalize(2);
+
+        // Proposer gets back their original 10 USDC bond
+        assertEq(usdc.balanceOf(proposer), 1000e6);
     }
 
     // ── Slashing ─────────────────────────────────────────────────────────

@@ -31,6 +31,7 @@ contract OptimisticOracleAdapter is IOracleAdapter, Ownable, ReentrancyGuard {
         uint256 proposedAt;
         ProposalState state;
         address challenger;
+        uint256 bondPosted;
     }
 
     // ── State ────────────────────────────────────────────────────────────
@@ -87,7 +88,8 @@ contract OptimisticOracleAdapter is IOracleAdapter, Ownable, ReentrancyGuard {
             proposedOutcome: outcome,
             proposedAt: block.timestamp,
             state: ProposalState.Proposed,
-            challenger: address(0)
+            challenger: address(0),
+            bondPosted: bondAmount
         });
 
         emit Proposed(legId, msg.sender, status, outcome);
@@ -102,7 +104,7 @@ contract OptimisticOracleAdapter is IOracleAdapter, Ownable, ReentrancyGuard {
         require(block.timestamp < p.proposedAt + livenessWindow, "OptimisticOracle: liveness expired");
         require(msg.sender != p.proposer, "OptimisticOracle: cannot self-challenge");
 
-        bondToken.safeTransferFrom(msg.sender, address(this), bondAmount);
+        bondToken.safeTransferFrom(msg.sender, address(this), p.bondPosted);
         p.state = ProposalState.Challenged;
         p.challenger = msg.sender;
 
@@ -123,7 +125,7 @@ contract OptimisticOracleAdapter is IOracleAdapter, Ownable, ReentrancyGuard {
         _isFinalized[legId] = true;
 
         // Return bond to proposer
-        bondToken.safeTransfer(p.proposer, bondAmount);
+        bondToken.safeTransfer(p.proposer, p.bondPosted);
 
         emit Finalized(legId, p.proposedStatus, p.proposedOutcome);
     }
@@ -164,7 +166,7 @@ contract OptimisticOracleAdapter is IOracleAdapter, Ownable, ReentrancyGuard {
 
         // Winner gets both bonds (their own + loser's)
         // In a real system you'd take a protocol fee; keeping it simple for the hackathon.
-        bondToken.safeTransfer(winner, bondAmount * 2);
+        bondToken.safeTransfer(winner, p.bondPosted * 2);
 
         emit DisputeResolved(legId, status, outcome, winner, loser);
     }

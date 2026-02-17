@@ -7,19 +7,8 @@ import {
   TicketCard,
   type TicketData,
   type TicketLeg,
-  type TicketStatus,
 } from "@/components/TicketCard";
-
-function mapStatus(statusCode: number): TicketStatus {
-  switch (statusCode) {
-    case 0: return "Active";
-    case 1: return "Won";
-    case 2: return "Lost";
-    case 3: return "Voided";
-    case 4: return "Claimed";
-    default: return "Active";
-  }
-}
+import { mapStatus } from "@/lib/utils";
 
 export default function TicketPage() {
   const params = useParams();

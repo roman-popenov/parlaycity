@@ -53,11 +53,10 @@ export function ParlayBuilder() {
     return selectedLegs.reduce((acc, s) => acc * effectiveOdds(s.leg, s.outcomeChoice), 1);
   }, [selectedLegs]);
 
-  const potentialPayout = stakeNum * multiplier;
-
   const feeBps =
     PARLAY_CONFIG.baseFee + PARLAY_CONFIG.perLegFee * selectedLegs.length;
   const feeAmount = (stakeNum * feeBps) / 10000;
+  const potentialPayout = (stakeNum - feeAmount) * multiplier;
 
   const canBuy =
     mounted &&
@@ -70,10 +69,11 @@ export function ParlayBuilder() {
     if (!canBuy) return;
     const legIds = selectedLegs.map((s) => s.leg.id);
     const outcomes = selectedLegs.map((s) => s.outcomeChoice);
-    await buyTicket(legIds, outcomes, stakeNum);
-    // Clear form after successful purchase
-    setSelectedLegs([]);
-    setStake("");
+    const success = await buyTicket(legIds, outcomes, stakeNum);
+    if (success) {
+      setSelectedLegs([]);
+      setStake("");
+    }
   };
 
   const txState = isPending

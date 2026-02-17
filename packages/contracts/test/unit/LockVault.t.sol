@@ -275,6 +275,63 @@ contract LockVaultTest is Test {
         lockVault.distributeFees(100e6);
     }
 
+    // ── Harvest ─────────────────────────────────────────────────────────
+
+    function test_harvest_settlesRewardsWithoutClosing() public {
+        vm.prank(alice);
+        uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
+
+        // Distribute 100 USDC
+        lockVault.distributeFees(100e6);
+
+        // Harvest — should settle rewards without closing position
+        vm.prank(alice);
+        lockVault.harvest(posId);
+
+        // Position should still be open
+        LockVault.LockPosition memory pos = lockVault.getPosition(posId);
+        assertEq(pos.shares, 1000e6);
+        assertEq(pos.owner, alice);
+        assertEq(lockVault.totalLockedShares(), 1000e6);
+
+        // Rewards should be in pendingRewards
+        assertApproxEqAbs(lockVault.pendingRewards(alice), 100e6, 2);
+
+        // Claim the harvested rewards
+        uint256 balBefore = usdc.balanceOf(alice);
+        vm.prank(alice);
+        lockVault.claimFees();
+        assertApproxEqAbs(usdc.balanceOf(alice) - balBefore, 100e6, 2);
+    }
+
+    function test_harvest_preventsDoubleCount() public {
+        vm.prank(alice);
+        uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
+
+        lockVault.distributeFees(100e6);
+
+        // Harvest once
+        vm.prank(alice);
+        lockVault.harvest(posId);
+
+        uint256 rewardsAfterFirst = lockVault.pendingRewards(alice);
+
+        // Harvest again without new fees — should not add more
+        vm.prank(alice);
+        lockVault.harvest(posId);
+
+        assertEq(lockVault.pendingRewards(alice), rewardsAfterFirst);
+    }
+
+    function test_harvest_revertsForNonOwner() public {
+        vm.prank(alice);
+        uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
+
+        vm.prank(bob);
+        vm.expectRevert("LockVault: not owner");
+        lockVault.harvest(posId);
+    }
+
     // ── Penalty shares stay in vault ─────────────────────────────────────
 
     function test_earlyWithdraw_penaltySharesStayInContract() public {
