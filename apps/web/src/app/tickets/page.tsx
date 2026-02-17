@@ -20,7 +20,9 @@ function toTicketData(
     legs: t.legIds.map((legId, i): TicketLeg => {
       const leg = legMap.get(legId.toString());
       const ppm = leg ? Number(leg.probabilityPPM) / 1_000_000 : 0;
-      const odds = ppm > 0 ? 1 / ppm : multiplier ** (1 / t.legIds.length);
+      const isNo = Number(t.outcomes[i]) === 2;
+      const effectiveProb = isNo ? 1 - ppm : ppm;
+      const odds = effectiveProb > 0 ? 1 / effectiveProb : multiplier ** (1 / t.legIds.length);
       const oracleResult = legStatuses.get(legId.toString());
       return {
         description: leg?.question ?? `Leg #${legId.toString()}`,
