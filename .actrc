@@ -1,0 +1,3 @@
+-P ubuntu-latest=catthehacker/ubuntu:js-latest
+--container-architecture linux/amd64
+--env-file .act-env

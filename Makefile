@@ -1,5 +1,15 @@
 # ParlayCity Development Makefile
 
+# -- Bootstrap (install all dev tools) --
+bootstrap:
+	./scripts/bootstrap.sh
+
+# -- Setup (install project dependencies) --
+setup:
+	pnpm install
+	cd packages/contracts && forge install foundry-rs/forge-std --no-git 2>/dev/null || true
+	cd packages/contracts && forge install OpenZeppelin/openzeppelin-contracts --no-git 2>/dev/null || true
+
 # -- Local Development --
 chain:
 	cd packages/contracts && anvil
@@ -40,9 +50,22 @@ coverage:
 snapshot:
 	cd packages/contracts && forge snapshot
 
+# -- Local CI (act) --
+ci:
+	act pull_request
+
+ci-contracts:
+	act pull_request -j contracts
+
+ci-services:
+	act pull_request -j services
+
+ci-web:
+	act pull_request -j web
+
 # -- Cleanup --
 clean:
 	cd packages/contracts && forge clean
 	cd apps/web && rm -rf .next
 
-.PHONY: chain deploy-local dev-web dev-services test-contracts test-services test-all gate typecheck build-web build-contracts coverage snapshot clean
+.PHONY: bootstrap setup chain deploy-local dev-web dev-services test-contracts test-services test-all gate typecheck build-web build-contracts coverage snapshot ci ci-contracts ci-services ci-web clean
