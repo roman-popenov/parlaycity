@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useTicket, useUserTickets, useLegDescriptions } from "@/lib/hooks";
+import { useTicket, useUserTickets, useLegDescriptions, useLegStatuses } from "@/lib/hooks";
 import {
   TicketCard,
   type TicketData,
@@ -25,6 +25,7 @@ export default function TicketPage() {
   const { ticket: onChainTicket, isLoading } = useTicket(ticketId);
   const { tickets: userTickets } = useUserTickets();
   const legMap = useLegDescriptions(onChainTicket?.legIds ?? []);
+  const legStatuses = useLegStatuses(onChainTicket?.legIds ?? [], legMap);
 
   // Find prev/next ticket IDs from user's tickets
   const sortedIds = userTickets.map((t) => t.id).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
@@ -64,12 +65,13 @@ export default function TicketPage() {
         const leg = legMap.get(legId.toString());
         const ppm = leg ? Number(leg.probabilityPPM) / 1_000_000 : 0;
         const odds = ppm > 0 ? 1 / ppm : multiplier ** (1 / onChainTicket.legIds.length);
+        const oracleResult = legStatuses.get(legId.toString());
         return {
           description: leg?.question ?? `Leg #${legId.toString()}`,
           odds,
           outcomeChoice: Number(onChainTicket.outcomes[i]) || 1,
-          resolved: onChainTicket.status !== 0,
-          result: onChainTicket.status === 1 || onChainTicket.status === 4 ? 1 : onChainTicket.status === 2 ? 2 : 0,
+          resolved: oracleResult?.resolved ?? false,
+          result: oracleResult?.status ?? 0, // 0=Unresolved, 1=Won, 2=Lost, 3=Voided
         };
       }
     ),

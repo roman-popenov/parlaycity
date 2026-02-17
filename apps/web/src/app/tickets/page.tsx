@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { useUserTickets, useLegDescriptions, type OnChainTicket, type LegInfo } from "@/lib/hooks";
+import { useUserTickets, useLegDescriptions, useLegStatuses, type OnChainTicket, type LegInfo, type LegOracleResult } from "@/lib/hooks";
 import { TicketCard, type TicketData, type TicketLeg } from "@/components/TicketCard";
 import { mapStatus } from "@/lib/utils";
 
@@ -10,6 +10,7 @@ function toTicketData(
   id: bigint,
   t: OnChainTicket,
   legMap: Map<string, LegInfo>,
+  legStatuses: Map<string, LegOracleResult>,
 ): TicketData {
   const multiplier = Number(t.multiplierX1e6) / 1_000_000;
   return {
@@ -20,12 +21,13 @@ function toTicketData(
       const leg = legMap.get(legId.toString());
       const ppm = leg ? Number(leg.probabilityPPM) / 1_000_000 : 0;
       const odds = ppm > 0 ? 1 / ppm : multiplier ** (1 / t.legIds.length);
+      const oracleResult = legStatuses.get(legId.toString());
       return {
         description: leg?.question ?? `Leg #${legId.toString()}`,
         odds,
         outcomeChoice: Number(t.outcomes[i]) || 1,
-        resolved: t.status !== 0,
-        result: t.status === 1 || t.status === 4 ? 1 : t.status === 2 ? 2 : 0,
+        resolved: oracleResult?.resolved ?? false,
+        result: oracleResult?.status ?? 0,
       };
     }),
     status: mapStatus(t.status),
@@ -48,6 +50,7 @@ export default function TicketsPage() {
   }, [tickets]);
 
   const legMap = useLegDescriptions(allLegIds);
+  const legStatuses = useLegStatuses(allLegIds, legMap);
 
   return (
     <div className="space-y-8">
@@ -80,7 +83,7 @@ export default function TicketsPage() {
               href={`/ticket/${id.toString()}`}
               className="block transition-transform hover:scale-[1.02]"
             >
-              <TicketCard ticket={toTicketData(id, ticket, legMap)} />
+              <TicketCard ticket={toTicketData(id, ticket, legMap, legStatuses)} />
             </Link>
           ))}
         </div>

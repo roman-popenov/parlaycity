@@ -9,6 +9,7 @@ import {
   PARLAY_ENGINE_ABI,
   LEG_REGISTRY_ABI,
   LOCK_VAULT_ABI,
+  ORACLE_ADAPTER_ABI,
   contractAddresses,
 } from "./contracts";
 
@@ -60,6 +61,56 @@ export function useLegDescriptions(legIds: readonly bigint[]) {
   return legs;
 }
 
+/** LegStatus enum values from the contract: 0=Unresolved, 1=Won, 2=Lost, 3=Voided */
+export interface LegOracleResult {
+  resolved: boolean;
+  status: number; // 0=Unresolved, 1=Won, 2=Lost, 3=Voided
+}
+
+/** Queries each leg's oracle adapter for individual resolution status */
+export function useLegStatuses(
+  legIds: readonly bigint[],
+  legMap: Map<string, LegInfo>,
+) {
+  const publicClient = usePublicClient();
+  const [statuses, setStatuses] = useState<Map<string, LegOracleResult>>(new Map());
+
+  const legIdsKey = JSON.stringify(legIds.map(String));
+
+  const fetchStatuses = useCallback(async () => {
+    if (!publicClient || legIds.length === 0 || legMap.size === 0) return;
+
+    const map = new Map<string, LegOracleResult>();
+    for (const legId of legIds) {
+      const key = legId.toString();
+      const leg = legMap.get(key);
+      if (!leg || !leg.oracleAdapter) {
+        map.set(key, { resolved: false, status: 0 });
+        continue;
+      }
+      try {
+        const data = await publicClient.readContract({
+          address: leg.oracleAdapter,
+          abi: ORACLE_ADAPTER_ABI,
+          functionName: "getStatus",
+          args: [legId],
+        });
+        const [status] = data as [number, `0x${string}`];
+        map.set(key, { resolved: status !== 0, status });
+      } catch {
+        map.set(key, { resolved: false, status: 0 });
+      }
+    }
+    setStatuses(map);
+  }, [publicClient, legIdsKey, legMap.size]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    fetchStatuses();
+  }, [fetchStatuses]);
+
+  return statuses;
+}
+
 export function useUSDCBalance() {
   const { address } = useAccount();
 
@@ -103,9 +154,17 @@ export function useVaultStats() {
     query: { enabled: !!contractAddresses.houseVault },
   });
 
+  const freeLiquidityResult = useReadContract({
+    address: contractAddresses.houseVault as `0x${string}`,
+    abi: HOUSE_VAULT_ABI,
+    functionName: "freeLiquidity",
+    query: { enabled: !!contractAddresses.houseVault, refetchInterval: 10000 },
+  });
+
   const totalAssets = totalAssetsResult.data as bigint | undefined;
   const totalReserved = totalReservedResult.data as bigint | undefined;
   const maxUtilBps = maxUtilResult.data as bigint | undefined;
+  const freeLiquidity = freeLiquidityResult.data as bigint | undefined;
 
   const utilization =
     totalAssets && totalAssets > 0n && totalReserved !== undefined
@@ -115,16 +174,19 @@ export function useVaultStats() {
   return {
     totalAssets,
     totalReserved,
+    freeLiquidity,
     maxUtilBps,
     utilization,
     isLoading:
       totalAssetsResult.isLoading ||
       totalReservedResult.isLoading ||
-      maxUtilResult.isLoading,
+      maxUtilResult.isLoading ||
+      freeLiquidityResult.isLoading,
     refetch: () => {
       totalAssetsResult.refetch();
       totalReservedResult.refetch();
       maxUtilResult.refetch();
+      freeLiquidityResult.refetch();
     },
   };
 }

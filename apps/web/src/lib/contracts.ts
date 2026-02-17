@@ -90,6 +90,13 @@ export const HOUSE_VAULT_ABI = [
     outputs: [{ name: "", type: "uint256" }],
   },
   {
+    name: "freeLiquidity",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
+  {
     name: "balanceOf",
     type: "function",
     stateMutability: "view",
@@ -276,6 +283,26 @@ export const LOCK_VAULT_ABI = [
     stateMutability: "view",
     inputs: [{ name: "positionId", type: "uint256" }],
     outputs: [{ name: "", type: "uint256" }],
+  },
+] as const;
+
+export const ORACLE_ADAPTER_ABI = [
+  {
+    name: "getStatus",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "legId", type: "uint256" }],
+    outputs: [
+      { name: "status", type: "uint8" },
+      { name: "outcome", type: "bytes32" },
+    ],
+  },
+  {
+    name: "canResolve",
+    type: "function",
+    stateMutability: "view",
+    inputs: [{ name: "legId", type: "uint256" }],
+    outputs: [{ name: "", type: "bool" }],
   },
 ] as const;
 

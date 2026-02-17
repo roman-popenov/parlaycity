@@ -74,7 +74,7 @@ export function VaultDashboard() {
   const totalAssets = vaultStats.totalAssets ?? 0n;
   const totalReserved = vaultStats.totalReserved ?? 0n;
   const utilization = vaultStats.totalAssets ? vaultStats.utilization : 0;
-  const freeLiquidity = totalAssets - totalReserved;
+  const freeLiquidity = vaultStats.freeLiquidity ?? 0n;
 
   const handleDeposit = async () => {
     const amount = parseFloat(depositAmount);

@@ -10,7 +10,7 @@ export interface TicketLeg {
   odds: number;
   outcomeChoice: number; // 1 = yes, 2 = no
   resolved: boolean;
-  result: number; // 0 = pending, 1 = yes, 2 = no
+  result: number; // 0 = unresolved, 1 = Won, 2 = Lost, 3 = Voided (oracle LegStatus)
 }
 
 export interface TicketData {
@@ -30,9 +30,14 @@ const STATUS_STYLES: Record<TicketStatus, string> = {
   Claimed: "bg-accent-purple/20 text-accent-purple border-accent-purple/30",
 };
 
-function getLegStatus(leg: TicketLeg): "win" | "loss" | "pending" {
+function getLegStatus(leg: TicketLeg): "win" | "loss" | "voided" | "pending" {
   if (!leg.resolved) return "pending";
-  return leg.result === leg.outcomeChoice ? "win" : "loss";
+  if (leg.result === 3) return "voided";
+  const isNoBet = leg.outcomeChoice === 2;
+  // Oracle: 1=Won (yes side won), 2=Lost (no side won)
+  if (leg.result === 1) return isNoBet ? "loss" : "win";
+  if (leg.result === 2) return isNoBet ? "win" : "loss";
+  return "pending";
 }
 
 export function TicketCard({ ticket }: { ticket: TicketData }) {
@@ -74,10 +79,12 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
                     ? "bg-neon-green/20 text-neon-green"
                     : status === "loss"
                       ? "bg-neon-red/20 text-neon-red"
-                      : "bg-white/10 text-gray-400"
+                      : status === "voided"
+                        ? "bg-yellow-500/20 text-yellow-400"
+                        : "bg-white/10 text-gray-400"
                 }`}
               >
-                {status === "win" ? "W" : status === "loss" ? "L" : "?"}
+                {status === "win" ? "W" : status === "loss" ? "L" : status === "voided" ? "V" : "?"}
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm text-gray-300">
