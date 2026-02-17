@@ -127,7 +127,7 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
         <div className="flex gap-3">
           {canSettle && (
             <button
-              onClick={() => settle(ticket.id)}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); settle(ticket.id); }}
               disabled={isSettling}
               className="flex-1 rounded-xl border border-accent-blue/30 bg-accent-blue/10 py-2.5 text-sm font-semibold text-accent-blue transition-all hover:bg-accent-blue/20 disabled:opacity-50"
             >
@@ -136,7 +136,7 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
           )}
           {canClaim && (
             <button
-              onClick={() => claim(ticket.id)}
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); claim(ticket.id); }}
               disabled={isClaiming}
               className="flex-1 rounded-xl bg-gradient-to-r from-neon-green/80 to-neon-green py-2.5 text-sm font-bold text-black transition-all hover:shadow-lg hover:shadow-neon-green/20 disabled:opacity-50"
             >

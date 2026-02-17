@@ -425,7 +425,10 @@ export function useDepositVault() {
         functionName: "deposit",
         args: [amount, address],
       });
-      await publicClient.waitForTransactionReceipt({ hash: depositHash });
+      const depositReceipt = await publicClient.waitForTransactionReceipt({ hash: depositHash });
+      if (depositReceipt.status === "reverted") {
+        throw new Error("Deposit transaction reverted on-chain");
+      }
 
       setIsConfirming(false);
       setIsSuccess(true);
@@ -473,7 +476,10 @@ export function useWithdrawVault() {
         functionName: "withdraw",
         args: [amount, address],
       });
-      await publicClient.waitForTransactionReceipt({ hash: withdrawHash });
+      const withdrawReceipt = await publicClient.waitForTransactionReceipt({ hash: withdrawHash });
+      if (withdrawReceipt.status === "reverted") {
+        throw new Error("Withdraw transaction reverted on-chain");
+      }
 
       setIsConfirming(false);
       setIsSuccess(true);
@@ -577,7 +583,10 @@ export function useLockVault() {
         functionName: "lock",
         args: [shares, tier],
       });
-      await publicClient.waitForTransactionReceipt({ hash: lockHash });
+      const lockReceipt = await publicClient.waitForTransactionReceipt({ hash: lockHash });
+      if (lockReceipt.status === "reverted") {
+        throw new Error("Lock transaction reverted on-chain");
+      }
 
       setIsConfirming(false);
       setIsSuccess(true);
@@ -616,7 +625,10 @@ export function useUnlockVault() {
         functionName: "unlock",
         args: [positionId],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status === "reverted") {
+        throw new Error("Unlock transaction reverted on-chain");
+      }
       setIsSuccess(true);
     } catch (err) {
       console.error("Unlock failed:", err);
@@ -650,7 +662,10 @@ export function useEarlyWithdraw() {
         functionName: "earlyWithdraw",
         args: [positionId],
       });
-      await publicClient.waitForTransactionReceipt({ hash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash });
+      if (receipt.status === "reverted") {
+        throw new Error("Early withdraw transaction reverted on-chain");
+      }
       setIsSuccess(true);
     } catch (err) {
       console.error("Early withdraw failed:", err);
