@@ -1,5 +1,8 @@
 # ParlayCity Development Makefile
 
+DEV_PORTS := 3000 3001 3002 8545
+PID_DIR   := .pids
+
 # -- Bootstrap (install all dev tools) --
 bootstrap:
 	./scripts/bootstrap.sh
@@ -16,12 +19,78 @@ chain:
 
 deploy-local:
 	cd packages/contracts && forge script script/Deploy.s.sol --broadcast --rpc-url http://127.0.0.1:8545
+	./scripts/sync-env.sh
+
+sync-env:
+	./scripts/sync-env.sh
 
 dev-web:
 	cd apps/web && pnpm dev
 
 dev-services:
 	cd packages/services && pnpm dev
+
+## Start all dev services (anvil + deploy + services + web)
+dev:
+	@echo "Starting ParlayCity dev stack..."
+	@mkdir -p $(PID_DIR)
+	@# Kill anything on our ports first
+	@for port in $(DEV_PORTS); do \
+		lsof -ti :$$port | xargs kill -9 2>/dev/null || true; \
+	done
+	@sleep 1
+	@# Start anvil
+	@nohup anvil > $(PID_DIR)/anvil.log 2>&1 & echo $$! > $(PID_DIR)/anvil.pid
+	@echo "  Anvil started (pid $$(cat $(PID_DIR)/anvil.pid)) on :8545"
+	@sleep 2
+	@# Deploy contracts and sync env
+	@cd packages/contracts && forge script script/Deploy.s.sol --broadcast --rpc-url http://127.0.0.1:8545 > ../../$(PID_DIR)/deploy.log 2>&1
+	@./scripts/sync-env.sh
+	@echo "  Contracts deployed, .env.local synced"
+	@# Start services
+	@cd packages/services && nohup pnpm dev > ../../$(PID_DIR)/services.log 2>&1 & echo $$! > $(PID_DIR)/services.pid
+	@echo "  Services started (pid $$(cat $(PID_DIR)/services.pid)) on :3001"
+	@sleep 1
+	@# Start web
+	@cd apps/web && nohup pnpm dev > ../../$(PID_DIR)/web.log 2>&1 & echo $$! > $(PID_DIR)/web.pid
+	@echo "  Web started (pid $$(cat $(PID_DIR)/web.pid)) on :3000"
+	@sleep 3
+	@echo ""
+	@echo "Dev stack running. Use 'make dev-stop' to shut down."
+	@echo "  Anvil:    http://localhost:8545"
+	@echo "  Services: http://localhost:3001"
+	@echo "  Web:      http://localhost:3000"
+	@echo ""
+	@echo "Logs in $(PID_DIR)/*.log"
+
+## Stop all dev services
+dev-stop:
+	@echo "Stopping ParlayCity dev stack..."
+	@for pidfile in $(PID_DIR)/*.pid; do \
+		if [ -f "$$pidfile" ]; then \
+			pid=$$(cat "$$pidfile"); \
+			kill $$pid 2>/dev/null && echo "  Stopped pid $$pid ($$(basename $$pidfile .pid))" || true; \
+			rm -f "$$pidfile"; \
+		fi; \
+	done
+	@# Also kill any remaining processes on our ports
+	@for port in $(DEV_PORTS); do \
+		lsof -ti :$$port | xargs kill -9 2>/dev/null || true; \
+	done
+	@echo "All dev services stopped."
+
+## Show status of dev services
+dev-status:
+	@echo "ParlayCity dev services:"
+	@for port in 8545 3001 3000; do \
+		name=$$(case $$port in 8545) echo "Anvil";; 3001) echo "Services";; 3000) echo "Web";; esac); \
+		pid=$$(lsof -ti :$$port 2>/dev/null | head -1); \
+		if [ -n "$$pid" ]; then \
+			echo "  $$name (:$$port) - running (pid $$pid)"; \
+		else \
+			echo "  $$name (:$$port) - stopped"; \
+		fi; \
+	done
 
 # -- Testing --
 test-contracts:
@@ -68,4 +137,4 @@ clean:
 	cd packages/contracts && forge clean
 	cd apps/web && rm -rf .next
 
-.PHONY: bootstrap setup chain deploy-local dev-web dev-services test-contracts test-services test-all gate typecheck build-web build-contracts coverage snapshot ci ci-contracts ci-services ci-web clean
+.PHONY: bootstrap setup chain deploy-local sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-all gate typecheck build-web build-contracts coverage snapshot ci ci-contracts ci-services ci-web clean
