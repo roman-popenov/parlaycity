@@ -110,6 +110,13 @@ export const HOUSE_VAULT_ABI = [
     inputs: [{ name: "shares", type: "uint256" }],
     outputs: [{ name: "", type: "uint256" }],
   },
+  {
+    name: "maxPayout",
+    type: "function",
+    stateMutability: "view",
+    inputs: [],
+    outputs: [{ name: "", type: "uint256" }],
+  },
 ] as const;
 
 export const PARLAY_ENGINE_ABI = [

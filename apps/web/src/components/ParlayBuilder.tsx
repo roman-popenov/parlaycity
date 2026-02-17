@@ -22,7 +22,7 @@ export function ParlayBuilder() {
   const { isConnected } = useAccount();
   const { buyTicket, resetSuccess, isPending, isConfirming, isSuccess, error } = useBuyTicket();
   const { balance: usdcBalance } = useUSDCBalance();
-  const { freeLiquidity } = useVaultStats();
+  const { freeLiquidity, maxPayout } = useVaultStats();
 
   const [selectedLegs, setSelectedLegs] = useState<SelectedLeg[]>([]);
   const [stake, setStake] = useState<string>("");
@@ -62,7 +62,9 @@ export function ParlayBuilder() {
   const potentialPayout = (stakeNum - feeAmount) * multiplier;
 
   const freeLiquidityNum = freeLiquidity !== undefined ? Number(freeLiquidity) / 1e6 : 0;
+  const maxPayoutNum = maxPayout !== undefined ? Number(maxPayout) / 1e6 : 0;
   const insufficientLiquidity = potentialPayout > 0 && potentialPayout > freeLiquidityNum;
+  const exceedsMaxPayout = potentialPayout > 0 && maxPayout !== undefined && potentialPayout > maxPayoutNum;
   const usdcBalanceNum = usdcBalance !== undefined ? Number(usdcBalance) / 1e6 : 0;
   const insufficientBalance = stakeNum > 0 && usdcBalance !== undefined && stakeNum > usdcBalanceNum;
 
@@ -73,6 +75,7 @@ export function ParlayBuilder() {
     selectedLegs.length <= PARLAY_CONFIG.maxLegs &&
     stakeNum >= PARLAY_CONFIG.minStakeUSDC &&
     !insufficientLiquidity &&
+    !exceedsMaxPayout &&
     !insufficientBalance;
 
   const handleBuy = async () => {
@@ -264,15 +267,17 @@ export function ParlayBuilder() {
                 ? `Select at least ${PARLAY_CONFIG.minLegs} legs`
                 : insufficientBalance
                   ? "Insufficient USDC Balance"
-                  : insufficientLiquidity
-                    ? "Insufficient Vault Liquidity"
-                    : isPending
-                    ? "Waiting for approval..."
-                    : isConfirming
-                      ? "Confirming..."
-                      : isSuccess
-                        ? "Ticket Bought!"
-                        : "Buy Ticket"}
+                  : exceedsMaxPayout
+                    ? `Max Payout $${maxPayoutNum.toFixed(0)}`
+                    : insufficientLiquidity
+                      ? "Insufficient Vault Liquidity"
+                      : isPending
+                        ? "Waiting for approval..."
+                        : isConfirming
+                          ? "Confirming..."
+                          : isSuccess
+                            ? "Ticket Bought!"
+                            : "Buy Ticket"}
           </button>
 
           {/* Tx feedback */}

@@ -166,7 +166,7 @@ export function VaultDashboard() {
           <h3 className="mb-3 text-sm font-medium uppercase tracking-wider text-gray-500">
             Your Vault Position
           </h3>
-          <div className="grid gap-4 sm:grid-cols-4">
+          <div className="grid gap-4 sm:grid-cols-3">
             <div>
               <p className="text-xs text-gray-500">Vault Shares</p>
               <p className="text-lg font-semibold text-white">{formatUSDC(userSharesBigInt)} vUSDC</p>
@@ -174,10 +174,6 @@ export function VaultDashboard() {
             <div>
               <p className="text-xs text-gray-500">Value</p>
               <p className="text-lg font-semibold text-neon-green">${formatUSDC(userSharesValueBigInt)}</p>
-            </div>
-            <div>
-              <p className="text-xs text-gray-500">USDC Balance</p>
-              <p className="text-lg font-semibold text-white">${formatUSDC(usdcBalance)}</p>
             </div>
             <div>
               <p className="text-xs text-gray-500">Locked Shares</p>

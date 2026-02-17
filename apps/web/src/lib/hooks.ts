@@ -161,10 +161,18 @@ export function useVaultStats() {
     query: { enabled: !!contractAddresses.houseVault, refetchInterval: 10000 },
   });
 
+  const maxPayoutResult = useReadContract({
+    address: contractAddresses.houseVault as `0x${string}`,
+    abi: HOUSE_VAULT_ABI,
+    functionName: "maxPayout",
+    query: { enabled: !!contractAddresses.houseVault, refetchInterval: 10000 },
+  });
+
   const totalAssets = totalAssetsResult.data as bigint | undefined;
   const totalReserved = totalReservedResult.data as bigint | undefined;
   const maxUtilBps = maxUtilResult.data as bigint | undefined;
   const freeLiquidity = freeLiquidityResult.data as bigint | undefined;
+  const maxPayout = maxPayoutResult.data as bigint | undefined;
 
   const utilization =
     totalAssets && totalAssets > 0n && totalReserved !== undefined
@@ -176,6 +184,7 @@ export function useVaultStats() {
     totalReserved,
     freeLiquidity,
     maxUtilBps,
+    maxPayout,
     utilization,
     isLoading:
       totalAssetsResult.isLoading ||
@@ -187,6 +196,7 @@ export function useVaultStats() {
       totalReservedResult.refetch();
       maxUtilResult.refetch();
       freeLiquidityResult.refetch();
+      maxPayoutResult.refetch();
     },
   };
 }
@@ -227,7 +237,9 @@ export function useUserTickets() {
   const { address } = useAccount();
   const publicClient = usePublicClient();
   const [tickets, setTickets] = useState<{ id: bigint; ticket: OnChainTicket }[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [hasFetched, setHasFetched] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchTickets = useCallback(async () => {
@@ -236,8 +248,10 @@ export function useUserTickets() {
       return;
     }
 
+    // Only show loading spinner on first fetch, not on polls
+    if (!hasFetched) setIsLoading(true);
+
     try {
-      // Read ticket count directly from the client (bypasses stale cache)
       const count = await publicClient.readContract({
         address: contractAddresses.parlayEngine as `0x${string}`,
         abi: PARLAY_ENGINE_ABI,
@@ -245,6 +259,7 @@ export function useUserTickets() {
       });
 
       const total = Number(count as bigint);
+      setTotalCount(total);
       const userTickets: { id: bigint; ticket: OnChainTicket }[] = [];
 
       for (let i = 0; i < total; i++) {
@@ -265,8 +280,8 @@ export function useUserTickets() {
             });
             userTickets.push({ id: BigInt(i), ticket: ticket as OnChainTicket });
           }
-        } catch {
-          // skip burned or invalid tickets
+        } catch (innerErr) {
+          console.error(`Failed to fetch ticket #${i}:`, innerErr);
         }
       }
 
@@ -277,8 +292,9 @@ export function useUserTickets() {
       setError(String(err));
     } finally {
       setIsLoading(false);
+      setHasFetched(true);
     }
-  }, [address, publicClient]);
+  }, [address, publicClient, hasFetched]);
 
   // Fetch on mount and poll every 5 seconds
   useEffect(() => {
@@ -287,7 +303,7 @@ export function useUserTickets() {
     return () => clearInterval(interval);
   }, [fetchTickets]);
 
-  return { tickets, isLoading, error, refetch: fetchTickets };
+  return { tickets, totalCount, isLoading, error, refetch: fetchTickets };
 }
 
 // ---- Write hooks ----
@@ -342,7 +358,11 @@ export function useBuyTicket() {
         functionName: "buyTicket",
         args: [legIds, outcomesBytes32, stakeAmount],
       });
-      await publicClient.waitForTransactionReceipt({ hash: buyHash });
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: buyHash });
+
+      if (receipt.status === "reverted") {
+        throw new Error("Transaction reverted on-chain");
+      }
 
       setIsConfirming(false);
       setIsSuccess(true);

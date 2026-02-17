@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
+import { useAccount } from "wagmi";
 import { useUserTickets, useLegDescriptions, useLegStatuses, type OnChainTicket, type LegInfo, type LegOracleResult } from "@/lib/hooks";
 import { TicketCard, type TicketData, type TicketLeg } from "@/components/TicketCard";
 import { mapStatus } from "@/lib/utils";
@@ -38,7 +39,8 @@ function toTicketData(
 }
 
 export default function TicketsPage() {
-  const { tickets, isLoading, refetch } = useUserTickets();
+  const { isConnected } = useAccount();
+  const { tickets, totalCount, isLoading, error, refetch } = useUserTickets();
 
   // Collect all unique leg IDs across all tickets
   const allLegIds = useMemo(() => {
@@ -58,10 +60,22 @@ export default function TicketsPage() {
     <div className="space-y-8">
       <section className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-black text-white">My Tickets</h1>
+          <h1 className="text-3xl font-black text-white">
+            My Tickets{" "}
+            {tickets.length > 0 && (
+              <span className="text-lg font-medium text-gray-500">
+                ({tickets.length})
+              </span>
+            )}
+          </h1>
           <p className="mt-2 text-gray-400">
             Track your parlays, settle resolved tickets, and claim winnings.
           </p>
+          {totalCount > 0 && (
+            <p className="mt-1 text-xs text-gray-500">
+              {totalCount} total ticket{totalCount !== 1 ? "s" : ""} on-chain
+            </p>
+          )}
         </div>
         <button
           onClick={() => refetch()}
@@ -70,6 +84,12 @@ export default function TicketsPage() {
           Refresh
         </button>
       </section>
+
+      {error && (
+        <div className="rounded-lg bg-neon-red/10 px-4 py-3 text-sm text-neon-red">
+          Failed to load tickets: {error.length > 200 ? error.slice(0, 200) + "..." : error}
+        </div>
+      )}
 
       {isLoading && (
         <div className="flex min-h-[30vh] items-center justify-center">
