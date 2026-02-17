@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { PARLAY_CONFIG } from "@/lib/config";
 import { MOCK_LEGS, type MockLeg } from "@/lib/mock";
-import { useBuyTicket, useUSDCBalance, useVaultStats } from "@/lib/hooks";
+import { useBuyTicket, useParlayConfig, useUSDCBalance, useVaultStats } from "@/lib/hooks";
 import { MultiplierClimb } from "./MultiplierClimb";
 
 interface SelectedLeg {
@@ -23,6 +23,7 @@ export function ParlayBuilder() {
   const { buyTicket, resetSuccess, isPending, isConfirming, isSuccess, error } = useBuyTicket();
   const { balance: usdcBalance } = useUSDCBalance();
   const { freeLiquidity, maxPayout } = useVaultStats();
+  const { baseFeeBps, perLegFeeBps, maxLegs, minStakeUSDC } = useParlayConfig();
 
   const [selectedLegs, setSelectedLegs] = useState<SelectedLeg[]>([]);
   const [stake, setStake] = useState<string>("");
@@ -30,6 +31,10 @@ export function ParlayBuilder() {
   useEffect(() => setMounted(true), []);
 
   const stakeNum = parseFloat(stake) || 0;
+  const effectiveMaxLegs = maxLegs ?? PARLAY_CONFIG.maxLegs;
+  const effectiveMinStake = minStakeUSDC ?? PARLAY_CONFIG.minStakeUSDC;
+  const effectiveBaseFee = baseFeeBps ?? PARLAY_CONFIG.baseFee;
+  const effectivePerLegFee = perLegFeeBps ?? PARLAY_CONFIG.perLegFee;
 
   const toggleLeg = useCallback(
     (leg: MockLeg, outcome: number) => {
@@ -45,19 +50,18 @@ export function ParlayBuilder() {
           updated[existing] = { leg, outcomeChoice: outcome };
           return updated;
         }
-        if (prev.length >= PARLAY_CONFIG.maxLegs) return prev;
+        if (prev.length >= effectiveMaxLegs) return prev;
         return [...prev, { leg, outcomeChoice: outcome }];
       });
     },
-    [resetSuccess]
+    [resetSuccess, effectiveMaxLegs]
   );
 
   const multiplier = useMemo(() => {
     return selectedLegs.reduce((acc, s) => acc * effectiveOdds(s.leg, s.outcomeChoice), 1);
   }, [selectedLegs]);
 
-  const feeBps =
-    PARLAY_CONFIG.baseFee + PARLAY_CONFIG.perLegFee * selectedLegs.length;
+  const feeBps = effectiveBaseFee + effectivePerLegFee * selectedLegs.length;
   const feeAmount = (stakeNum * feeBps) / 10000;
   const potentialPayout = (stakeNum - feeAmount) * multiplier;
 
@@ -72,8 +76,8 @@ export function ParlayBuilder() {
     mounted &&
     isConnected &&
     selectedLegs.length >= PARLAY_CONFIG.minLegs &&
-    selectedLegs.length <= PARLAY_CONFIG.maxLegs &&
-    stakeNum >= PARLAY_CONFIG.minStakeUSDC &&
+    selectedLegs.length <= effectiveMaxLegs &&
+    stakeNum >= effectiveMinStake &&
     !insufficientLiquidity &&
     !exceedsMaxPayout &&
     !insufficientBalance;
@@ -104,7 +108,7 @@ export function ParlayBuilder() {
         <h2 className="text-lg font-semibold text-gray-300">
           Pick Your Legs{" "}
           <span className="text-sm text-gray-500">
-            ({selectedLegs.length}/{PARLAY_CONFIG.maxLegs})
+            ({selectedLegs.length}/{effectiveMaxLegs})
           </span>
         </h2>
         <div className="grid gap-3 sm:grid-cols-2">
@@ -199,11 +203,11 @@ export function ParlayBuilder() {
             <div className="relative">
               <input
                 type="number"
-                min={PARLAY_CONFIG.minStakeUSDC}
+                min={effectiveMinStake}
                 step="1"
                 value={stake}
                 onChange={(e) => { resetSuccess(); setStake(e.target.value); }}
-                placeholder={`Min ${PARLAY_CONFIG.minStakeUSDC} USDC`}
+                placeholder={`Min ${effectiveMinStake} USDC`}
                 className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-24 text-lg font-semibold text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-blue/50"
               />
               <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2">

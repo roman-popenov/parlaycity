@@ -69,6 +69,7 @@ contract LockVault is Ownable, ReentrancyGuard {
     event Locked(uint256 indexed positionId, address indexed owner, uint256 shares, LockTier tier, uint256 unlockAt);
     event Unlocked(uint256 indexed positionId, address indexed owner, uint256 shares);
     event EarlyWithdraw(uint256 indexed positionId, address indexed owner, uint256 sharesReturned, uint256 penaltyShares);
+    event PenaltySharesSwept(address indexed receiver, uint256 shares);
     event FeesDistributed(uint256 amount, uint256 newAccRewardPerWeightedShare);
     event RewardsClaimed(address indexed user, uint256 amount);
     event Harvested(uint256 indexed positionId, address indexed owner, uint256 reward);
@@ -205,6 +206,24 @@ contract LockVault is Ownable, ReentrancyGuard {
         emit RewardsClaimed(msg.sender, amount);
     }
 
+    /// @notice Settle accrued rewards for an active position without unlocking.
+    function settleRewards(uint256 positionId) external nonReentrant {
+        LockPosition storage pos = positions[positionId];
+        require(pos.owner == msg.sender, "LockVault: not owner");
+        require(pos.shares > 0, "LockVault: empty position");
+        _settleRewards(positionId);
+    }
+
+    /// @notice Sweep accumulated penalty shares to a receiver for redistribution.
+    function sweepPenaltyShares(address receiver) external onlyOwner nonReentrant {
+        require(receiver != address(0), "LockVault: zero receiver");
+        uint256 balance = vUSDC.balanceOf(address(this));
+        require(balance > totalLockedShares, "LockVault: no penalty shares");
+        uint256 penaltyShares = balance - totalLockedShares;
+        vUSDC.safeTransfer(receiver, penaltyShares);
+        emit PenaltySharesSwept(receiver, penaltyShares);
+    }
+
     // ── Views ────────────────────────────────────────────────────────────
 
     function getPosition(uint256 positionId) external view returns (LockPosition memory) {
@@ -228,6 +247,7 @@ contract LockVault is Ownable, ReentrancyGuard {
         if (pending > 0) {
             pendingRewards[pos.owner] += pending;
         }
+        pos.rewardDebt = accumulated;
     }
 
     function _removePosition(uint256 positionId) internal {

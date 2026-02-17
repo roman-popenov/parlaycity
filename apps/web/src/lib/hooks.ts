@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
 import { parseUnits, toHex, pad } from "viem";
 import {
@@ -201,6 +201,59 @@ export function useVaultStats() {
   };
 }
 
+export function useParlayConfig() {
+  const baseFeeResult = useReadContract({
+    address: contractAddresses.parlayEngine as `0x${string}`,
+    abi: PARLAY_ENGINE_ABI,
+    functionName: "baseFee",
+    query: { enabled: !!contractAddresses.parlayEngine, refetchInterval: 10000 },
+  });
+
+  const perLegFeeResult = useReadContract({
+    address: contractAddresses.parlayEngine as `0x${string}`,
+    abi: PARLAY_ENGINE_ABI,
+    functionName: "perLegFee",
+    query: { enabled: !!contractAddresses.parlayEngine, refetchInterval: 10000 },
+  });
+
+  const minStakeResult = useReadContract({
+    address: contractAddresses.parlayEngine as `0x${string}`,
+    abi: PARLAY_ENGINE_ABI,
+    functionName: "minStake",
+    query: { enabled: !!contractAddresses.parlayEngine, refetchInterval: 10000 },
+  });
+
+  const maxLegsResult = useReadContract({
+    address: contractAddresses.parlayEngine as `0x${string}`,
+    abi: PARLAY_ENGINE_ABI,
+    functionName: "maxLegs",
+    query: { enabled: !!contractAddresses.parlayEngine, refetchInterval: 10000 },
+  });
+
+  const baseFee = baseFeeResult.data as bigint | undefined;
+  const perLegFee = perLegFeeResult.data as bigint | undefined;
+  const minStake = minStakeResult.data as bigint | undefined;
+  const maxLegs = maxLegsResult.data as bigint | undefined;
+
+  return {
+    baseFeeBps: baseFee !== undefined ? Number(baseFee) : undefined,
+    perLegFeeBps: perLegFee !== undefined ? Number(perLegFee) : undefined,
+    maxLegs: maxLegs !== undefined ? Number(maxLegs) : undefined,
+    minStakeUSDC: minStake !== undefined ? Number(minStake) / 1e6 : undefined,
+    isLoading:
+      baseFeeResult.isLoading ||
+      perLegFeeResult.isLoading ||
+      minStakeResult.isLoading ||
+      maxLegsResult.isLoading,
+    refetch: () => {
+      baseFeeResult.refetch();
+      perLegFeeResult.refetch();
+      minStakeResult.refetch();
+      maxLegsResult.refetch();
+    },
+  };
+}
+
 export interface OnChainTicket {
   buyer: `0x${string}`;
   stake: bigint;
@@ -239,7 +292,7 @@ export function useUserTickets() {
   const [tickets, setTickets] = useState<{ id: bigint; ticket: OnChainTicket }[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
-  const [hasFetched, setHasFetched] = useState(false);
+  const hasFetchedRef = useRef(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchTickets = useCallback(async () => {
@@ -249,7 +302,7 @@ export function useUserTickets() {
     }
 
     // Only show loading spinner on first fetch, not on polls
-    if (!hasFetched) setIsLoading(true);
+    if (!hasFetchedRef.current) setIsLoading(true);
 
     try {
       const count = await publicClient.readContract({
@@ -292,9 +345,9 @@ export function useUserTickets() {
       setError(String(err));
     } finally {
       setIsLoading(false);
-      setHasFetched(true);
+      hasFetchedRef.current = true;
     }
-  }, [address, publicClient, hasFetched]);
+  }, [address, publicClient]);
 
   // Fetch on mount and poll every 5 seconds
   useEffect(() => {

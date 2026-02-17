@@ -44,7 +44,7 @@ export default function VaultPage() {
             <span className="flex-shrink-0 font-bold text-neon-green">
               &bull;
             </span>
-            Withdrawals are available up to the unreserved balance (max 70%
+            Withdrawals are available up to the unreserved balance (max 80%
             utilization cap).
           </li>
           <li className="flex gap-3">

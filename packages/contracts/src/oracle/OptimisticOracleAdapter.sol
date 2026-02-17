@@ -32,6 +32,7 @@ contract OptimisticOracleAdapter is IOracleAdapter, Ownable, ReentrancyGuard {
         ProposalState state;
         address challenger;
         uint256 bondPosted;
+        uint256 challengerBond;
         uint256 livenessPosted;
     }
 
@@ -91,6 +92,7 @@ contract OptimisticOracleAdapter is IOracleAdapter, Ownable, ReentrancyGuard {
             state: ProposalState.Proposed,
             challenger: address(0),
             bondPosted: bondAmount,
+            challengerBond: 0,
             livenessPosted: livenessWindow
         });
 
@@ -106,9 +108,10 @@ contract OptimisticOracleAdapter is IOracleAdapter, Ownable, ReentrancyGuard {
         require(block.timestamp < p.proposedAt + p.livenessPosted, "OptimisticOracle: liveness expired");
         require(msg.sender != p.proposer, "OptimisticOracle: cannot self-challenge");
 
-        bondToken.safeTransferFrom(msg.sender, address(this), p.bondPosted);
+        bondToken.safeTransferFrom(msg.sender, address(this), bondAmount);
         p.state = ProposalState.Challenged;
         p.challenger = msg.sender;
+        p.challengerBond = bondAmount;
 
         emit Challenged(legId, msg.sender);
     }
@@ -168,7 +171,7 @@ contract OptimisticOracleAdapter is IOracleAdapter, Ownable, ReentrancyGuard {
 
         // Winner gets both bonds (their own + loser's)
         // In a real system you'd take a protocol fee; keeping it simple for the hackathon.
-        bondToken.safeTransfer(winner, p.bondPosted * 2);
+        bondToken.safeTransfer(winner, p.bondPosted + p.challengerBond);
 
         emit DisputeResolved(legId, status, outcome, winner, loser);
     }

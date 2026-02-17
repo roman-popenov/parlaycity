@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { PARLAY_CONFIG } from "@/lib/config";
+import { useParlayConfig } from "@/lib/hooks";
 
 interface MultiplierClimbProps {
   /** Per-leg multipliers (decimal, e.g. 2.5) */
@@ -55,6 +56,8 @@ export function MultiplierClimb({
   crashed = false,
 }: MultiplierClimbProps) {
   const [isLog, setIsLog] = useState(true);
+  const { maxLegs } = useParlayConfig();
+  const effectiveMaxLegs = maxLegs ?? PARLAY_CONFIG.maxLegs;
 
   const runningMultiplier = useMemo(() => {
     if (legMultipliers.length === 0) return 1;
@@ -62,7 +65,7 @@ export function MultiplierClimb({
   }, [legMultipliers]);
 
   // Risk color: green -> yellow -> red as legs increase
-  const riskLevel = legMultipliers.length / PARLAY_CONFIG.maxLegs;
+  const riskLevel = legMultipliers.length / effectiveMaxLegs;
   const color =
     riskLevel <= 0.4
       ? "#22c55e"
@@ -100,12 +103,12 @@ export function MultiplierClimb({
 
     legMultipliers.forEach((m, i) => {
       cumMultiplier *= m;
-      const x = pad + ((i + 1) / PARLAY_CONFIG.maxLegs) * (100 - 2 * pad);
+      const x = pad + ((i + 1) / effectiveMaxLegs) * (100 - 2 * pad);
       pts.push({ x, y: toY(cumMultiplier) });
     });
 
     return pts;
-  }, [legMultipliers, toY]);
+  }, [legMultipliers, toY, effectiveMaxLegs]);
 
   // Dynamic gridlines
   const gridlines = useMemo(() => {
@@ -240,7 +243,7 @@ export function MultiplierClimb({
 
         {/* Leg markers */}
         <div className="absolute bottom-2 left-0 flex w-full justify-around px-2">
-          {[...Array(PARLAY_CONFIG.maxLegs)].map((_, i) => (
+          {[...Array(effectiveMaxLegs)].map((_, i) => (
             <div
               key={i}
               className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold transition-all duration-300 ${

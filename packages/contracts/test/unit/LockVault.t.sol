@@ -338,6 +338,74 @@ contract LockVaultTest is Test {
         lockVault.harvest(posId);
     }
 
+    // ── settleRewards ─────────────────────────────────────────────────
+
+    function test_settleRewards_checkpointsWithoutUnlocking() public {
+        vm.prank(alice);
+        uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
+
+        lockVault.distributeFees(100e6);
+
+        // Settle rewards without unlocking
+        vm.prank(alice);
+        lockVault.settleRewards(posId);
+
+        // Position still open
+        assertEq(lockVault.getPosition(posId).shares, 1000e6);
+        // Rewards checkpointed
+        assertApproxEqAbs(lockVault.pendingRewards(alice), 100e6, 2);
+    }
+
+    function test_settleRewards_revertsForNonOwner() public {
+        vm.prank(alice);
+        uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
+
+        vm.prank(bob);
+        vm.expectRevert("LockVault: not owner");
+        lockVault.settleRewards(posId);
+    }
+
+    function test_rewardDebt_preventsDoubleCounting() public {
+        vm.prank(alice);
+        uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
+
+        lockVault.distributeFees(100e6);
+
+        // Settle once
+        vm.prank(alice);
+        lockVault.settleRewards(posId);
+        uint256 afterFirst = lockVault.pendingRewards(alice);
+
+        // Settle again without new fees — should not add more
+        vm.prank(alice);
+        lockVault.settleRewards(posId);
+        assertEq(lockVault.pendingRewards(alice), afterFirst);
+    }
+
+    // ── sweepPenaltyShares ──────────────────────────────────────────────
+
+    function test_sweepPenaltyShares_recoversStrandedShares() public {
+        // Simulate stranded penalty shares by transferring vUSDC directly to lockVault
+        vm.prank(alice);
+        IERC20(address(vault)).transfer(address(lockVault), 50e6);
+
+        // No locked positions, so all vUSDC in lockVault is penalty shares
+        uint256 receiverBefore = vault.balanceOf(address(vault));
+        lockVault.sweepPenaltyShares(address(vault));
+        assertEq(vault.balanceOf(address(vault)) - receiverBefore, 50e6);
+    }
+
+    function test_sweepPenaltyShares_revertsIfNoPenalty() public {
+        vm.expectRevert("LockVault: no penalty shares");
+        lockVault.sweepPenaltyShares(address(vault));
+    }
+
+    function test_sweepPenaltyShares_onlyOwner() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        lockVault.sweepPenaltyShares(address(vault));
+    }
+
     // ── Penalty shares go to HouseVault ────────────────────────────────
 
     function test_earlyWithdraw_penaltySharesGoToHouseVault() public {
