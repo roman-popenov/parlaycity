@@ -30,6 +30,16 @@ const STATUS_STYLES: Record<TicketStatus, string> = {
   Claimed: "bg-accent-purple/20 text-accent-purple border-accent-purple/30",
 };
 
+const LEG_STATUS_CONFIG: Record<
+  "win" | "loss" | "voided" | "pending",
+  { label: string; tooltip: string; style: string }
+> = {
+  win: { label: "W", tooltip: "Won", style: "bg-neon-green/20 text-neon-green" },
+  loss: { label: "L", tooltip: "Lost", style: "bg-neon-red/20 text-neon-red" },
+  voided: { label: "X", tooltip: "Voided", style: "bg-yellow-500/20 text-yellow-400" },
+  pending: { label: "P", tooltip: "Pending", style: "bg-white/10 text-gray-400" },
+};
+
 function getLegStatus(leg: TicketLeg): "win" | "loss" | "voided" | "pending" {
   if (!leg.resolved) return "pending";
   if (leg.outcomeChoice !== 1 && leg.outcomeChoice !== 2) return "pending";
@@ -73,19 +83,23 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
           const status = getLegStatus(leg);
           return (
             <div key={i} className="flex items-center gap-3 py-3">
-              {/* Status indicator */}
-              <div
-                className={`flex h-7 w-7 flex-shrink-0 items-center justify-center rounded-full text-xs font-bold ${
-                  status === "win"
-                    ? "bg-neon-green/20 text-neon-green"
-                    : status === "loss"
-                      ? "bg-neon-red/20 text-neon-red"
-                      : status === "voided"
-                        ? "bg-yellow-500/20 text-yellow-400"
-                        : "bg-white/10 text-gray-400"
-                }`}
-              >
-                {status === "win" ? "W" : status === "loss" ? "L" : status === "voided" ? "V" : "?"}
+              {/* Status indicator with tooltip */}
+              <div className="group relative flex-shrink-0">
+                <div
+                  className={`flex h-7 w-7 cursor-help items-center justify-center rounded-full text-xs font-bold ${LEG_STATUS_CONFIG[status].style}`}
+                  tabIndex={0}
+                  aria-label={LEG_STATUS_CONFIG[status].tooltip}
+                  title={LEG_STATUS_CONFIG[status].tooltip}
+                >
+                  {LEG_STATUS_CONFIG[status].label}
+                </div>
+                <div
+                  className="pointer-events-none absolute left-full top-1/2 z-10 ml-2 -translate-y-1/2 whitespace-nowrap rounded-md bg-gray-800 px-2.5 py-1.5 text-xs font-medium text-gray-200 opacity-0 shadow-lg transition-opacity group-hover:opacity-100 group-focus-within:opacity-100"
+                  aria-hidden="true"
+                >
+                  {LEG_STATUS_CONFIG[status].tooltip}
+                  <div className="absolute right-full top-1/2 -translate-y-1/2 border-4 border-transparent border-r-gray-800" />
+                </div>
               </div>
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm text-gray-300">
