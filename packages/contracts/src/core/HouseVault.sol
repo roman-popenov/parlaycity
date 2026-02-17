@@ -243,7 +243,7 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
         require(amount > 0, "HouseVault: zero amount");
         require(amount <= safeDeployable(), "HouseVault: exceeds safe deployable");
 
-        asset.approve(address(yieldAdapter), amount);
+        asset.forceApprove(address(yieldAdapter), amount);
         yieldAdapter.deploy(amount);
         emit IdleDeployed(amount);
     }

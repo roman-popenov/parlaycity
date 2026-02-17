@@ -98,6 +98,11 @@ export function VaultDashboard() {
     setDepositAmount(val);
   };
 
+  const setWithdrawAmountAndReset = (val: string) => {
+    withdrawHook.resetSuccess();
+    setWithdrawAmount(val);
+  };
+
   const handleDeposit = async () => {
     const amount = parseFloat(depositAmount);
     if (!amount || amount < 1) return;
@@ -322,14 +327,14 @@ export function VaultDashboard() {
               min="1"
               step="1"
               value={withdrawAmount}
-              onChange={(e) => setWithdrawAmount(e.target.value)}
+              onChange={(e) => setWithdrawAmountAndReset(e.target.value)}
               placeholder="Shares (vUSDC)"
               disabled={!hasShares}
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-16 text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-blue/50 disabled:cursor-not-allowed disabled:opacity-50"
             />
             {hasShares && (
               <button
-                onClick={() => setWithdrawAmount(formatUnits(withdrawableShares, 6))}
+                onClick={() => setWithdrawAmountAndReset(formatUnits(withdrawableShares, 6))}
                 className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md bg-accent-blue/20 px-2 py-1 text-xs font-semibold text-accent-blue transition-colors hover:bg-accent-blue/30"
               >
                 Max

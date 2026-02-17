@@ -17,6 +17,7 @@ vi.mock("@/lib/hooks", () => ({
   })),
   useDepositVault: vi.fn(() => ({
     deposit: vi.fn(),
+    resetSuccess: vi.fn(),
     isPending: false,
     isConfirming: false,
     isSuccess: false,
@@ -24,6 +25,7 @@ vi.mock("@/lib/hooks", () => ({
   })),
   useWithdrawVault: vi.fn(() => ({
     withdraw: vi.fn(),
+    resetSuccess: vi.fn(),
     isPending: false,
     isConfirming: false,
     isSuccess: false,
@@ -100,7 +102,7 @@ describe("VaultDashboard", () => {
 
   it("shows deposit tab content by default", () => {
     render(<VaultDashboard />);
-    expect(screen.getByPlaceholderText("Amount (USDC)")).toBeInTheDocument();
+    expect(screen.getByPlaceholderText("Min 1 USDC")).toBeInTheDocument();
   });
 
   it("switches to withdraw tab", () => {
@@ -120,7 +122,7 @@ describe("VaultDashboard", () => {
 
   it("deposit input accepts numeric value", () => {
     render(<VaultDashboard />);
-    const input = screen.getByPlaceholderText("Amount (USDC)") as HTMLInputElement;
+    const input = screen.getByPlaceholderText("Min 1 USDC") as HTMLInputElement;
     fireEvent.change(input, { target: { value: "100" } });
     expect(input.value).toBe("100");
   });

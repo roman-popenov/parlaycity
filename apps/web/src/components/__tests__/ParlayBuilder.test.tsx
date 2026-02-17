@@ -27,6 +27,14 @@ vi.mock("@/lib/hooks", () => ({
     totalReserved: undefined,
     refetch: vi.fn(),
   })),
+  useParlayConfig: vi.fn(() => ({
+    baseFeeBps: undefined,
+    perLegFeeBps: undefined,
+    maxLegs: undefined,
+    minStakeUSDC: undefined,
+    isLoading: false,
+    refetch: vi.fn(),
+  })),
 }));
 
 // Mock MultiplierClimb to avoid animation complexity

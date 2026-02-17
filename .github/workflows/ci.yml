@@ -86,3 +86,7 @@ jobs:
       - name: Build
         working-directory: apps/web
         run: pnpm build
+
+      - name: Test
+        working-directory: apps/web
+        run: pnpm test

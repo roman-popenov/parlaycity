@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
-import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt, usePublicClient } from "wagmi";
+import { useAccount, useReadContract, useWriteContract, usePublicClient } from "wagmi";
 import { parseUnits, toHex, pad } from "viem";
 import {
   USDC_ABI,
@@ -553,42 +553,106 @@ export function useWithdrawVault() {
     }
   };
 
-  return { withdraw, isPending, isConfirming, isSuccess, error };
+  const resetSuccess = () => { setIsSuccess(false); setError(null); };
+
+  return { withdraw, resetSuccess, isPending, isConfirming, isSuccess, error };
 }
 
 export function useSettleTicket() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
+  const [hash, setHash] = useState<`0x${string}` | undefined>(undefined);
+  const [isPending, setIsPending] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-  });
+  const settle = async (ticketId: bigint): Promise<boolean> => {
+    if (!publicClient) return false;
 
-  const settle = (ticketId: bigint) => {
-    writeContract({
-      address: contractAddresses.parlayEngine as `0x${string}`,
-      abi: PARLAY_ENGINE_ABI,
-      functionName: "settleTicket",
-      args: [ticketId],
-    });
+    setIsPending(true);
+    setIsConfirming(false);
+    setIsSuccess(false);
+    setError(null);
+    setHash(undefined);
+
+    try {
+      const txHash = await writeContractAsync({
+        address: contractAddresses.parlayEngine as `0x${string}`,
+        abi: PARLAY_ENGINE_ABI,
+        functionName: "settleTicket",
+        args: [ticketId],
+      });
+      setHash(txHash);
+
+      setIsPending(false);
+      setIsConfirming(true);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status === "reverted") {
+        throw new Error("Settle transaction reverted on-chain");
+      }
+
+      setIsConfirming(false);
+      setIsSuccess(true);
+      return true;
+    } catch (err) {
+      console.error("Settle ticket failed:", err);
+      setError(err instanceof Error ? err : new Error(String(err)));
+      return false;
+    } finally {
+      setIsPending(false);
+      setIsConfirming(false);
+    }
   };
 
   return { settle, hash, isPending, isConfirming, isSuccess, error };
 }
 
 export function useClaimPayout() {
-  const { writeContract, data: hash, isPending, error } = useWriteContract();
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
+  const [hash, setHash] = useState<`0x${string}` | undefined>(undefined);
+  const [isPending, setIsPending] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
 
-  const { isLoading: isConfirming, isSuccess } = useWaitForTransactionReceipt({
-    hash,
-  });
+  const claim = async (ticketId: bigint): Promise<boolean> => {
+    if (!publicClient) return false;
 
-  const claim = (ticketId: bigint) => {
-    writeContract({
-      address: contractAddresses.parlayEngine as `0x${string}`,
-      abi: PARLAY_ENGINE_ABI,
-      functionName: "claimPayout",
-      args: [ticketId],
-    });
+    setIsPending(true);
+    setIsConfirming(false);
+    setIsSuccess(false);
+    setError(null);
+    setHash(undefined);
+
+    try {
+      const txHash = await writeContractAsync({
+        address: contractAddresses.parlayEngine as `0x${string}`,
+        abi: PARLAY_ENGINE_ABI,
+        functionName: "claimPayout",
+        args: [ticketId],
+      });
+      setHash(txHash);
+
+      setIsPending(false);
+      setIsConfirming(true);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status === "reverted") {
+        throw new Error("Claim payout transaction reverted on-chain");
+      }
+
+      setIsConfirming(false);
+      setIsSuccess(true);
+      return true;
+    } catch (err) {
+      console.error("Claim payout failed:", err);
+      setError(err instanceof Error ? err : new Error(String(err)));
+      return false;
+    } finally {
+      setIsPending(false);
+      setIsConfirming(false);
+    }
   };
 
   return { claim, hash, isPending, isConfirming, isSuccess, error };
