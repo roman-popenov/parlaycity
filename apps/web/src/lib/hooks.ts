@@ -440,7 +440,9 @@ export function useDepositVault() {
     }
   };
 
-  return { deposit, isPending, isConfirming, isSuccess, error };
+  const resetSuccess = () => { setIsSuccess(false); setError(null); };
+
+  return { deposit, resetSuccess, isPending, isConfirming, isSuccess, error };
 }
 
 export function useWithdrawVault() {

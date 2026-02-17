@@ -93,6 +93,11 @@ export function VaultDashboard() {
     ? (userSharesBigInt * freeLiquidity) / userSharesValueBigInt
     : userSharesBigInt;
 
+  const setDepositAmountAndReset = (val: string) => {
+    depositHook.resetSuccess();
+    setDepositAmount(val);
+  };
+
   const handleDeposit = async () => {
     const amount = parseFloat(depositAmount);
     if (!amount || amount < 1) return;
@@ -141,7 +146,9 @@ export function VaultDashboard() {
   const depositAmountBigInt = safeParse(depositAmount);
   const withdrawAmountBigInt = safeParse(withdrawAmount);
   const lockAmountBigInt = safeParse(lockAmount);
-  const depositBelowMinimum = depositAmountBigInt > 0n && depositAmountBigInt < 1_000_000n;
+  const depositParsed = depositAmount ? parseFloat(depositAmount) : NaN;
+  const depositBelowMinimum = depositAmount !== "" && !isNaN(depositParsed) && depositParsed >= 0 && depositAmountBigInt < 1_000_000n;
+  const depositNegative = depositAmount !== "" && !isNaN(depositParsed) && depositParsed < 0;
   const depositExceedsBalance = depositAmountBigInt > 0n && !depositBelowMinimum && depositAmountBigInt > (usdcBalance ?? 0n);
   const withdrawExceedsShares = withdrawAmountBigInt > 0n && withdrawAmountBigInt > userSharesBigInt;
   const withdrawExceedsLiquidity = withdrawAmountBigInt > 0n && !withdrawExceedsShares && withdrawAmountBigInt > withdrawableShares;
@@ -241,20 +248,23 @@ export function VaultDashboard() {
               min="1"
               step="1"
               value={depositAmount}
-              onChange={(e) => setDepositAmount(e.target.value)}
-              placeholder="Amount (USDC)"
+              onChange={(e) => setDepositAmountAndReset(e.target.value)}
+              placeholder="Min 1 USDC"
               disabled={!hasUSDC}
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-16 text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-blue/50 disabled:cursor-not-allowed disabled:opacity-50"
             />
             {hasUSDC && (
               <button
-                onClick={() => setDepositAmount(formatUnits(usdcBalance!, 6))}
+                onClick={() => setDepositAmountAndReset(formatUnits(usdcBalance!, 6))}
                 className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md bg-accent-blue/20 px-2 py-1 text-xs font-semibold text-accent-blue transition-colors hover:bg-accent-blue/30"
               >
                 Max
               </button>
             )}
           </div>
+          {depositNegative && (
+            <p className="mb-2 text-center text-xs text-neon-red">Amount must be positive</p>
+          )}
           {depositBelowMinimum && (
             <p className="mb-2 text-center text-xs text-neon-red">Minimum deposit is 1 USDC</p>
           )}
@@ -263,24 +273,26 @@ export function VaultDashboard() {
           )}
           <button
             onClick={handleDeposit}
-            disabled={!isConnected || !hasUSDC || !depositAmount || depositBelowMinimum || depositExceedsBalance || depositHook.isPending || depositHook.isConfirming}
+            disabled={!isConnected || !hasUSDC || !depositAmount || depositNegative || depositBelowMinimum || depositExceedsBalance || depositHook.isPending || depositHook.isConfirming}
             className="w-full rounded-xl bg-gradient-to-r from-accent-blue to-accent-purple py-3 text-sm font-bold uppercase tracking-wider text-white transition-all hover:shadow-lg hover:shadow-accent-purple/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {!isConnected
               ? "Connect Wallet"
               : !hasUSDC
                 ? "No USDC Balance"
-                : depositBelowMinimum
-                  ? "Minimum 1 USDC"
-                  : depositExceedsBalance
-                    ? "Insufficient Balance"
-                    : depositHook.isPending
-                      ? "Signing..."
-                      : depositHook.isConfirming
-                        ? "Confirming..."
-                        : depositTxSuccess
-                          ? "Deposited!"
-                          : "Deposit"}
+                : depositNegative
+                  ? "Invalid Amount"
+                  : depositBelowMinimum
+                    ? "Minimum 1 USDC"
+                    : depositExceedsBalance
+                      ? "Insufficient Balance"
+                      : depositHook.isPending
+                        ? "Signing..."
+                        : depositHook.isConfirming
+                          ? "Confirming..."
+                          : depositTxSuccess
+                            ? "Deposited!"
+                            : "Deposit"}
           </button>
           {depositHook.error && (
             <p className="mt-2 rounded-lg bg-neon-red/10 px-3 py-2 text-center text-xs text-neon-red">
