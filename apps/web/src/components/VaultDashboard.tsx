@@ -159,6 +159,15 @@ export function VaultDashboard() {
   const withdrawExceedsLiquidity = withdrawAmountBigInt > 0n && !withdrawExceedsShares && withdrawAmountBigInt > withdrawableShares;
   const lockExceedsShares = lockAmountBigInt > 0n && lockAmountBigInt > userSharesBigInt;
 
+  // Post-withdrawal utilization warning
+  const postWithdrawUtil = (() => {
+    if (withdrawAmountBigInt <= 0n || totalAssets <= 0n || totalReserved <= 0n) return 0;
+    const remaining = totalAssets > withdrawAmountBigInt ? totalAssets - withdrawAmountBigInt : 0n;
+    if (remaining === 0n) return 100;
+    return Number((totalReserved * 10000n) / remaining) / 100;
+  })();
+  const withdrawHighUtilWarning = withdrawAmountBigInt > 0n && !withdrawExceedsShares && !withdrawExceedsLiquidity && postWithdrawUtil > 80;
+
   return (
     <div className="space-y-8">
       {/* Stats cards */}
@@ -346,6 +355,11 @@ export function VaultDashboard() {
           )}
           {withdrawExceedsLiquidity && (
             <p className="mb-2 text-center text-xs text-neon-red">Exceeds available vault liquidity</p>
+          )}
+          {withdrawHighUtilWarning && (
+            <p className="mb-2 text-center text-xs text-yellow-400">
+              This withdrawal will push utilization to {postWithdrawUtil.toFixed(0)}%. New bets may be blocked.
+            </p>
           )}
           <button
             onClick={handleWithdraw}

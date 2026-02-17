@@ -299,7 +299,10 @@ export function useUserTickets() {
 
   const fetchTickets = useCallback(async () => {
     if (!address || !publicClient || !contractAddresses.parlayEngine) {
+      setTickets([]);
+      setTotalCount(0);
       setIsLoading(false);
+      hasFetchedRef.current = false;
       return;
     }
 
@@ -815,6 +818,8 @@ export function useLockPositions() {
 
   const fetchPositions = useCallback(async () => {
     if (!address || !publicClient || !contractAddresses.lockVault) {
+      setPositions([]);
+      setUserTotalLocked(0n);
       setIsLoading(false);
       return;
     }

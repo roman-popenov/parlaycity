@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAccount } from "wagmi";
+import { useModal } from "connectkit";
 import { PARLAY_CONFIG } from "@/lib/config";
 import { MOCK_LEGS, type MockLeg } from "@/lib/mock";
 import { useBuyTicket, useParlayConfig, useUSDCBalance, useVaultStats } from "@/lib/hooks";
@@ -20,6 +21,7 @@ function effectiveOdds(leg: MockLeg, outcome: number): number {
 
 export function ParlayBuilder() {
   const { isConnected } = useAccount();
+  const { setOpen: openConnectModal } = useModal();
   const { buyTicket, resetSuccess, isPending, isConfirming, isSuccess, error } = useBuyTicket();
   const { balance: usdcBalance } = useUSDCBalance();
   const { freeLiquidity, maxPayout } = useVaultStats();
@@ -101,10 +103,17 @@ export function ParlayBuilder() {
         ? "confirmed"
         : null;
 
+  const vaultEmpty = mounted && freeLiquidity !== undefined && freeLiquidity === 0n;
+
   return (
-    <div className="grid gap-8 lg:grid-cols-5">
+    <div className={`grid gap-8 lg:grid-cols-5 transition-opacity duration-300 ${mounted ? "opacity-100" : "pointer-events-none opacity-50"}`}>
       {/* Leg selector */}
       <div className="space-y-4 lg:col-span-3">
+        {vaultEmpty && (
+          <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-4 py-3 text-sm text-yellow-400">
+            No liquidity in the vault. Deposit USDC in the Vault tab to enable betting.
+          </div>
+        )}
         <h2 className="text-lg font-semibold text-gray-300">
           Pick Your Legs{" "}
           <span className="text-sm text-gray-500">
@@ -257,12 +266,14 @@ export function ParlayBuilder() {
 
           {/* Buy button */}
           <button
-            onClick={handleBuy}
-            disabled={!canBuy || isPending || isConfirming}
+            onClick={!mounted || !isConnected ? () => openConnectModal(true) : handleBuy}
+            disabled={mounted && isConnected && (!canBuy || isPending || isConfirming)}
             className={`w-full rounded-xl py-3.5 text-sm font-bold uppercase tracking-wider transition-all ${
-              canBuy && !isPending && !isConfirming
+              !mounted || !isConnected
                 ? "bg-gradient-to-r from-accent-blue to-accent-purple text-white shadow-lg shadow-accent-purple/20 hover:shadow-accent-purple/40"
-                : "cursor-not-allowed bg-gray-800 text-gray-500"
+                : canBuy && !isPending && !isConfirming
+                  ? "bg-gradient-to-r from-accent-blue to-accent-purple text-white shadow-lg shadow-accent-purple/20 hover:shadow-accent-purple/40"
+                  : "cursor-not-allowed bg-gray-800 text-gray-500"
             }`}
           >
             {!mounted || !isConnected

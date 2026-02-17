@@ -7,6 +7,11 @@ vi.mock("wagmi", () => ({
   useAccount: vi.fn(() => ({ isConnected: false, address: undefined })),
 }));
 
+// Mock connectkit
+vi.mock("connectkit", () => ({
+  useModal: vi.fn(() => ({ setOpen: vi.fn() })),
+}));
+
 // Mock hooks
 vi.mock("@/lib/hooks", () => ({
   useBuyTicket: vi.fn(() => ({
