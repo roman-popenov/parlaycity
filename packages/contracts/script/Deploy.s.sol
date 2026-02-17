@@ -68,9 +68,13 @@ contract Deploy is Script {
         registry.createLeg("Will SOL hit $300 by end of March?", "coingecko:sol", cutoff, resolve, address(adminOracle), 200_000);
         console.log("Created 3 sample legs");
 
-        // 9. Mint USDC to deployer
+        // 9. Mint USDC to deployer and second Anvil account
         usdc.mint(deployer, 10_000e6);
         console.log("Minted 10,000 USDC to deployer");
+
+        address account1 = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
+        usdc.mint(account1, 10_000e6);
+        console.log("Minted 10,000 USDC to account1");
 
         vm.stopBroadcast();
     }
