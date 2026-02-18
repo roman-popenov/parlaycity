@@ -265,6 +265,7 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
         external
         onlyEngine
         nonReentrant
+        returns (uint256 routedToLockers, uint256 routedToSafety, uint256 routedToVault)
     {
         uint256 totalOut = feeToLockers + feeToSafety;
         require(totalAssets() >= totalReserved + totalOut, "HouseVault: routing would break solvency");
@@ -273,14 +274,17 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
         if (feeToLockers > 0 && address(lockVault) != address(0)) {
             asset.safeTransfer(address(lockVault), feeToLockers);
             lockVault.notifyFees(feeToLockers);
+            routedToLockers = feeToLockers;
         }
 
         // Transfer to safety module
         if (feeToSafety > 0 && safetyModule != address(0)) {
             asset.safeTransfer(safetyModule, feeToSafety);
+            routedToSafety = feeToSafety;
         }
 
-        emit FeesRouted(feeToLockers, feeToSafety, feeToVault);
+        routedToVault = feeToVault + (feeToLockers - routedToLockers) + (feeToSafety - routedToSafety);
+        emit FeesRouted(routedToLockers, routedToSafety, routedToVault);
     }
 
     // ── Yield Functions ───────────────────────────────────────────────────

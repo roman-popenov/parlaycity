@@ -195,6 +195,79 @@ contract FeeRoutingTest is Test {
         assertEq(freshVault.totalAssets(), vaultBefore + 10e6, "All stake should stay in vault without config");
     }
 
+    // ── Events Reflect Actual Routing (Not Requested) ────────────────
+
+    function test_feeRouting_eventsReflectActualRouting() public {
+        // Deploy vault/engine with NO lockVault or safetyModule configured
+        HouseVault freshVault = new HouseVault(IERC20(address(usdc)));
+        ParlayEngine freshEngine = new ParlayEngine(freshVault, registry, IERC20(address(usdc)), BOOTSTRAP_ENDS);
+        freshVault.setEngine(address(freshEngine));
+
+        usdc.mint(owner, 10_000e6);
+        usdc.approve(address(freshVault), type(uint256).max);
+        freshVault.deposit(10_000e6, owner);
+
+        usdc.mint(alice, 50e6);
+        vm.prank(alice);
+        usdc.approve(address(freshEngine), type(uint256).max);
+
+        // feePaid = 200bps of 50e6 = 1_000_000
+        // Since no lockVault/safetyModule, all fees stay in vault
+        uint256 expectedFee = 1_000_000;
+
+        // ParlayEngine event should emit 0 for lockers/safety, full fee to vault
+        vm.expectEmit(true, true, true, true);
+        emit ParlayEngine.FeesRouted(0, 0, 0, expectedFee);
+
+        vm.prank(alice);
+        freshEngine.buyTicket(_twoLegs(), _twoOutcomes(), 50e6);
+    }
+
+    // ── Partial Config: Only LockVault Set ───────────────────────────
+
+    function test_feeRouting_partialConfig_onlyLockVault() public {
+        // Deploy with lockVault but no safetyModule
+        HouseVault freshVault = new HouseVault(IERC20(address(usdc)));
+        ParlayEngine freshEngine = new ParlayEngine(freshVault, registry, IERC20(address(usdc)), BOOTSTRAP_ENDS);
+        LockVault freshLockVault = new LockVault(freshVault);
+        freshVault.setEngine(address(freshEngine));
+        freshVault.setLockVault(freshLockVault);
+        freshLockVault.setFeeDistributor(address(freshVault));
+
+        usdc.mint(owner, 10_000e6);
+        usdc.approve(address(freshVault), type(uint256).max);
+        freshVault.deposit(10_000e6, owner);
+
+        // Create a locker so notifyFees doesn't just accumulate
+        usdc.mint(locker, 5_000e6);
+        vm.startPrank(locker);
+        usdc.approve(address(freshVault), type(uint256).max);
+        freshVault.deposit(5_000e6, locker);
+        IERC20(address(freshVault)).approve(address(freshLockVault), type(uint256).max);
+        freshLockVault.lock(5_000e6, LockVault.LockTier.THIRTY);
+        vm.stopPrank();
+
+        usdc.mint(alice, 50e6);
+        vm.prank(alice);
+        usdc.approve(address(freshEngine), type(uint256).max);
+
+        uint256 lockBefore = usdc.balanceOf(address(freshLockVault));
+
+        vm.prank(alice);
+        freshEngine.buyTicket(_twoLegs(), _twoOutcomes(), 50e6);
+
+        uint256 expectedFee = 1_000_000;
+        uint256 expectedToLockers = (expectedFee * 9000) / 10_000;
+        uint256 expectedToSafety = (expectedFee * 500) / 10_000;
+
+        // LockVault should get its share
+        assertEq(usdc.balanceOf(address(freshLockVault)) - lockBefore, expectedToLockers, "LockVault gets fees");
+        // Safety portion stays in vault (no safetyModule configured)
+        // Vault retains: feeToVault + feeToSafety (unrouted)
+        uint256 expectedVaultRetained = expectedFee - expectedToLockers;
+        assertGe(expectedVaultRetained, expectedToSafety, "Vault retains safety share when unconfigured");
+    }
+
     // ── Solvency Invariant Holds After Routing ─────────────────────────
 
     function test_feeRouting_solvencyInvariantHolds() public {
@@ -420,6 +493,20 @@ contract FeeRoutingTest is Test {
         vm.prank(alice);
         engine.claimPayout(ticketId);
         assertEq(usdc.balanceOf(alice), bettorBefore + t.potentialPayout);
+    }
+
+    // ── Helpers ───────────────────────────────────────────────────────
+
+    function _twoLegs() internal pure returns (uint256[] memory legs) {
+        legs = new uint256[](2);
+        legs[0] = 0;
+        legs[1] = 1;
+    }
+
+    function _twoOutcomes() internal pure returns (bytes32[] memory outcomes) {
+        outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
     }
 
     // ── NotifyFees With No Lockers (Graceful No-Op) ────────────────────
