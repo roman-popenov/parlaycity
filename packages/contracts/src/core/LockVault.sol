@@ -21,7 +21,6 @@ contract LockVault is Ownable, ReentrancyGuard {
         THIRTY, // 30 days  -> 1.1x multiplier
         SIXTY, // 60 days  -> 1.25x multiplier
         NINETY // 90 days  -> 1.5x multiplier
-
     }
 
     // ── Structs ──────────────────────────────────────────────────────────
