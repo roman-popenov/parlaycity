@@ -7,7 +7,7 @@ import type { Request, Response, NextFunction } from "express";
 // x402 configuration from environment
 const X402_RECIPIENT = process.env.X402_PAYMENT_ADDRESS || "0x0000000000000000000000000000000000000000";
 const X402_NETWORK: Network = (process.env.X402_NETWORK || "eip155:84532") as Network; // Base Sepolia
-const X402_FACILITATOR_URL = process.env.X402_FACILITATOR_URL || "https://facilitator.x402.org";
+const X402_FACILITATOR_URL = process.env.X402_FACILITATOR_URL || "https://x402.org/facilitator";
 const X402_PRICE = process.env.X402_PRICE || "$0.01"; // Price per request
 
 /**
