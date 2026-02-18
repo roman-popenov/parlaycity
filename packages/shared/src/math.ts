@@ -107,6 +107,75 @@ export function computeQuote(
   };
 }
 
+/**
+ * Compute progressive payout: partial claim based on won legs.
+ * Returns the total partial payout and the new claimable amount.
+ */
+export function computeProgressivePayout(
+  effectiveStake: bigint,
+  wonProbsPPM: number[],
+  potentialPayout: bigint,
+  alreadyClaimed: bigint
+): { partialPayout: bigint; claimable: bigint } {
+  if (wonProbsPPM.length === 0) {
+    return { partialPayout: 0n, claimable: 0n };
+  }
+  const partialMultiplier = computeMultiplier(wonProbsPPM);
+  let partialPayout = computePayout(effectiveStake, partialMultiplier);
+  if (partialPayout > potentialPayout) partialPayout = potentialPayout;
+  const claimable = partialPayout > alreadyClaimed ? partialPayout - alreadyClaimed : 0n;
+  return { partialPayout, claimable };
+}
+
+/**
+ * Compute cashout value for an early exit.
+ * fairValue = wonValue * product(unresolvedProbs) / PPM^unresolvedCount
+ * penaltyBps = basePenaltyBps * unresolvedCount / totalLegs
+ * cashoutValue = fairValue * (BPS - penaltyBps) / BPS
+ */
+export function computeCashoutValue(
+  effectiveStake: bigint,
+  wonProbsPPM: number[],
+  unresolvedProbsPPM: number[],
+  basePenaltyBps: number,
+  totalLegs: number,
+  potentialPayout: bigint,
+  alreadyClaimed: bigint = 0n
+): { cashoutValue: bigint; penaltyBps: number; fairValue: bigint } {
+  if (wonProbsPPM.length === 0 || unresolvedProbsPPM.length === 0) {
+    return { cashoutValue: 0n, penaltyBps: 0, fairValue: 0n };
+  }
+
+  const ppm = BigInt(PPM);
+  const bps = BigInt(BPS);
+
+  // Won leg multiplier and value
+  const wonMultiplier = computeMultiplier(wonProbsPPM);
+  const wonValue = computePayout(effectiveStake, wonMultiplier);
+
+  // Multiply by probability of each unresolved leg
+  let fairValue = wonValue;
+  for (const p of unresolvedProbsPPM) {
+    fairValue = (fairValue * BigInt(p)) / ppm;
+  }
+
+  // Scaled penalty
+  const penaltyBps = Math.floor((basePenaltyBps * unresolvedProbsPPM.length) / totalLegs);
+  let cashoutValue = (fairValue * (bps - BigInt(penaltyBps))) / bps;
+
+  // Cap at potential payout
+  if (cashoutValue > potentialPayout) {
+    cashoutValue = potentialPayout;
+  }
+
+  // Subtract already claimed
+  if (alreadyClaimed > 0n) {
+    cashoutValue = cashoutValue > alreadyClaimed ? cashoutValue - alreadyClaimed : 0n;
+  }
+
+  return { cashoutValue, penaltyBps, fairValue };
+}
+
 function invalidQuote(
   legIds: number[],
   outcomes: string[],
