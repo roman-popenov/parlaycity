@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { useModal } from "connectkit";
-import { PARLAY_CONFIG } from "@/lib/config";
+import { PARLAY_CONFIG, SERVICES_API_URL } from "@/lib/config";
 import { sanitizeNumericInput, blockNonNumericKeys } from "@/lib/utils";
 import { MOCK_LEGS, type MockLeg } from "@/lib/mock";
 import { useBuyTicket, useParlayConfig, useUSDCBalance, useVaultStats } from "@/lib/hooks";
@@ -327,7 +327,7 @@ export function ParlayBuilder() {
                       const prob = 1 / effectiveOdds(s.leg, s.outcomeChoice);
                       return Math.round(prob * 1_000_000);
                     });
-                    const res = await fetch("http://localhost:3001/premium/risk-assess", {
+                    const res = await fetch(`${SERVICES_API_URL}/premium/risk-assess`, {
                       method: "POST",
                       headers: {
                         "Content-Type": "application/json",
