@@ -144,8 +144,9 @@ contract LockVault is Ownable, ReentrancyGuard {
         });
 
         // First-locker bootstrap: when totalWeightedShares was 0 before this lock,
-        // the sweep above was skipped. Distribute now so the first locker can claim
-        // fees that accrued with no recipients (otherwise they'd be stuck forever).
+        // the sweep above was skipped (no existing lockers to receive fees).
+        // Now that totalWeightedShares > 0, distribute so the first locker receives
+        // fees that accrued with no recipients — intentional, otherwise stuck forever.
         if (undistributedFees > 0) {
             uint256 fees = undistributedFees;
             undistributedFees = 0;

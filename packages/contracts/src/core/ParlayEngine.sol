@@ -54,6 +54,7 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
         uint256 createdAt;
         PayoutMode payoutMode;
         uint256 claimedAmount;
+        uint256 cashoutPenaltyBps; // Snapshotted at purchase for EARLY_CASHOUT tickets
     }
 
     // ── State ────────────────────────────────────────────────────────────
@@ -266,7 +267,8 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
             status: TicketStatus.Active,
             createdAt: block.timestamp,
             payoutMode: payoutMode,
-            claimedAmount: 0
+            claimedAmount: 0,
+            cashoutPenaltyBps: payoutMode == PayoutMode.EARLY_CASHOUT ? baseCashoutPenaltyBps : 0
         });
 
         {
@@ -379,7 +381,9 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
                         vault.releasePayout(originalPayout - newPayout);
                     }
                 } else {
-                    // Claims already exceed or match the recalculated payout
+                    // Progressive claims already exceed the recalculated payout (e.g. a voided
+                    // leg lowered the multiplier). The house absorbs the overpayment — this is
+                    // the accepted risk of offering progressive settlement mode.
                     uint256 remainingReserve = originalPayout - ticket.claimedAmount;
                     if (remainingReserve > 0) vault.releasePayout(remainingReserve);
                     newPayout = ticket.claimedAmount;
@@ -461,7 +465,10 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
 
         require(wonCount > 0, "ParlayEngine: no won legs to claim");
 
-        // Collect won leg probabilities (second pass — mirrors first pass filtering)
+        // Second pass: collect bettor-won probabilities for multiplier calculation.
+        // Safe to skip explicit bettor-win check here because the first pass already
+        // returned early on any bettor loss (anyLost). All Won/Lost legs reaching this
+        // point are guaranteed bettor wins.
         uint256[] memory wonProbs = new uint256[](wonCount);
         uint256 idx;
         for (uint256 i = 0; i < ticket.legIds.length; i++) {
@@ -584,15 +591,18 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
         // Compute cashout value and pay
         {
             uint256 effectiveStake = ticket.stake - ticket.feePaid;
+            // Use penalty snapshotted at purchase time (not the current global value)
             (uint256 cashoutValue, uint256 penaltyBps) = ParlayMath.computeCashoutValue(
                 effectiveStake,
                 wonProbs,
                 unresolvedCount,
-                baseCashoutPenaltyBps,
+                ticket.cashoutPenaltyBps,
                 ticket.legIds.length,
                 ticket.potentialPayout
             );
 
+            // EARLY_CASHOUT tickets always have claimedAmount == 0 (progressive claims
+            // are PROGRESSIVE-only, claimPayout requires Won status). Defensive subtraction.
             uint256 payout = cashoutValue > ticket.claimedAmount ? cashoutValue - ticket.claimedAmount : 0;
             require(payout > 0, "ParlayEngine: zero cashout value");
             require(payout >= minOut, "ParlayEngine: below min cashout");
@@ -604,7 +614,7 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
             uint256 remainingReserve = ticket.potentialPayout - ticket.claimedAmount;
             if (remainingReserve > 0) vault.releasePayout(remainingReserve);
 
-            emit EarlyCashout(ticketId, msg.sender, payout, penaltyBps);
+            emit EarlyCashout(ticketId, msg.sender, cashoutValue, penaltyBps);
         }
     }
 }
