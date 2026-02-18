@@ -107,14 +107,14 @@ export function ParlayBuilder() {
 
   function buyButtonLabel(): string {
     if (!mounted || !isConnected) return "Connect Wallet";
+    if (isPending) return "Waiting for approval...";
+    if (isConfirming) return "Confirming...";
+    if (isSuccess) return "Ticket Bought!";
     if (vaultEmpty) return "No Vault Liquidity";
     if (selectedLegs.length < PARLAY_CONFIG.minLegs) return `Select at least ${PARLAY_CONFIG.minLegs} legs`;
     if (insufficientBalance) return "Insufficient USDC Balance";
     if (exceedsMaxPayout) return `Max Payout $${maxPayoutNum.toFixed(0)}`;
     if (insufficientLiquidity) return "Insufficient Vault Liquidity";
-    if (isPending) return "Waiting for approval...";
-    if (isConfirming) return "Confirming...";
-    if (isSuccess) return "Ticket Bought!";
     return "Buy Ticket";
   }
 
