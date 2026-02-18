@@ -384,6 +384,7 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
         ticket.status = TicketStatus.Claimed;
         uint256 remaining = ticket.potentialPayout - ticket.claimedAmount;
         require(remaining > 0, "ParlayEngine: nothing to claim");
+        ticket.claimedAmount = ticket.potentialPayout;
         vault.payWinner(msg.sender, remaining);
 
         emit PayoutClaimed(ticketId, msg.sender, remaining);
@@ -439,7 +440,7 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
 
         require(wonCount > 0, "ParlayEngine: no won legs to claim");
 
-        // Collect won leg probabilities (second pass)
+        // Collect won leg probabilities (second pass — mirrors first pass filtering)
         uint256[] memory wonProbs = new uint256[](wonCount);
         uint256 idx;
         for (uint256 i = 0; i < ticket.legIds.length; i++) {
@@ -448,9 +449,8 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
 
             if (!oracle.canResolve(ticket.legIds[i])) continue;
             (LegStatus legStatus,) = oracle.getStatus(ticket.legIds[i]);
-            if (legStatus == LegStatus.Voided) continue;
+            if (legStatus != LegStatus.Won && legStatus != LegStatus.Lost) continue;
 
-            // All non-voided resolved legs are won (we already checked for losses)
             if (ticket.outcomes[i] == bytes32(uint256(2))) {
                 wonProbs[idx++] = 1_000_000 - leg.probabilityPPM;
             } else {
@@ -555,7 +555,12 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
                     continue;
                 }
 
-                // Must be a won leg (losses already reverted above)
+                if (legStatus != LegStatus.Won && legStatus != LegStatus.Lost) {
+                    unresolvedProbs[uIdx++] = prob;
+                    continue;
+                }
+
+                // Must be a won leg (losses already reverted in first pass)
                 wonProbs[wIdx++] = prob;
             }
         }
