@@ -10,8 +10,9 @@ import {LockVault} from "../../src/core/LockVault.sol";
 import {AdminOracleAdapter} from "../../src/oracle/AdminOracleAdapter.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {LegStatus} from "../../src/interfaces/IOracleAdapter.sol";
+import {FeeRouterSetup} from "../helpers/FeeRouterSetup.sol";
 
-contract FeeRoutingTest is Test {
+contract FeeRoutingTest is FeeRouterSetup {
     MockUSDC usdc;
     HouseVault vault;
     LegRegistry registry;
@@ -34,12 +35,9 @@ contract FeeRoutingTest is Test {
         registry = new LegRegistry();
         oracle = new AdminOracleAdapter();
         engine = new ParlayEngine(vault, registry, IERC20(address(usdc)), BOOTSTRAP_ENDS);
-        lockVault = new LockVault(vault);
 
         vault.setEngine(address(engine));
-        vault.setLockVault(lockVault);
-        vault.setSafetyModule(safetyModule);
-        lockVault.setFeeDistributor(address(vault));
+        lockVault = _wireFeeRouter(vault);
 
         // Seed vault with liquidity
         usdc.mint(owner, 10_000e6);

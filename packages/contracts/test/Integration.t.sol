@@ -12,9 +12,10 @@ import {MockYieldAdapter} from "../src/yield/MockYieldAdapter.sol";
 import {IYieldAdapter} from "../src/interfaces/IYieldAdapter.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {LegStatus} from "../src/interfaces/IOracleAdapter.sol";
+import {FeeRouterSetup} from "./helpers/FeeRouterSetup.sol";
 
 /// @notice Full lifecycle integration test: deploy, deposit, bet, settle, claim, withdraw.
-contract IntegrationTest is Test {
+contract IntegrationTest is FeeRouterSetup {
     MockUSDC usdc;
     HouseVault vault;
     LegRegistry registry;
@@ -35,13 +36,10 @@ contract IntegrationTest is Test {
         registry = new LegRegistry();
         oracle = new AdminOracleAdapter();
         engine = new ParlayEngine(vault, registry, IERC20(address(usdc)), 1_000_000);
-        lockVault = new LockVault(vault);
         yieldAdapter = new MockYieldAdapter(IERC20(address(usdc)), address(vault));
 
         vault.setEngine(address(engine));
-        vault.setLockVault(lockVault);
-        vault.setSafetyModule(makeAddr("safetyModule"));
-        lockVault.setFeeDistributor(address(vault));
+        lockVault = _wireFeeRouter(vault);
         vault.setYieldAdapter(IYieldAdapter(address(yieldAdapter)));
 
         // Fund LP: deposit 10k USDC to vault
