@@ -36,6 +36,8 @@ function toTicketData(
     }),
     status: mapStatus(t.status),
     createdAt: Number(t.createdAt),
+    payoutMode: t.payoutMode,
+    claimedAmount: t.claimedAmount,
   };
 }
 

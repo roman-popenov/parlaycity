@@ -331,10 +331,10 @@ export function ParlayBuilder() {
                       method: "POST",
                       headers: {
                         "Content-Type": "application/json",
-                        "x-402-payment": "demo-token",
+                        "x-402-payment": process.env.NEXT_PUBLIC_X402_PAYMENT ?? "demo-token",
                       },
                       body: JSON.stringify({
-                        legIds: selectedLegs.map((s) => s.leg.id),
+                        legIds: selectedLegs.map((s) => s.leg.id.toString()),
                         outcomes: selectedLegs.map((s) => s.outcomeChoice === 1 ? "Yes" : "No"),
                         stake: stake,
                         probabilities,

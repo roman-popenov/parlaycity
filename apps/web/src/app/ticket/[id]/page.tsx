@@ -80,6 +80,8 @@ export default function TicketPage() {
     ),
     status: mapStatus(onChainTicket.status),
     createdAt: Number(onChainTicket.createdAt),
+    payoutMode: onChainTicket.payoutMode,
+    claimedAmount: onChainTicket.claimedAmount,
   };
 
   return (
