@@ -104,6 +104,29 @@ export interface HedgeAction {
 
 export type RiskProfile = "conservative" | "moderate" | "aggressive";
 
+export enum RiskAction {
+  BUY = "BUY",
+  REDUCE_STAKE = "REDUCE_STAKE",
+  AVOID = "AVOID",
+}
+
+export enum VaultHealth {
+  HEALTHY = "HEALTHY",
+  CAUTION = "CAUTION",
+  CRITICAL = "CRITICAL",
+}
+
+export enum ConcentrationWarning {
+  HIGH = "HIGH",
+  MEDIUM = "MEDIUM",
+  LOW = "LOW",
+}
+
+export enum YieldAction {
+  ROTATE = "ROTATE",
+  HOLD = "HOLD",
+}
+
 export interface RiskAssessRequest {
   legIds: number[];
   outcomes: string[];
@@ -115,7 +138,7 @@ export interface RiskAssessRequest {
 }
 
 export interface RiskAssessResponse {
-  action: "BUY" | "REDUCE_STAKE" | "AVOID";
+  action: RiskAction;
   suggestedStake: string;
   kellyFraction: number;
   winProbability: number;
@@ -125,5 +148,6 @@ export interface RiskAssessResponse {
   warnings: string[];
   riskTolerance: RiskProfile;
   fairMultiplier: number;
+  netMultiplier: number;
   edgeBps: number;
 }

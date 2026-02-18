@@ -1,12 +1,13 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
 import app from "../src/index.js";
+import { VaultHealth, ConcentrationWarning, YieldAction } from "@parlaycity/shared";
 
 describe("GET /vault/health", () => {
   it("returns 200 with vault health data", async () => {
     const res = await request(app).get("/vault/health");
     expect(res.status).toBe(200);
-    expect(["HEALTHY", "CAUTION", "CRITICAL"]).toContain(res.body.vaultHealth);
+    expect(Object.values(VaultHealth)).toContain(res.body.vaultHealth);
     expect(res.body.totalAssets).toBeTypeOf("string");
     expect(res.body.totalReserved).toBeTypeOf("string");
     expect(res.body.freeLiquidity).toBeTypeOf("string");
@@ -25,7 +26,7 @@ describe("GET /vault/health", () => {
     expect(first).toHaveProperty("exposure");
     expect(first).toHaveProperty("pctOfTVL");
     expect(first).toHaveProperty("warning");
-    expect(["HIGH", "MEDIUM", "LOW"]).toContain(first.warning);
+    expect(Object.values(ConcentrationWarning)).toContain(first.warning);
   });
 
   it("returns settlement cluster data", async () => {
@@ -81,7 +82,7 @@ describe("GET /vault/yield-report", () => {
   it("returns yield recommendation", async () => {
     const res = await request(app).get("/vault/yield-report");
     expect(res.body.recommendation).toHaveProperty("action");
-    expect(["ROTATE", "HOLD"]).toContain(res.body.recommendation.action);
+    expect(Object.values(YieldAction)).toContain(res.body.recommendation.action);
     expect(res.body.recommendation).toHaveProperty("targetProtocol");
     expect(res.body.recommendation).toHaveProperty("targetApy");
     expect(res.body.recommendation).toHaveProperty("reasoning");

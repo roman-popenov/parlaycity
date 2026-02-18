@@ -1,5 +1,12 @@
 import { Router } from "express";
-import { parseRiskAssessRequest, PPM, BPS, BASE_FEE_BPS, PER_LEG_FEE_BPS } from "@parlaycity/shared";
+import {
+  parseRiskAssessRequest,
+  PPM,
+  computeMultiplier,
+  computeEdge,
+  applyEdge,
+  RiskAction,
+} from "@parlaycity/shared";
 import type { RiskProfile } from "@parlaycity/shared";
 
 const router = Router();
@@ -24,33 +31,40 @@ router.post("/risk-assess", (req, res) => {
   const caps = RISK_CAPS[riskTolerance];
   const warnings: string[] = [];
 
-  // Combined win probability
   const numLegs = probabilities.length;
-  let combinedProbNumerator = 1n;
-  for (const p of probabilities) {
-    combinedProbNumerator *= BigInt(p);
-  }
-  const ppmBig = BigInt(PPM);
-  let combinedProbDenominator = 1n;
-  for (let i = 0; i < numLegs - 1; i++) {
-    combinedProbDenominator *= ppmBig;
-  }
-  const winProbability = Number(combinedProbNumerator) / Number(combinedProbDenominator) / PPM;
 
-  // Fair multiplier
-  const fairMultiplier = 1 / winProbability;
+  // Use shared math (BigInt throughout, no Number overflow)
+  const fairMultiplierX1e6 = computeMultiplier(probabilities);
+  const edgeBps = computeEdge(numLegs);
+  const netMultiplierX1e6 = applyEdge(fairMultiplierX1e6, edgeBps);
 
-  // Edge
-  const edgeBps = BASE_FEE_BPS + numLegs * PER_LEG_FEE_BPS;
-  const netMultiplier = fairMultiplier * (BPS - edgeBps) / BPS;
+  // Win probability as float (derived from fair multiplier for display only)
+  // fairMultiplier = PPM / combinedProb → combinedProb = PPM / fairMultiplier
+  // winProbability = combinedProb / PPM = PPM / fairMultiplier / PPM = 1 / (fairMultiplier / PPM)
+  const fairMultFloat = Number(fairMultiplierX1e6) / PPM;
+  const winProbability = 1 / fairMultFloat;
 
-  // Expected value per dollar staked
-  const ev = winProbability * netMultiplier - 1;
+  // Net multiplier as float for Kelly calculation
+  // This is the actual offered payout ratio (after house edge), which is what
+  // Kelly criterion needs — the "odds" the bettor is getting.
+  const netMultFloat = Number(netMultiplierX1e6) / PPM;
+
+  // Expected value per dollar staked: EV = p * netMult - 1
+  // This is meaningful because netMult < fairMult (house edge), so EV < 0 for a fair bettor.
+  // But if the bettor believes the true probability is higher than the market probability,
+  // EV can be positive. We use the market probability here as a baseline.
+  const ev = winProbability * netMultFloat - 1;
   const stakeNum = parseFloat(stake);
   const expectedValue = Math.round(ev * stakeNum * 100) / 100;
 
-  // Kelly criterion: f* = (b*p - q) / b where b = netMultiplier - 1
-  const b = netMultiplier - 1;
+  // Kelly criterion: f* = (b*p - q) / b
+  // b = net payout ratio (netMult - 1), p = win probability, q = 1 - p
+  // For a parlay with house edge, Kelly will be slightly negative (EV < 0),
+  // which means the optimal bet is 0. This is correct and expected — the
+  // Kelly criterion says "don't bet" when the house has an edge on fair odds.
+  // In practice, users bet because they believe they have an informational edge
+  // (their true p > market p). We still compute and display the formula.
+  const b = netMultFloat - 1;
   const p = winProbability;
   const q = 1 - p;
   let kellyFraction = b > 0 ? Math.max(0, (b * p - q) / b) : 0;
@@ -86,14 +100,17 @@ router.post("/risk-assess", (req, res) => {
   }
 
   // Determine action
-  let action: "BUY" | "REDUCE_STAKE" | "AVOID" = "BUY";
+  let action: RiskAction = RiskAction.BUY;
   let reasoning = "";
 
   if (winProbability < caps.minWinProb || numLegs > caps.maxLegs) {
-    action = "AVOID";
+    action = RiskAction.AVOID;
     reasoning = `${numLegs}-leg parlay at ${(winProbability * 100).toFixed(2)}% win probability exceeds ${riskTolerance} risk tolerance limits.`;
+  } else if (kellyFraction === 0) {
+    action = RiskAction.REDUCE_STAKE;
+    reasoning = `House edge (${edgeBps}bps) exceeds edge on fair odds. Kelly suggests $0. Bet only if you believe your true win probability exceeds ${(winProbability * 100).toFixed(2)}%.`;
   } else if (suggestedStake < stakeNum) {
-    action = "REDUCE_STAKE";
+    action = RiskAction.REDUCE_STAKE;
     reasoning = `Kelly criterion suggests ${suggestedStake.toFixed(2)} USDC (${(kellyFraction * 100).toFixed(2)}% of bankroll). Your proposed stake of ${stake} USDC exceeds this.`;
   } else {
     reasoning = `${numLegs}-leg parlay at ${(winProbability * 100).toFixed(2)}% win probability. Kelly suggests ${(kellyFraction * 100).toFixed(2)}% of bankroll = ${suggestedStake.toFixed(2)} USDC.`;
@@ -112,7 +129,8 @@ router.post("/risk-assess", (req, res) => {
     reasoning,
     warnings,
     riskTolerance,
-    fairMultiplier: Math.round(fairMultiplier * 100) / 100,
+    fairMultiplier: Math.round(fairMultFloat * 100) / 100,
+    netMultiplier: Math.round(netMultFloat * 100) / 100,
     edgeBps,
   });
 });
