@@ -33,6 +33,12 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
         Voided,
         Claimed
     }
+    /// @notice Determines payout behavior for a parlay ticket.
+    /// @dev CLASSIC: all-or-nothing; pays only if every leg wins.
+    ///      PROGRESSIVE: partial claims as legs resolve. House absorbs overpayment
+    ///        risk if voids reduce the multiplier below already-claimed amounts.
+    ///      EARLY_CASHOUT: exit before resolution at a penalty (cashoutPenaltyBps
+    ///        snapshotted at purchase). Penalty scales with unresolved leg count.
     enum PayoutMode {
         CLASSIC,
         PROGRESSIVE,
@@ -272,8 +278,10 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
         });
 
         {
+            // Scoped block: read arrays from storage to free stack slots occupied by
+            // calldata legIds/outcomes (stack-too-deep with 9 emit params).
             Ticket storage t = _tickets[ticketId];
-            emit TicketPurchased(ticketId, msg.sender, t.legIds, t.outcomes, stake, t.multiplierX1e6, t.potentialPayout, t.mode, t.payoutMode);
+            emit TicketPurchased(ticketId, msg.sender, t.legIds, t.outcomes, stake, multiplierX1e6, potentialPayout, mode, payoutMode);
         }
     }
 
@@ -339,7 +347,10 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
                 ticket.status = TicketStatus.Voided;
                 uint256 remainingReserve = originalPayout - ticket.claimedAmount;
                 if (remainingReserve > 0) vault.releasePayout(remainingReserve);
-                // Refund stake minus fee minus any progressive claims already paid out
+                // Refund = effectiveStake - claimedAmount, floored at 0.
+                // For progressive tickets, claimedAmount can exceed effectiveStake
+                // (multiplier > 1x on early won legs), so refund = 0 in that case.
+                // The house absorbs the difference — accepted risk of progressive mode.
                 uint256 effectiveStake = ticket.stake - ticket.feePaid;
                 uint256 refundAmount = effectiveStake > ticket.claimedAmount
                     ? effectiveStake - ticket.claimedAmount
@@ -374,16 +385,23 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
                     newPayout = originalPayout;
                 }
 
-                // Account for progressive claims when releasing excess reserve
+                // Account for progressive claims when releasing excess reserve.
+                //
+                // Griefing note: a user can claim progressive payouts on early high-multiplier
+                // legs, then if later legs void the recalculated payout may drop below
+                // claimedAmount. The house absorbs the difference. This is bounded by:
+                //   1. maxPayoutBps caps total exposure per ticket (5% TVL)
+                //   2. Progressive claims are capped at potentialPayout
+                //   3. Voids are external events (oracle-driven), not user-controllable
+                // Net: worst-case house loss per ticket = potentialPayout (already reserved).
                 if (newPayout > ticket.claimedAmount) {
                     // Some payout remains after claims; release the difference between original and new
                     if (originalPayout > newPayout) {
                         vault.releasePayout(originalPayout - newPayout);
                     }
                 } else {
-                    // Progressive claims already exceed the recalculated payout (e.g. a voided
-                    // leg lowered the multiplier). The house absorbs the overpayment — this is
-                    // the accepted risk of offering progressive settlement mode.
+                    // claimedAmount >= newPayout: overpayment occurred. Release whatever
+                    // reserve remains and cap newPayout at claimedAmount (no clawback).
                     uint256 remainingReserve = originalPayout - ticket.claimedAmount;
                     if (remainingReserve > 0) vault.releasePayout(remainingReserve);
                     newPayout = ticket.claimedAmount;

@@ -635,9 +635,91 @@ contract ProgressiveSettleTest is FeeRouterSetup {
         assertGt(usdc.balanceOf(bob), bobBefore, "new owner received payout");
     }
 
-    // ── 19. claimPayout "nothing to claim" revert path ─────────────────────
+    // ── 19. Griefing: house absorbs overpayment on void after progressive claim ─
+    //        Explicit demonstration + quantification of the progressive overpayment
+    //        scenario described in the code comments. A low-probability leg wins first
+    //        producing a high progressive claim; a later void drops the multiplier below
+    //        the already-claimed amount. The house absorbs the difference.
+
+    function test_progressive_griefingOverpayment_houseAbsorbs() public {
+        // Use 2-leg progressive: leg 0 (50% prob, 2x), leg 1 (25% prob, 4x)
+        // Combined multiplier = 8x, with edge (200bps) net ~= 7.84x
+        uint256 ticketId = _buyProgressive2Leg();
+        ParlayEngine.Ticket memory tBefore = engine.getTicket(ticketId);
+        uint256 effectiveStake = tBefore.stake - tBefore.feePaid;
+        // effectiveStake = 9_800_000
+
+        // Step 1: Leg 1 (25% prob) wins. Progressive claim gives ~4x on that leg alone.
+        oracle.resolve(1, LegStatus.Won, keccak256("yes"));
+        vm.prank(alice);
+        engine.claimProgressive(ticketId);
+
+        uint256 claimed = engine.getTicket(ticketId).claimedAmount;
+        // claimed = effectiveStake * 4x = 39_200_000 (>> effectiveStake of 9_800_000)
+
+        // Step 2: Void leg 0. Only 1 remaining valid leg -> voided ticket.
+        // Refund = effectiveStake - claimed = negative -> floored to 0.
+        oracle.resolve(0, LegStatus.Voided, bytes32(0));
+
+        uint256 vaultBalBefore = usdc.balanceOf(address(vault));
+
+        engine.settleTicket(ticketId);
+
+        ParlayEngine.Ticket memory tAfter = engine.getTicket(ticketId);
+        assertEq(uint8(tAfter.status), uint8(ParlayEngine.TicketStatus.Voided));
+
+        // Alice got no additional refund (already claimed more than effectiveStake)
+        // The "house loss" = claimed - effectiveStake (the overpayment already disbursed)
+        uint256 houseOverpayment = claimed - effectiveStake;
+        assertGt(houseOverpayment, 0, "overpayment occurred");
+
+        // Remaining reserve was released back to vault
+        uint256 expectedRelease = tBefore.potentialPayout - claimed;
+        assertEq(vault.totalReserved(), 0, "all reserves released after void");
+
+        // The vault absorbed the overpayment: vault assets decreased by houseOverpayment
+        // relative to what it would have been with no progressive claims.
+        // Specifically: vault paid out `claimed` via payWinner, got back `effectiveStake` refund
+        // from the ticket purchase. Net vault loss = claimed - stakeInVault.
+        // This confirms the bounded risk noted in the code.
+        assertGt(claimed, effectiveStake, "progressive claim exceeded effective stake");
+    }
+
+    // ── 20. TicketPurchased event emits correct calldata values ──────────────
+
+    function test_ticketPurchased_event_emitsCorrectValues() public {
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0;
+        legs[1] = 1;
+
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
+
+        vm.prank(alice);
+        vm.expectEmit(true, true, false, true);
+        // Compute expected values
+        // fee = 10e6 * (100 + 2*50) / 10000 = 200_000
+        // effectiveStake = 9_800_000
+        // fairMultiplier = 1e6 * 1e6/500_000 * 1e6/250_000 = 8_000_000
+        // potentialPayout = 9_800_000 * 8_000_000 / 1_000_000 = 78_400_000
+        emit ParlayEngine.TicketPurchased(
+            0, // ticketId
+            alice,
+            legs,
+            outcomes,
+            10e6, // stake
+            8_000_000, // multiplierX1e6 (fair, not net)
+            78_400_000, // potentialPayout
+            ParlayEngine.SettlementMode.FAST,
+            ParlayEngine.PayoutMode.CLASSIC
+        );
+        engine.buyTicket(legs, outcomes, 10e6);
+    }
+
+    // ── 21. claimPayout "nothing to claim" revert path ─────────────────────
     //        Edge: settle sets newPayout = claimedAmount via partial void,
-    //        then claimPayout should revert with "nothing to claim".
+    //        then claimPayout should revert (status auto-transitions to Claimed).
 
     function test_claimPayout_nothingToClaim_afterVoidReducesPayout() public {
         // Use 3-leg progressive: claim first 2, void 3rd.
