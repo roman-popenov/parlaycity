@@ -62,7 +62,7 @@ Polymarket uses per-market orderbooks -- liquidity fragments, thin markets have 
 
 The multiplier climbs as each leg resolves favorably, like Aviator's ascending plane. After each leg wins, the bettor can cash out at the current multiplier or ride for more. If a leg loses, the multiplier crashes to zero. This transforms parlays from passive lottery tickets into live instruments with real-time exit decisions. Aviator generates $14B/month in wagers with 42-77M MAU -- the mechanic is proven at massive scale. We apply it to real-event parlays (sports, politics, markets) instead of pure randomness.
 
-**On-chain:** `cashoutTicket(ticketId, minOut)` with slippage protection (shipping in PR3)
+**On-chain:** `ParlayEngine.PayoutMode` enum + `buyTicketWithMode()` + `cashoutEarly(minOut)` with slippage protection
 **Number:** Aviator: $14B/month in wagers, 42-77M MAU.
 
 ---

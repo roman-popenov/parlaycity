@@ -36,14 +36,14 @@
 
 ## Services Agent
 
-### PR4: Real x402 Verification
-- [ ] Research @x402/express API -- understand middleware pattern, payment verification flow
-- [ ] Install @x402/express as dependency in packages/services
-- [ ] Replace stub middleware with real x402 payment verification
-- [ ] Configure USDC payment on Base (address, amount, network)
-- [ ] Add proper 402 response with payment instructions (resource URL, payment details)
-- [ ] Write integration tests (valid payment, missing payment, invalid payment)
-- [ ] `make gate` passes
+### PR4: Real x402 Verification -- MERGED (PR#5)
+- [x] Research @x402/express API -- understand middleware pattern, payment verification flow
+- [x] Install @x402/express as dependency in packages/services
+- [x] Replace stub middleware with real x402 payment verification
+- [x] Configure USDC payment on Base (address, amount, network)
+- [x] Add proper 402 response with payment instructions (resource URL, payment details)
+- [x] Write integration tests (valid payment, missing payment, invalid payment)
+- [x] `make gate` passes
 
 ---
 

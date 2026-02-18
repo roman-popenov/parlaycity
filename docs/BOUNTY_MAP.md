@@ -8,7 +8,7 @@
 | Futurllama | $2K | Novel mechanic + agent quoting | Crash-parlay + /quote API | HIGH | Polish narrative |
 | Prosperia | $2K | Non-extractive, no owner sweep, social impact | 90/5/5 fee + rehab layer | HIGH | Ship FeeRouter |
 | Base | $10K | Base Sepolia deployment, Base-native UX, OnchainKit | Deploy script ready | HIGH | Deploy + OnchainKit |
-| Kite AI x402 | $10K | Real x402 payment verification, agent-consumable API | Stub exists | HIGH | @x402/express integration |
+| Kite AI x402 | $10K | Real x402 payment verification, agent-consumable API | Implemented | HIGH | Deploy to Base Sepolia |
 | ADI Paymaster | $3K | Gasless UX via Base Paymaster (0xf5d2...0430) | Not started | MED | ERC-4337 integration |
 | ADI Payments | $3K | In-app cosmetic purchases (ticket skins, profile) | Not started | MED | Ticket skins / profile items |
 | ADI Open Project | $19K | Open-ended DeFi innovation on Base | Strong candidate | LOW | Application + narrative |
@@ -27,7 +27,7 @@
 
 1. **Track prizes ($6K)** -- already qualifying, polish narrative for each track
 2. **Base deployment ($10K)** -- deploy script works on Anvil, need Base Sepolia + OnchainKit
-3. **Kite AI x402 ($10K)** -- stub middleware exists, need @x402/express real verification
+3. **Kite AI x402 ($10K)** -- real verification implemented, deploy to Sepolia
 4. **ADI Paymaster ($3K)** -- Base Paymaster available on Sepolia, needs wagmi integration
 5. **ADI Payments ($3K)** -- cosmetic purchase system, independent workstream
 6. **ADI Open Project ($19K)** -- high prize but low confidence, needs strong application
@@ -38,9 +38,9 @@
 ### Kite AI x402 ($10K)
 **What they want:** Agent-native payment protocol. Endpoints that accept x402 payment headers with real on-chain USDC verification on Base.
 
-**What we have:** `packages/services/src/premium/x402.ts` -- stub middleware that checks for non-empty `X-402-Payment` header. Returns proper 402 responses with `"accepts": "USDC on Base"`.
+**What we have:** `packages/services/src/premium/x402.ts` -- real x402 verification using `@x402/express` `paymentMiddleware` with `ExactEvmScheme`. Production mode verifies USDC payments on Base via facilitator. Dev/test mode falls back to stub. Configurable via env vars (`X402_RECIPIENT_WALLET`, `X402_NETWORK`, `X402_FACILITATOR_URL`, `X402_PRICE`). Lazy config initialization prevents import-time crashes in test environments.
 
-**What we need:** Install `@x402/express` package. Replace stub with real payment verification middleware. Configure USDC payment amount, recipient address, and Base network. The premium analytics endpoint (`POST /premium/sim`) is the natural x402-gated endpoint.
+**What we need:** Deploy services to Base Sepolia, verify end-to-end payment flow with facilitator.
 
 ### ADI Paymaster ($3K)
 **What they want:** Gasless user experience using Base Paymaster for sponsored transactions.

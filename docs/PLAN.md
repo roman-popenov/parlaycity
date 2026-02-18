@@ -56,9 +56,8 @@
 **Acceptance:** `make gate` green, cashout pays <= fair value - spread, releases reserved liability, respects minOut, cannot exceed reserves, math parity test passes.
 **Security:** Cashout must release exactly the right amount of reserved liability. Must not create a path to drain vault.
 
-### PR4: Real x402 Verification
+### PR4: Real x402 Verification -- MERGED (PR#5)
 **Owner:** Services agent
-**Branch:** `feat/x402-real`
 **What:** Replace stub with real @x402/express middleware. Kite AI $10K bounty.
 **Files:**
 - Modify: `packages/services/src/premium/x402.ts`

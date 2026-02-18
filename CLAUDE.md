@@ -70,7 +70,7 @@ Per-package: `pnpm --filter web dev`, `pnpm --filter web test`, `pnpm --filter s
 
 **Frontend:** Next.js 14 pages: `/` (builder), `/vault`, `/tickets`, `/ticket/[id]`. wagmi 2 + viem 2 + ConnectKit. Polling 5s/10s with stale-fetch guards.
 
-**Services:** Express port 3001. Routes: `/markets`, `/quote`, `/exposure`, `/premium/sim` (x402-gated stub), `/health`.
+**Services:** Express port 3001. Routes: `/markets`, `/quote`, `/exposure`, `/premium/sim` (x402-gated), `/premium/risk-assess` (x402-gated), `/vault/health`, `/vault/yield-report`, `/health`. x402 uses real verification in production, stub in dev/test.
 
 **Shared:** `math.ts` mirrors `ParlayMath.sol` exactly. PPM=1e6, BPS=1e4.
 
@@ -91,14 +91,14 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 
 ### EXISTS (working, tested, deployed)
 - HouseVault: deposit, withdraw, reserve/release/pay, yield adapter, 90/5/5 fee routing via `routeFees`
-- ParlayEngine: buyTicket, settleTicket, claimPayout, partial void, ERC721
+- ParlayEngine: buyTicket, buyTicketWithMode, settleTicket, claimPayout, claimProgressive, cashoutEarly (with slippage protection), partial void, ERC721, PayoutMode enum (Classic/Progressive/EarlyCashout)
 - LegRegistry: CRUD, validation, oracle adapter references
 - LockVault: lock/unlock/earlyWithdraw, Synthetix-style fee distribution via `notifyFees`, penalty
-- ParlayMath: multiplier, edge, payout (Solidity + TypeScript mirror)
+- ParlayMath: multiplier, edge, payout, progressive payout, cashout value — supports Classic, Progressive, and EarlyCashout modes (Solidity + TypeScript mirror)
 - AdminOracleAdapter + OptimisticOracleAdapter
 - MockYieldAdapter + AaveYieldAdapter (not in default deploy)
 - Frontend: parlay builder, vault dashboard, tickets list, ticket detail, MultiplierClimb viz
-- Services: catalog, quote, exposure (mock), x402-gated premium/sim (real @x402/express verification)
+- Services: catalog, quote, exposure (mock), x402-gated premium/sim + risk-assess, vault/health, vault/yield-report
 - Tests: unit, fuzz, invariant, integration (contracts), vitest (services + web)
 - CI: GitHub Actions (3 jobs), Makefile quality gate
 - Deploy script + sync-env
@@ -106,7 +106,6 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 ### NEEDS BUILDING
 - SafetyModule contract (insurance buffer, yield deployment)
 - Loss distribution routing (80/10/10 split on losing stakes to LP/AMM/rehab)
-- Cashout mechanism (`cashoutTicket` on ParlayEngine or separate contract)
 - Automatic penalty distribution (replace sweepPenaltyShares manual sweep)
 - ERC-4337 paymaster integration (gasless buyTicket/cashout/lock via Base Paymaster)
 - Per-market exposure tracking and caps
