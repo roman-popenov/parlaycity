@@ -318,7 +318,7 @@ export function ParlayBuilder() {
                         "x-402-payment": "demo-token",
                       },
                       body: JSON.stringify({
-                        legIds: selectedLegs.map((s) => s.leg.id),
+                        legIds: selectedLegs.map((s) => s.leg.id.toString()),
                         outcomes: selectedLegs.map((s) => s.outcomeChoice === 1 ? "Yes" : "No"),
                         stake: stake,
                         probabilities,
