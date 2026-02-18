@@ -554,10 +554,17 @@ contract ProgressiveSettleTest is Test {
         engine.settleTicket(ticketId);
 
         ParlayEngine.Ticket memory tAfter = engine.getTicket(ticketId);
-        assertEq(uint8(tAfter.status), uint8(ParlayEngine.TicketStatus.Won));
 
         // Verify potentialPayout >= claimedAmount (engine ensures this)
         assertGe(tAfter.potentialPayout, tAfter.claimedAmount, "new payout >= claimed");
+
+        if (tAfter.potentialPayout > tAfter.claimedAmount) {
+            // More to claim: stays Won
+            assertEq(uint8(tAfter.status), uint8(ParlayEngine.TicketStatus.Won));
+        } else {
+            // Everything claimed: auto-transitions to Claimed (no stuck Won)
+            assertEq(uint8(tAfter.status), uint8(ParlayEngine.TicketStatus.Claimed));
+        }
 
         // Remaining reserve is correct
         assertEq(vault.totalReserved(), reservedBefore - (tBefore.potentialPayout - tAfter.potentialPayout),
@@ -617,13 +624,19 @@ contract ProgressiveSettleTest is Test {
 
         ParlayEngine.Ticket memory tSettled = engine.getTicket(ticketId);
 
-        // If newPayout == claimedAmount, claimPayout should revert
         if (tSettled.potentialPayout == claimed) {
+            // newPayout == claimedAmount: settle should auto-transition to Claimed
+            assertEq(uint8(tSettled.status), uint8(ParlayEngine.TicketStatus.Claimed),
+                "fully-claimed ticket must be Claimed, not stuck in Won");
+
+            // claimPayout correctly reverts (status is Claimed, not Won)
             vm.prank(alice);
-            vm.expectRevert("ParlayEngine: nothing to claim");
+            vm.expectRevert("ParlayEngine: not won");
             engine.claimPayout(ticketId);
         } else {
             // newPayout > claimedAmount: claimPayout should succeed
+            assertEq(uint8(tSettled.status), uint8(ParlayEngine.TicketStatus.Won));
+
             vm.prank(alice);
             engine.claimPayout(ticketId);
 

@@ -87,7 +87,8 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
         uint256 stake,
         uint256 multiplierX1e6,
         uint256 potentialPayout,
-        SettlementMode mode
+        SettlementMode mode,
+        PayoutMode payoutMode
     );
     event TicketSettled(uint256 indexed ticketId, TicketStatus status);
     event PayoutClaimed(uint256 indexed ticketId, address indexed winner, uint256 amount);
@@ -267,7 +268,10 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
             claimedAmount: 0
         });
 
-        emit TicketPurchased(ticketId, msg.sender, legIds, outcomes, stake, multiplierX1e6, potentialPayout, mode);
+        {
+            Ticket storage t = _tickets[ticketId];
+            emit TicketPurchased(ticketId, msg.sender, t.legIds, t.outcomes, stake, t.multiplierX1e6, t.potentialPayout, t.mode, t.payoutMode);
+        }
     }
 
     /// @notice Settle a ticket by checking oracle results for every leg.
@@ -380,7 +384,8 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
 
                 ticket.potentialPayout = newPayout;
                 ticket.multiplierX1e6 = newMultiplier;
-                ticket.status = TicketStatus.Won;
+                // If everything was already claimed, mark Claimed to avoid stuck Won state
+                ticket.status = newPayout > ticket.claimedAmount ? TicketStatus.Won : TicketStatus.Claimed;
             }
         }
 
