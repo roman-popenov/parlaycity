@@ -6,24 +6,24 @@ import type { Request, Response, NextFunction } from "express";
 
 // x402 configuration from environment
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-const X402_RECIPIENT = process.env.X402_PAYMENT_ADDRESS || ZERO_ADDRESS;
+const X402_RECIPIENT = process.env.X402_RECIPIENT_WALLET || ZERO_ADDRESS;
 const X402_NETWORK: Network = (process.env.X402_NETWORK || "eip155:84532") as Network; // Base Sepolia
-const X402_FACILITATOR_URL = process.env.X402_FACILITATOR_URL || "https://x402.org/facilitator";
+const X402_FACILITATOR_URL = process.env.X402_FACILITATOR_URL || "https://facilitator.x402.org";
 const X402_PRICE = process.env.X402_PRICE || "$0.01"; // Price per request
 
 /**
  * Create the x402 payment middleware for the premium sim endpoint.
- * In production: verifies real USDC payment on Base via x402 facilitator.
- * In development (NODE_ENV=development): falls back to stub that accepts any non-empty header.
+ * In production (NODE_ENV=production): verifies real USDC payment on Base via x402 facilitator.
+ * Otherwise (dev, test, staging, or X402_STUB=true): falls back to stub that accepts any non-empty header.
  */
 export function createX402Middleware() {
-  // Development/test mode: use stub for local testing
+  // Non-production mode or explicit stub override: use stub for local/CI testing
   if (process.env.NODE_ENV !== "production" || process.env.X402_STUB === "true") {
     return x402GuardStub;
   }
 
   if (X402_RECIPIENT.toLowerCase() === ZERO_ADDRESS) {
-    throw new Error("X402_PAYMENT_ADDRESS must be set to a non-zero address in production");
+    throw new Error("X402_RECIPIENT_WALLET must be set to a non-zero address in production");
   }
 
   const facilitatorClient = new HTTPFacilitatorClient({
@@ -71,17 +71,20 @@ function x402GuardStub(req: Request, res: Response, next: NextFunction) {
 
   const paymentHeader = req.headers["x-402-payment"];
   if (!paymentHeader) {
+    const accepts: Record<string, string> = {
+      scheme: "exact",
+      network: X402_NETWORK,
+      asset: "USDC",
+      price: X402_PRICE,
+    };
+    if (X402_RECIPIENT.toLowerCase() !== ZERO_ADDRESS) {
+      accepts.payTo = X402_RECIPIENT;
+    }
     return res.status(402).json({
       error: "Payment Required",
       message: "This endpoint requires x402 payment (USDC on Base)",
       protocol: "x402",
-      accepts: {
-        scheme: "exact",
-        network: X402_NETWORK,
-        asset: "USDC",
-        price: X402_PRICE,
-        payTo: X402_RECIPIENT,
-      },
+      accepts,
       facilitator: X402_FACILITATOR_URL,
       mode: "stub",
     });
