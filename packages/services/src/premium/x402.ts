@@ -5,13 +5,14 @@ import type { Network } from "@x402/core/types";
 import { isAddress } from "viem";
 import type { Request, Response, NextFunction } from "express";
 
+// ── Constants ────────────────────────────────────────────────────────────
+
 // Known x402-supported networks and their testnet status
 const KNOWN_NETWORKS: Record<string, { name: string; testnet: boolean }> = {
   "eip155:84532": { name: "Base Sepolia", testnet: true },
   "eip155:8453": { name: "Base", testnet: false },
 };
 
-// x402 configuration from environment
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 /** Individual gated path constants — add new paths here, then include in X402_GATED_PATHS. */
@@ -19,6 +20,8 @@ const PREMIUM_SIM_PATH = "/premium/sim";
 
 /** Paths that require x402 payment. Single source of truth for production + stub. */
 const X402_GATED_PATHS = [PREMIUM_SIM_PATH];
+
+// ── Config getters (all defined before initialization) ───────────────────
 
 function getX402Recipient(): string {
   const raw = process.env.X402_RECIPIENT_WALLET;
@@ -29,7 +32,6 @@ function getX402Recipient(): string {
   return raw.toLowerCase();
 }
 
-const X402_RECIPIENT = getX402Recipient();
 function getX402FacilitatorUrl(): string {
   const raw = process.env.X402_FACILITATOR_URL || "https://facilitator.x402.org";
   let url: URL;
@@ -45,8 +47,25 @@ function getX402FacilitatorUrl(): string {
   return raw;
 }
 
+function getX402Network(): { network: Network; testnet: boolean } {
+  const raw = process.env.X402_NETWORK || "eip155:84532";
+  const info = KNOWN_NETWORKS[raw];
+  if (!info) {
+    throw new Error(
+      `[x402] Unsupported X402_NETWORK "${raw}". Supported: ${Object.keys(KNOWN_NETWORKS).join(", ")}`,
+    );
+  }
+  return { network: raw as Network, testnet: info.testnet };
+}
+
+// ── Module-level initialization (all getters defined above) ──────────────
+
+const X402_RECIPIENT = getX402Recipient();
 const X402_FACILITATOR_URL = getX402FacilitatorUrl();
 const X402_PRICE = process.env.X402_PRICE || "$0.01";
+const { network: X402_NETWORK, testnet: X402_IS_TESTNET } = getX402Network();
+
+// ── Utilities ────────────────────────────────────────────────────────────
 
 /**
  * Wraps an Express middleware with path normalization so that case-variant
@@ -84,18 +103,7 @@ export const _testExports = {
   X402_GATED_PATHS,
 };
 
-function getX402Network(): { network: Network; testnet: boolean } {
-  const raw = process.env.X402_NETWORK || "eip155:84532";
-  const info = KNOWN_NETWORKS[raw];
-  if (!info) {
-    throw new Error(
-      `[x402] Unsupported X402_NETWORK "${raw}". Supported: ${Object.keys(KNOWN_NETWORKS).join(", ")}`,
-    );
-  }
-  return { network: raw as Network, testnet: info.testnet };
-}
-
-const { network: X402_NETWORK, testnet: X402_IS_TESTNET } = getX402Network();
+// ── Middleware factory ───────────────────────────────────────────────────
 
 /**
  * Create the x402 payment middleware for the premium sim endpoint.
@@ -189,4 +197,3 @@ function x402GuardStub(req: Request, res: Response, next: NextFunction) {
   }
   next();
 }
-
