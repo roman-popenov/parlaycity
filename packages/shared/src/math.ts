@@ -141,8 +141,11 @@ export function computeCashoutValue(
   totalLegs: number,
   potentialPayout: bigint,
 ): { cashoutValue: bigint; penaltyBps: number; fairValue: bigint } {
-  if (wonProbsPPM.length === 0 || unresolvedProbsPPM.length === 0) {
-    return { cashoutValue: 0n, penaltyBps: 0, fairValue: 0n };
+  if (wonProbsPPM.length === 0) {
+    throw new Error("computeCashoutValue: no won legs");
+  }
+  if (unresolvedProbsPPM.length === 0) {
+    throw new Error("computeCashoutValue: no unresolved legs");
   }
 
   const ppm = BigInt(PPM);

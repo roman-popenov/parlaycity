@@ -192,6 +192,7 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
         PayoutMode payoutMode
     ) internal returns (uint256 ticketId) {
         // --- Validations ---
+        require(uint8(payoutMode) <= uint8(PayoutMode.EARLY_CASHOUT), "ParlayEngine: invalid payout mode");
         require(legIds.length >= 2, "ParlayEngine: need >= 2 legs");
         require(legIds.length <= maxLegs, "ParlayEngine: too many legs");
         require(legIds.length == outcomes.length, "ParlayEngine: length mismatch");
@@ -598,6 +599,7 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
             );
 
             uint256 payout = cashoutValue > ticket.claimedAmount ? cashoutValue - ticket.claimedAmount : 0;
+            require(payout > 0, "ParlayEngine: zero cashout value");
             require(payout >= minOut, "ParlayEngine: below min cashout");
 
             ticket.status = TicketStatus.Claimed;

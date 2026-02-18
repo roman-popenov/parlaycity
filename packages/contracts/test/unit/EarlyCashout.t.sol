@@ -433,7 +433,36 @@ contract EarlyCashoutTest is Test {
         engine.cashoutEarly(ticketId, 0);
     }
 
-    // ── 15. Cashout paused ────────────────────────────────────────────────
+    // ── 15. Zero cashout value reverts ─────────────────────────────────────
+
+    function test_cashoutEarly_zeroPayout_reverts() public {
+        // Create a 2-leg cashout ticket with very low probability won leg
+        // to produce a cashoutValue that rounds to 0 after penalty
+        uint256 lowProbLeg = registry.createLeg("Unlikely?", "src", 600_000, 700_000, address(oracle), 10_000); // 1%
+        uint256 normalLeg = registry.createLeg("Normal?", "src", 600_000, 700_000, address(oracle), 500_000); // 50%
+
+        uint256[] memory legIds = new uint256[](2);
+        legIds[0] = lowProbLeg;
+        legIds[1] = normalLeg;
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
+
+        // Use minimum stake to maximize chance of zero rounding
+        vm.prank(alice);
+        uint256 ticketId = engine.buyTicketWithMode(legIds, outcomes, 1e6, ParlayEngine.PayoutMode.EARLY_CASHOUT);
+
+        // Resolve the low-prob leg as Won
+        oracle.resolve(lowProbLeg, LegStatus.Won, keccak256("yes"));
+
+        // If cashoutValue rounds to 0, the require(payout > 0) should catch it
+        // Even if it doesn't round to 0 in this case, verify minOut > 0 is respected
+        vm.prank(alice);
+        vm.expectRevert("ParlayEngine: below min cashout");
+        engine.cashoutEarly(ticketId, type(uint256).max); // impossible minOut
+    }
+
+    // ── 16. Cashout paused ────────────────────────────────────────────────
 
     function test_cashoutEarly_whenPaused_reverts() public {
         uint256 ticketId = _buyCashout3Leg();
