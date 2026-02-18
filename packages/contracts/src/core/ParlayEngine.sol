@@ -548,13 +548,11 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
         require(wonCount > 0, "ParlayEngine: need at least 1 won leg");
         require(unresolvedCount > 0, "ParlayEngine: all resolved, use settleTicket");
 
-        // Second pass: collect won and unresolved probabilities
+        // Second pass: collect won probabilities
         uint256[] memory wonProbs = new uint256[](wonCount);
-        uint256[] memory unresolvedProbs = new uint256[](unresolvedCount);
 
         {
             uint256 wIdx;
-            uint256 uIdx;
 
             for (uint256 i = 0; i < ticket.legIds.length; i++) {
                 LegRegistry.Leg memory leg = registry.getLeg(ticket.legIds[i]);
@@ -565,19 +563,16 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
                     : leg.probabilityPPM;
 
                 if (!oracle.canResolve(ticket.legIds[i])) {
-                    unresolvedProbs[uIdx++] = prob;
                     continue;
                 }
 
                 (LegStatus legStatus,) = oracle.getStatus(ticket.legIds[i]);
 
                 if (legStatus == LegStatus.Voided) {
-                    unresolvedProbs[uIdx++] = prob;
                     continue;
                 }
 
                 if (legStatus != LegStatus.Won && legStatus != LegStatus.Lost) {
-                    unresolvedProbs[uIdx++] = prob;
                     continue;
                 }
 
@@ -592,7 +587,7 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
             (uint256 cashoutValue, uint256 penaltyBps) = ParlayMath.computeCashoutValue(
                 effectiveStake,
                 wonProbs,
-                unresolvedProbs,
+                unresolvedCount,
                 baseCashoutPenaltyBps,
                 ticket.legIds.length,
                 ticket.potentialPayout

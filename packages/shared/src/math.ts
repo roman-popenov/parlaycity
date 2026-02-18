@@ -118,7 +118,7 @@ export function computeProgressivePayout(
   alreadyClaimed: bigint
 ): { partialPayout: bigint; claimable: bigint } {
   if (wonProbsPPM.length === 0) {
-    return { partialPayout: 0n, claimable: 0n };
+    throw new Error("computeProgressivePayout: no won legs");
   }
   const partialMultiplier = computeMultiplier(wonProbsPPM);
   let partialPayout = computePayout(effectiveStake, partialMultiplier);
@@ -136,7 +136,7 @@ export function computeProgressivePayout(
 export function computeCashoutValue(
   effectiveStake: bigint,
   wonProbsPPM: number[],
-  unresolvedProbsPPM: number[],
+  unresolvedCount: number,
   basePenaltyBps: number,
   totalLegs: number,
   potentialPayout: bigint,
@@ -144,7 +144,7 @@ export function computeCashoutValue(
   if (wonProbsPPM.length === 0) {
     throw new Error("computeCashoutValue: no won legs");
   }
-  if (unresolvedProbsPPM.length === 0) {
+  if (unresolvedCount === 0) {
     throw new Error("computeCashoutValue: no unresolved legs");
   }
 
@@ -159,7 +159,7 @@ export function computeCashoutValue(
   const fairValue = computePayout(effectiveStake, wonMultiplier);
 
   // Scaled penalty
-  const penaltyBps = Math.floor((basePenaltyBps * unresolvedProbsPPM.length) / totalLegs);
+  const penaltyBps = Math.floor((basePenaltyBps * unresolvedCount) / totalLegs);
   let cashoutValue = (fairValue * (bps - BigInt(penaltyBps))) / bps;
 
   // Cap at potential payout
