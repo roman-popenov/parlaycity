@@ -19,6 +19,9 @@ const X402_PRICE = process.env.X402_PRICE || "$0.01"; // Price per request
 export function createX402Middleware() {
   // Non-production mode or explicit stub override: use stub for local/CI testing
   if (process.env.NODE_ENV !== "production" || process.env.X402_STUB === "true") {
+    if (X402_RECIPIENT.toLowerCase() === ZERO_ADDRESS) {
+      console.warn("[x402] X402_RECIPIENT_WALLET not set — stub 402 responses will omit payTo");
+    }
     return x402GuardStub;
   }
 
