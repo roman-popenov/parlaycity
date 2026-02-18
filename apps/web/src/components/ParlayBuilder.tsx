@@ -286,7 +286,7 @@ export function ParlayBuilder() {
             className={`w-full rounded-xl py-3.5 text-sm font-bold uppercase tracking-wider transition-all ${
               !mounted || !isConnected
                 ? "bg-gradient-to-r from-accent-blue to-accent-purple text-white shadow-lg shadow-accent-purple/20 hover:shadow-accent-purple/40"
-                : canBuy && !isPending && !isConfirming
+                : canBuy && !vaultEmpty && !isPending && !isConfirming
                   ? "bg-gradient-to-r from-accent-blue to-accent-purple text-white shadow-lg shadow-accent-purple/20 hover:shadow-accent-purple/40"
                   : "cursor-not-allowed bg-gray-800 text-gray-500"
             }`}
