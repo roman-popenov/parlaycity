@@ -2,6 +2,7 @@ import { paymentMiddleware, x402ResourceServer } from "@x402/express";
 import { ExactEvmScheme } from "@x402/evm/exact/server";
 import { HTTPFacilitatorClient } from "@x402/core/server";
 import type { Network } from "@x402/core/types";
+import { isAddress } from "viem";
 import type { Request, Response, NextFunction } from "express";
 
 // Known x402-supported networks and their testnet status
@@ -12,7 +13,17 @@ const KNOWN_NETWORKS: Record<string, { name: string; testnet: boolean }> = {
 
 // x402 configuration from environment
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-const X402_RECIPIENT = (process.env.X402_RECIPIENT_WALLET || ZERO_ADDRESS).toLowerCase();
+
+function getX402Recipient(): string {
+  const raw = process.env.X402_RECIPIENT_WALLET;
+  if (!raw) return ZERO_ADDRESS;
+  if (!isAddress(raw)) {
+    throw new Error(`[x402] Invalid X402_RECIPIENT_WALLET "${raw}" — must be a valid Ethereum address`);
+  }
+  return raw.toLowerCase();
+}
+
+const X402_RECIPIENT = getX402Recipient();
 const X402_FACILITATOR_URL = process.env.X402_FACILITATOR_URL || "https://facilitator.x402.org";
 const X402_PRICE = process.env.X402_PRICE || "$0.01"; // Price per request
 
