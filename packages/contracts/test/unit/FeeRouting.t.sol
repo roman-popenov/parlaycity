@@ -163,9 +163,9 @@ contract FeeRoutingTest is Test {
         assertApproxEqAbs(claimed, expectedToLockers, 1, "Locker should claim ~90% fee share (1 wei dust ok)");
     }
 
-    // ── No Fee Routing Without Config ──────────────────────────────────
+    // ── buyTicket Reverts Without Fee Config ─────────────────────────
 
-    function test_feeRouting_noRoutingWithoutConfig() public {
+    function test_feeRouting_revertsWithoutConfig() public {
         // Deploy fresh vault/engine without lockVault/safetyModule config
         HouseVault freshVault = new HouseVault(IERC20(address(usdc)));
         ParlayEngine freshEngine = new ParlayEngine(freshVault, registry, IERC20(address(usdc)), BOOTSTRAP_ENDS);
@@ -179,53 +179,13 @@ contract FeeRoutingTest is Test {
         vm.prank(alice);
         usdc.approve(address(freshEngine), type(uint256).max);
 
-        uint256 vaultBefore = freshVault.totalAssets();
-
-        uint256[] memory legs = new uint256[](2);
-        legs[0] = 0;
-        legs[1] = 1;
-        bytes32[] memory outcomes = new bytes32[](2);
-        outcomes[0] = keccak256("yes");
-        outcomes[1] = keccak256("yes");
-
+        // buyTicket should revert because lockVault is not configured
         vm.prank(alice);
-        freshEngine.buyTicket(legs, outcomes, 10e6);
-
-        // Full stake (including fees) stays in vault
-        assertEq(freshVault.totalAssets(), vaultBefore + 10e6, "All stake should stay in vault without config");
+        vm.expectRevert("HouseVault: lockVault not configured");
+        freshEngine.buyTicket(_twoLegs(), _twoOutcomes(), 10e6);
     }
 
-    // ── Events Reflect Actual Routing (Not Requested) ────────────────
-
-    function test_feeRouting_eventsReflectActualRouting() public {
-        // Deploy vault/engine with NO lockVault or safetyModule configured
-        HouseVault freshVault = new HouseVault(IERC20(address(usdc)));
-        ParlayEngine freshEngine = new ParlayEngine(freshVault, registry, IERC20(address(usdc)), BOOTSTRAP_ENDS);
-        freshVault.setEngine(address(freshEngine));
-
-        usdc.mint(owner, 10_000e6);
-        usdc.approve(address(freshVault), type(uint256).max);
-        freshVault.deposit(10_000e6, owner);
-
-        usdc.mint(alice, 50e6);
-        vm.prank(alice);
-        usdc.approve(address(freshEngine), type(uint256).max);
-
-        // feePaid = 200bps of 50e6 = 1_000_000
-        // Since no lockVault/safetyModule, all fees stay in vault
-        uint256 expectedFee = 1_000_000;
-
-        // ParlayEngine event should emit 0 for lockers/safety, full fee to vault
-        vm.expectEmit(true, true, true, true);
-        emit ParlayEngine.FeesRouted(0, 0, 0, expectedFee);
-
-        vm.prank(alice);
-        freshEngine.buyTicket(_twoLegs(), _twoOutcomes(), 50e6);
-    }
-
-    // ── Partial Config: Only LockVault Set ───────────────────────────
-
-    function test_feeRouting_partialConfig_onlyLockVault() public {
+    function test_feeRouting_revertsWithoutSafetyModule() public {
         // Deploy with lockVault but no safetyModule
         HouseVault freshVault = new HouseVault(IERC20(address(usdc)));
         ParlayEngine freshEngine = new ParlayEngine(freshVault, registry, IERC20(address(usdc)), BOOTSTRAP_ENDS);
@@ -238,34 +198,14 @@ contract FeeRoutingTest is Test {
         usdc.approve(address(freshVault), type(uint256).max);
         freshVault.deposit(10_000e6, owner);
 
-        // Create a locker so notifyFees doesn't just accumulate
-        usdc.mint(locker, 5_000e6);
-        vm.startPrank(locker);
-        usdc.approve(address(freshVault), type(uint256).max);
-        freshVault.deposit(5_000e6, locker);
-        IERC20(address(freshVault)).approve(address(freshLockVault), type(uint256).max);
-        freshLockVault.lock(5_000e6, LockVault.LockTier.THIRTY);
-        vm.stopPrank();
-
         usdc.mint(alice, 50e6);
         vm.prank(alice);
         usdc.approve(address(freshEngine), type(uint256).max);
 
-        uint256 lockBefore = usdc.balanceOf(address(freshLockVault));
-
+        // buyTicket should revert because safetyModule is not configured
         vm.prank(alice);
+        vm.expectRevert("HouseVault: safetyModule not configured");
         freshEngine.buyTicket(_twoLegs(), _twoOutcomes(), 50e6);
-
-        uint256 expectedFee = 1_000_000;
-        uint256 expectedToLockers = (expectedFee * 9000) / 10_000;
-        uint256 expectedToSafety = (expectedFee * 500) / 10_000;
-
-        // LockVault should get its share
-        assertEq(usdc.balanceOf(address(freshLockVault)) - lockBefore, expectedToLockers, "LockVault gets fees");
-        // Safety portion stays in vault (no safetyModule configured)
-        // Vault retains: feeToVault + feeToSafety (unrouted)
-        uint256 expectedVaultRetained = expectedFee - expectedToLockers;
-        assertGe(expectedVaultRetained, expectedToSafety, "Vault retains safety share when unconfigured");
     }
 
     // ── Solvency Invariant Holds After Routing ─────────────────────────
@@ -525,5 +465,131 @@ contract FeeRoutingTest is Test {
 
         assertEq(freshLockVault.accRewardPerWeightedShare(), 0, "Accumulator unchanged with no lockers");
         assertEq(freshLockVault.undistributedFees(), 1e6, "Fees tracked for later distribution");
+    }
+
+    // ── Undistributed Fees Flow to First Locker ─────────────────────────
+
+    function test_undistributedFees_flowToFirstLocker() public {
+        // Deploy fresh setup: vault + lockVault + engine, NO lockers yet
+        HouseVault freshVault = new HouseVault(IERC20(address(usdc)));
+        LockVault freshLockVault = new LockVault(freshVault);
+        ParlayEngine freshEngine = new ParlayEngine(freshVault, registry, IERC20(address(usdc)), BOOTSTRAP_ENDS);
+        freshVault.setEngine(address(freshEngine));
+        freshVault.setLockVault(freshLockVault);
+        freshVault.setSafetyModule(safetyModule);
+        freshLockVault.setFeeDistributor(address(freshVault));
+
+        // Seed vault
+        usdc.mint(owner, 10_000e6);
+        usdc.approve(address(freshVault), type(uint256).max);
+        freshVault.deposit(10_000e6, owner);
+
+        // Buy a ticket — fees go to lockVault, but no lockers yet → undistributed
+        usdc.mint(alice, 50e6);
+        vm.prank(alice);
+        usdc.approve(address(freshEngine), type(uint256).max);
+        vm.prank(alice);
+        freshEngine.buyTicket(_twoLegs(), _twoOutcomes(), 50e6);
+
+        uint256 expectedFee = (50e6 * 200) / 10_000; // 1_000_000
+        uint256 expectedToLockers = (expectedFee * 9000) / 10_000; // 900_000
+        assertEq(freshLockVault.undistributedFees(), expectedToLockers, "Fees undistributed without lockers");
+
+        // Now a locker locks — should capture all undistributed fees
+        address firstLocker = makeAddr("firstLocker");
+        usdc.mint(firstLocker, 5_000e6);
+        vm.startPrank(firstLocker);
+        usdc.approve(address(freshVault), type(uint256).max);
+        uint256 shares = freshVault.deposit(5_000e6, firstLocker);
+        IERC20(address(freshVault)).approve(address(freshLockVault), type(uint256).max);
+        freshLockVault.lock(shares, LockVault.LockTier.THIRTY);
+        vm.stopPrank();
+
+        assertEq(freshLockVault.undistributedFees(), 0, "Undistributed fees cleared after first lock");
+
+        // First locker should be able to claim all of them
+        vm.prank(firstLocker);
+        freshLockVault.settleRewards(0);
+        vm.prank(firstLocker);
+        freshLockVault.claimFees();
+
+        assertApproxEqAbs(
+            usdc.balanceOf(firstLocker), expectedToLockers, 1, "First locker captures all undistributed fees"
+        );
+    }
+
+    // ── Two Lockers Get Weight-Proportional Shares ──────────────────────
+
+    function test_twoLockers_proportionalShares() public {
+        // Setup second locker with different tier (different weight)
+        address locker2 = makeAddr("locker2");
+        usdc.mint(locker2, 5_000e6);
+        vm.startPrank(locker2);
+        usdc.approve(address(vault), type(uint256).max);
+        vault.deposit(5_000e6, locker2);
+        IERC20(address(vault)).approve(address(lockVault), type(uint256).max);
+        // 90-day tier = 1.5x weight vs locker's 30-day = 1.1x
+        lockVault.lock(5_000e6, LockVault.LockTier.NINETY);
+        vm.stopPrank();
+
+        // Buy ticket
+        vm.prank(alice);
+        uint256 ticketId = engine.buyTicket(_twoLegs(), _twoOutcomes(), 50e6);
+
+        ParlayEngine.Ticket memory t = engine.getTicket(ticketId);
+        uint256 feeToLockers = (t.feePaid * 9000) / 10_000;
+
+        // Settle and claim for both
+        vm.prank(locker);
+        lockVault.settleRewards(0);
+        uint256 locker1Before = usdc.balanceOf(locker);
+        vm.prank(locker);
+        lockVault.claimFees();
+        uint256 locker1Claimed = usdc.balanceOf(locker) - locker1Before;
+
+        vm.prank(locker2);
+        lockVault.settleRewards(1);
+        uint256 locker2Before = usdc.balanceOf(locker2);
+        vm.prank(locker2);
+        lockVault.claimFees();
+        uint256 locker2Claimed = usdc.balanceOf(locker2) - locker2Before;
+
+        // Combined claims should equal total routed to lockers (within rounding)
+        assertApproxEqAbs(locker1Claimed + locker2Claimed, feeToLockers, 2, "Combined claims equal total locker fees");
+
+        // Locker2 (1.5x weight) should get more than locker1 (1.1x weight) for same shares
+        assertGt(locker2Claimed, locker1Claimed, "Higher tier locker gets larger share");
+    }
+
+    // ── Routing Uses freeLiquidity Not totalAssets ──────────────────────
+
+    function test_routeFees_usesFreeLiquidity() public {
+        // Buy several small tickets to eat up free liquidity via reservations
+        usdc.mint(alice, 400e6);
+        vm.prank(alice);
+        usdc.approve(address(engine), type(uint256).max);
+
+        // Buy multiple tickets to build up totalReserved (each stays within maxPayout)
+        vm.startPrank(alice);
+        for (uint256 i = 0; i < 8; i++) {
+            engine.buyTicket(_twoLegs(), _twoOutcomes(), 50e6);
+        }
+        vm.stopPrank();
+
+        // Now vault has high totalReserved, low freeLiquidity
+        uint256 free = vault.freeLiquidity();
+
+        // Try to route more than free liquidity (simulate from engine)
+        vm.prank(address(engine));
+        vm.expectRevert("HouseVault: insufficient free liquidity for routing");
+        vault.routeFees(free + 1, 0, 0);
+    }
+
+    // ── NotifyFees Zero Amount Reverts ───────────────────────────────────
+
+    function test_notifyFees_zeroAmount_reverts() public {
+        vm.prank(address(vault));
+        vm.expectRevert("LockVault: zero amount");
+        lockVault.notifyFees(0);
     }
 }

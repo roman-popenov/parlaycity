@@ -260,31 +260,28 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
 
     /// @notice Route fee portions out of the vault to LockVault and SafetyModule.
     ///         The remaining feeToVault stays in the vault implicitly (already deposited).
-    ///         Only callable by ParlayEngine.
+    ///         Only callable by ParlayEngine. Reverts if fee recipients are not configured.
     function routeFees(uint256 feeToLockers, uint256 feeToSafety, uint256 feeToVault)
         external
         onlyEngine
         nonReentrant
-        returns (uint256 routedToLockers, uint256 routedToSafety, uint256 routedToVault)
     {
-        uint256 totalOut = feeToLockers + feeToSafety;
-        require(totalAssets() >= totalReserved + totalOut, "HouseVault: routing would break solvency");
+        require(address(lockVault) != address(0), "HouseVault: lockVault not configured");
+        require(safetyModule != address(0), "HouseVault: safetyModule not configured");
 
-        // Transfer to LockVault and notify
-        if (feeToLockers > 0 && address(lockVault) != address(0)) {
+        uint256 totalOut = feeToLockers + feeToSafety;
+        require(freeLiquidity() >= totalOut, "HouseVault: insufficient free liquidity for routing");
+
+        if (feeToLockers > 0) {
             asset.safeTransfer(address(lockVault), feeToLockers);
             lockVault.notifyFees(feeToLockers);
-            routedToLockers = feeToLockers;
         }
 
-        // Transfer to safety module
-        if (feeToSafety > 0 && safetyModule != address(0)) {
+        if (feeToSafety > 0) {
             asset.safeTransfer(safetyModule, feeToSafety);
-            routedToSafety = feeToSafety;
         }
 
-        routedToVault = feeToVault + (feeToLockers - routedToLockers) + (feeToSafety - routedToSafety);
-        emit FeesRouted(routedToLockers, routedToSafety, routedToVault);
+        emit FeesRouted(feeToLockers, feeToSafety, feeToVault);
     }
 
     // ── Yield Functions ───────────────────────────────────────────────────

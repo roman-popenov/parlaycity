@@ -39,6 +39,9 @@ contract IntegrationTest is Test {
         yieldAdapter = new MockYieldAdapter(IERC20(address(usdc)), address(vault));
 
         vault.setEngine(address(engine));
+        vault.setLockVault(lockVault);
+        vault.setSafetyModule(makeAddr("safetyModule"));
+        lockVault.setFeeDistributor(address(vault));
         vault.setYieldAdapter(IYieldAdapter(address(yieldAdapter)));
 
         // Fund LP: deposit 10k USDC to vault
@@ -95,8 +98,10 @@ contract IntegrationTest is Test {
         assertEq(usdc.balanceOf(bettor), bettorBefore + t.potentialPayout);
         assertEq(uint8(engine.getTicket(ticketId).status), uint8(ParlayEngine.TicketStatus.Claimed));
 
-        // Vault balance = initial + stake - payout (house lost)
-        assertEq(vault.totalAssets(), vaultBefore + 10e6 - t.potentialPayout);
+        // Vault balance = initial + stake - payout - fees routed out (90% + 5%)
+        uint256 feeToLockers = (t.feePaid * 9000) / 10_000;
+        uint256 feeToSafety = (t.feePaid * 500) / 10_000;
+        assertEq(vault.totalAssets(), vaultBefore + 10e6 - t.potentialPayout - feeToLockers - feeToSafety);
         assertEq(vault.totalReserved(), 0);
 
         // LP withdraws shares
@@ -128,8 +133,11 @@ contract IntegrationTest is Test {
         engine.settleTicket(ticketId);
         assertEq(uint8(engine.getTicket(ticketId).status), uint8(ParlayEngine.TicketStatus.Lost));
 
-        // Vault balance increased by full stake (house wins)
-        assertEq(vault.totalAssets(), vaultBefore + 10e6);
+        // Vault balance increased by stake minus fees routed out (90% + 5%)
+        ParlayEngine.Ticket memory t = engine.getTicket(ticketId);
+        uint256 feeToLockers = (t.feePaid * 9000) / 10_000;
+        uint256 feeToSafety = (t.feePaid * 500) / 10_000;
+        assertEq(vault.totalAssets(), vaultBefore + 10e6 - feeToLockers - feeToSafety);
         assertEq(vault.totalReserved(), 0);
     }
 

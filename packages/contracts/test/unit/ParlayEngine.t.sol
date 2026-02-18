@@ -6,6 +6,7 @@ import {MockUSDC} from "../../src/MockUSDC.sol";
 import {HouseVault} from "../../src/core/HouseVault.sol";
 import {LegRegistry} from "../../src/core/LegRegistry.sol";
 import {ParlayEngine} from "../../src/core/ParlayEngine.sol";
+import {LockVault} from "../../src/core/LockVault.sol";
 import {AdminOracleAdapter} from "../../src/oracle/AdminOracleAdapter.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {LegStatus} from "../../src/interfaces/IOracleAdapter.sol";
@@ -34,6 +35,12 @@ contract ParlayEngineTest is Test {
         engine = new ParlayEngine(vault, registry, IERC20(address(usdc)), BOOTSTRAP_ENDS);
 
         vault.setEngine(address(engine));
+
+        // Wire fee routing (required for buyTicket)
+        LockVault lockVault = new LockVault(vault);
+        vault.setLockVault(lockVault);
+        vault.setSafetyModule(makeAddr("safetyModule"));
+        lockVault.setFeeDistributor(address(vault));
 
         // Seed vault with liquidity
         usdc.mint(owner, 10_000e6);
