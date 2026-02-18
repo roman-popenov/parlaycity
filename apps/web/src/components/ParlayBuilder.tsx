@@ -30,6 +30,12 @@ export function ParlayBuilder() {
 
   const [selectedLegs, setSelectedLegs] = useState<SelectedLeg[]>([]);
   const [stake, setStake] = useState<string>("");
+  const [payoutMode, setPayoutMode] = useState<0 | 1 | 2>(0); // 0=Classic, 1=Progressive, 2=EarlyCashout
+  const [riskAdvice, setRiskAdvice] = useState<{
+    action: string; suggestedStake: string; kellyFraction: number;
+    winProbability: number; reasoning: string; warnings: string[];
+  } | null>(null);
+  const [riskLoading, setRiskLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -89,10 +95,12 @@ export function ParlayBuilder() {
     if (!canBuy) return;
     const legIds = selectedLegs.map((s) => s.leg.id);
     const outcomes = selectedLegs.map((s) => s.outcomeChoice);
-    const success = await buyTicket(legIds, outcomes, stakeNum);
+    const success = await buyTicket(legIds, outcomes, stakeNum, payoutMode);
     if (success) {
       setSelectedLegs([]);
       setStake("");
+      setPayoutMode(0);
+      setRiskAdvice(null);
     }
   };
 
@@ -250,6 +258,33 @@ export function ParlayBuilder() {
             </div>
           </div>
 
+          {/* Payout mode selector */}
+          <div>
+            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-gray-500">
+              Payout Mode
+            </label>
+            <div className="grid grid-cols-3 gap-1 rounded-xl bg-white/5 p-1">
+              {([
+                { value: 0 as const, label: "Classic", desc: "All or nothing" },
+                { value: 1 as const, label: "Progressive", desc: "Claim as legs win" },
+                { value: 2 as const, label: "Cashout", desc: "Exit early w/ penalty" },
+              ]).map(({ value, label, desc }) => (
+                <button
+                  key={value}
+                  onClick={() => { resetSuccess(); setPayoutMode(value); }}
+                  className={`rounded-lg px-2 py-2 text-center transition-all ${
+                    payoutMode === value
+                      ? "bg-accent-blue/20 text-accent-blue ring-1 ring-accent-blue/30"
+                      : "text-gray-400 hover:text-gray-200"
+                  }`}
+                >
+                  <span className="block text-xs font-semibold">{label}</span>
+                  <span className="block text-[10px] opacity-60">{desc}</span>
+                </button>
+              ))}
+            </div>
+          </div>
+
           {/* Payout breakdown */}
           <div className="space-y-2 text-sm">
             <div className="flex justify-between text-gray-400">
@@ -279,6 +314,73 @@ export function ParlayBuilder() {
               </span>
             </div>
           </div>
+
+          {/* Risk Advisor */}
+          {selectedLegs.length >= PARLAY_CONFIG.minLegs && stakeNum > 0 && (
+            <div className="space-y-2">
+              <button
+                onClick={async () => {
+                  setRiskLoading(true);
+                  setRiskAdvice(null);
+                  try {
+                    const probabilities = selectedLegs.map((s) => {
+                      const prob = 1 / effectiveOdds(s.leg, s.outcomeChoice);
+                      return Math.round(prob * 1_000_000);
+                    });
+                    const res = await fetch("http://localhost:3001/premium/risk-assess", {
+                      method: "POST",
+                      headers: {
+                        "Content-Type": "application/json",
+                        "x-402-payment": "demo-token",
+                      },
+                      body: JSON.stringify({
+                        legIds: selectedLegs.map((s) => s.leg.id),
+                        outcomes: selectedLegs.map((s) => s.outcomeChoice === 1 ? "Yes" : "No"),
+                        stake: stake,
+                        probabilities,
+                        bankroll: usdcBalance ? (Number(usdcBalance) / 1e6).toString() : "100",
+                        riskTolerance: "moderate",
+                      }),
+                    });
+                    if (res.ok) setRiskAdvice(await res.json());
+                  } catch { /* silently fail */ }
+                  setRiskLoading(false);
+                }}
+                disabled={riskLoading}
+                className="w-full rounded-lg border border-accent-purple/30 bg-accent-purple/10 py-2 text-xs font-semibold text-accent-purple transition-all hover:bg-accent-purple/20 disabled:opacity-50"
+              >
+                {riskLoading ? "Analyzing..." : "AI Risk Analysis (x402)"}
+              </button>
+              {riskAdvice && (
+                <div className={`rounded-lg border px-3 py-2.5 text-xs animate-fade-in ${
+                  riskAdvice.action === "BUY" ? "border-neon-green/20 bg-neon-green/5 text-neon-green" :
+                  riskAdvice.action === "REDUCE_STAKE" ? "border-yellow-500/20 bg-yellow-500/5 text-yellow-400" :
+                  "border-neon-red/20 bg-neon-red/5 text-neon-red"
+                }`}>
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="font-bold">{riskAdvice.action}</span>
+                    <span className="text-gray-400">Kelly: {(riskAdvice.kellyFraction * 100).toFixed(1)}%</span>
+                  </div>
+                  <p className="text-gray-300">{riskAdvice.reasoning}</p>
+                  {riskAdvice.warnings.length > 0 && (
+                    <div className="mt-1.5 space-y-0.5">
+                      {riskAdvice.warnings.map((w, i) => (
+                        <p key={i} className="text-yellow-400/80">! {w}</p>
+                      ))}
+                    </div>
+                  )}
+                  {riskAdvice.suggestedStake !== stake && (
+                    <button
+                      onClick={() => setStake(riskAdvice!.suggestedStake)}
+                      className="mt-1.5 rounded bg-accent-blue/20 px-2 py-0.5 text-accent-blue hover:bg-accent-blue/30"
+                    >
+                      Use suggested: ${riskAdvice.suggestedStake}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Buy button */}
           <button

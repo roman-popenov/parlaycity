@@ -1,7 +1,7 @@
 "use client";
 
 import { formatUnits } from "viem";
-import { useSettleTicket, useClaimPayout } from "@/lib/hooks";
+import { useSettleTicket, useClaimPayout, useClaimProgressive, useCashoutEarly } from "@/lib/hooks";
 
 export type TicketStatus = "Active" | "Won" | "Lost" | "Voided" | "Claimed";
 
@@ -20,6 +20,8 @@ export interface TicketData {
   legs: TicketLeg[];
   status: TicketStatus;
   createdAt: number;
+  payoutMode?: number; // 0=Classic, 1=Progressive, 2=EarlyCashout
+  claimedAmount?: bigint;
 }
 
 const STATUS_STYLES: Record<TicketStatus, string> = {
@@ -51,14 +53,30 @@ function getLegStatus(leg: TicketLeg): "win" | "loss" | "voided" | "pending" {
   return "pending";
 }
 
+const PAYOUT_MODE_LABELS: Record<number, { label: string; style: string }> = {
+  0: { label: "Classic", style: "text-gray-400" },
+  1: { label: "Progressive", style: "text-accent-purple" },
+  2: { label: "Cashout", style: "text-yellow-400" },
+};
+
 export function TicketCard({ ticket }: { ticket: TicketData }) {
   const { settle, isPending: isSettling } = useSettleTicket();
   const { claim, isPending: isClaiming } = useClaimPayout();
+  const { claimProgressive, isPending: isClaimingProgressive } = useClaimProgressive();
+  const { cashoutEarly, isPending: isCashingOut } = useCashoutEarly();
 
   const multiplier = ticket.legs.reduce((acc, l) => acc * l.odds, 1);
   const allResolved = ticket.legs.every((l) => l.resolved);
+  const hasWonLegs = ticket.legs.some((l) => {
+    const s = getLegStatus(l);
+    return s === "win";
+  });
+  const hasUnresolved = ticket.legs.some((l) => !l.resolved);
+  const hasLostLeg = ticket.legs.some((l) => getLegStatus(l) === "loss");
   const canSettle = ticket.status === "Active" && allResolved;
   const canClaim = ticket.status === "Won";
+  const canClaimProgressive = ticket.status === "Active" && ticket.payoutMode === 1 && hasWonLegs && !hasLostLeg;
+  const canCashout = ticket.status === "Active" && ticket.payoutMode === 2 && hasWonLegs && hasUnresolved && !hasLostLeg;
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-gray-900 to-gray-950">
@@ -70,11 +88,18 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
             #{ticket.id.toString()}
           </h3>
         </div>
-        <span
-          className={`rounded-full border px-3 py-1 text-xs font-semibold ${STATUS_STYLES[ticket.status]}`}
-        >
-          {ticket.status}
-        </span>
+        <div className="flex items-center gap-2">
+          {ticket.payoutMode !== undefined && ticket.payoutMode > 0 && (
+            <span className={`text-[10px] font-medium ${PAYOUT_MODE_LABELS[ticket.payoutMode]?.style ?? ""}`}>
+              {PAYOUT_MODE_LABELS[ticket.payoutMode]?.label}
+            </span>
+          )}
+          <span
+            className={`rounded-full border px-3 py-1 text-xs font-semibold ${STATUS_STYLES[ticket.status]}`}
+          >
+            {ticket.status}
+          </span>
+        </div>
       </div>
 
       {/* Legs */}
@@ -156,6 +181,24 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
               className="flex-1 rounded-xl bg-gradient-to-r from-neon-green/80 to-neon-green py-2.5 text-sm font-bold text-black transition-all hover:shadow-lg hover:shadow-neon-green/20 disabled:opacity-50"
             >
               {isClaiming ? "Claiming..." : "Claim Payout"}
+            </button>
+          )}
+          {canClaimProgressive && (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); claimProgressive(ticket.id); }}
+              disabled={isClaimingProgressive}
+              className="flex-1 rounded-xl border border-accent-purple/30 bg-accent-purple/10 py-2.5 text-sm font-semibold text-accent-purple transition-all hover:bg-accent-purple/20 disabled:opacity-50"
+            >
+              {isClaimingProgressive ? "Claiming..." : "Claim Progressive"}
+            </button>
+          )}
+          {canCashout && (
+            <button
+              onClick={(e) => { e.preventDefault(); e.stopPropagation(); cashoutEarly(ticket.id); }}
+              disabled={isCashingOut}
+              className="flex-1 rounded-xl border border-yellow-500/30 bg-yellow-500/10 py-2.5 text-sm font-semibold text-yellow-400 transition-all hover:bg-yellow-500/20 disabled:opacity-50"
+            >
+              {isCashingOut ? "Cashing out..." : "Cash Out Early"}
             </button>
           )}
         </div>

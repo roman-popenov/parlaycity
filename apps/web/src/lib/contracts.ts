@@ -165,6 +165,8 @@ export const PARLAY_ENGINE_ABI = [
           { name: "mode", type: "uint8" },
           { name: "status", type: "uint8" },
           { name: "createdAt", type: "uint256" },
+          { name: "payoutMode", type: "uint8" },
+          { name: "claimedAmount", type: "uint256" },
         ],
       },
     ],
@@ -210,6 +212,35 @@ export const PARLAY_ENGINE_ABI = [
     stateMutability: "view",
     inputs: [{ name: "tokenId", type: "uint256" }],
     outputs: [{ name: "", type: "address" }],
+  },
+  {
+    name: "buyTicketWithMode",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "legIds", type: "uint256[]" },
+      { name: "outcomes", type: "bytes32[]" },
+      { name: "stake", type: "uint256" },
+      { name: "payoutMode", type: "uint8" },
+    ],
+    outputs: [{ name: "ticketId", type: "uint256" }],
+  },
+  {
+    name: "claimProgressive",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [{ name: "ticketId", type: "uint256" }],
+    outputs: [],
+  },
+  {
+    name: "cashoutEarly",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "ticketId", type: "uint256" },
+      { name: "minOut", type: "uint256" },
+    ],
+    outputs: [],
   },
 ] as const;
 
