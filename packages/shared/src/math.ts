@@ -129,7 +129,7 @@ export function computeProgressivePayout(
 
 /**
  * Compute cashout value for an early exit.
- * fairValue = wonValue * product(unresolvedProbs) / PPM^unresolvedCount
+ * fairValue = wonValue (expected value given won legs; unresolved risk priced via penalty)
  * penaltyBps = basePenaltyBps * unresolvedCount / totalLegs
  * cashoutValue = fairValue * (BPS - penaltyBps) / BPS
  */
@@ -148,18 +148,15 @@ export function computeCashoutValue(
     throw new Error("computeCashoutValue: no unresolved legs");
   }
 
-  const ppm = BigInt(PPM);
   const bps = BigInt(BPS);
 
-  // Won leg multiplier and value
+  // Fair value = expected payout given won legs.
+  // wonMultiplier = 1/product(wonProbs) in PPM; wonValue = stake / product(wonProbs).
+  // This already equals Prob(unresolved win) × fullPayout because the unresolved
+  // probabilities cancel out when deriving EV from won legs alone.
+  // The penalty (below) prices in the risk of unresolved legs.
   const wonMultiplier = computeMultiplier(wonProbsPPM);
-  const wonValue = computePayout(effectiveStake, wonMultiplier);
-
-  // Multiply by probability of each unresolved leg
-  let fairValue = wonValue;
-  for (const p of unresolvedProbsPPM) {
-    fairValue = (fairValue * BigInt(p)) / ppm;
-  }
+  const fairValue = computePayout(effectiveStake, wonMultiplier);
 
   // Scaled penalty
   const penaltyBps = Math.floor((basePenaltyBps * unresolvedProbsPPM.length) / totalLegs);

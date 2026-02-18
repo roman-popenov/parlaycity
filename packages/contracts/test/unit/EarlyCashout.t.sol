@@ -131,12 +131,12 @@ contract EarlyCashoutTest is Test {
         vm.prank(alice);
         engine.cashoutEarly(ticketId, 0);
 
-        // wonMultiplier = PPM / 500_000 * PPM = 2_000_000 (2x)
-        // wonValue = 9_750_000 * 2_000_000 / 1_000_000 = 19_500_000
-        // fairValue = 19_500_000 * 250_000 / 1_000_000 * 200_000 / 1_000_000 = 975_000
+        // wonMultiplier = PPM^2 / 500_000 = 2_000_000 (2x)
+        // wonValue = fairValue = 9_750_000 * 2_000_000 / 1_000_000 = 19_500_000
+        // (no discount by unresolved probs — wonValue IS the EV given won legs)
         // penaltyBps = 1500 * 2 / 3 = 1000 (10%)
-        // cashoutValue = 975_000 * (10_000 - 1000) / 10_000 = 975_000 * 9000 / 10_000 = 877_500
-        uint256 expectedCashout = 877_500;
+        // cashoutValue = 19_500_000 * 9_000 / 10_000 = 17_550_000
+        uint256 expectedCashout = 17_550_000;
 
         assertEq(usdc.balanceOf(alice), aliceBefore + expectedCashout, "alice received cashout");
 
@@ -162,12 +162,11 @@ contract EarlyCashoutTest is Test {
         vm.prank(alice);
         engine.cashoutEarly(ticketId, 0);
 
-        // wonMultiplier = PPM^2 / (500_000 * 250_000) = 1e12 / 1.25e11 = 8_000_000 (8x)
-        // wonValue = 9_750_000 * 8_000_000 / 1_000_000 = 78_000_000
-        // fairValue = 78_000_000 * 200_000 / 1_000_000 = 15_600_000
+        // wonMultiplier = PPM^3 / (500_000 * 250_000) = 8_000_000 (8x)
+        // wonValue = fairValue = 9_750_000 * 8_000_000 / 1_000_000 = 78_000_000
         // penaltyBps = 1500 * 1 / 3 = 500 (5%)
-        // cashoutValue = 15_600_000 * 9500 / 10_000 = 14_820_000
-        uint256 expectedCashout = 14_820_000;
+        // cashoutValue = 78_000_000 * 9_500 / 10_000 = 74_100_000
+        uint256 expectedCashout = 74_100_000;
 
         assertEq(usdc.balanceOf(alice), aliceBefore + expectedCashout, "alice received higher cashout");
 
@@ -196,12 +195,10 @@ contract EarlyCashoutTest is Test {
         vm.prank(alice);
         engine.cashoutEarly(ticketId, 0);
 
+        // wonMultiplier = PPM^4 / (500_000 * 250_000 * 200_000) = 40_000_000 (40x)
+        // wonValue = fairValue = 9_650_000 * 40_000_000 / 1_000_000 = 386_000_000
         // penaltyBps = 1500 * 2 / 5 = 600 (6%)
-        // wonMultiplier = PPM^3 / (500_000 * 250_000 * 200_000) = 40_000_000 (40x)
-        // wonValue = 9_650_000 * 40_000_000 / 1_000_000 = 386_000_000
-        // unresolvedProbs = [400_000, 500_000] (legs 3,4)
-        // fairValue = 386_000_000 * 400_000/1_000_000 * 500_000/1_000_000 = 77_200_000
-        // cashoutValue = 77_200_000 * 9400/10_000 = 72_568_000
+        // cashoutValue = 386_000_000 * 9_400 / 10_000 = 362_840_000
 
         uint256 received = usdc.balanceOf(alice) - aliceBefore;
         // Verify penalty was 600 bps (6%)
@@ -220,11 +217,11 @@ contract EarlyCashoutTest is Test {
 
         oracle.resolve(0, LegStatus.Won, keccak256("yes"));
 
-        // The cashout value for 1-of-3 won is 877_500.
+        // The cashout value for 1-of-3 won is 17_550_000.
         // Set minOut above that to trigger revert.
         vm.prank(alice);
         vm.expectRevert("ParlayEngine: below min cashout");
-        engine.cashoutEarly(ticketId, 877_501);
+        engine.cashoutEarly(ticketId, 17_550_001);
     }
 
     // ── 5. Leg lost reverts ───────────────────────────────────────────────
@@ -349,9 +346,9 @@ contract EarlyCashoutTest is Test {
         // Vault assets decreased by cashout amount (relative to post-buy balance)
         assertEq(vault.totalAssets(), vaultAssetsBefore + 10e6 - 237500 - cashoutPaid, "vault assets correct");
 
-        // Penalty amount = stake - fee - cashout stays in vault as LP profit
-        // (implicitly verified by vault assets being higher than before minus cashout)
-        assertTrue(cashoutPaid < 10e6, "cashout less than original stake");
+        // Cashout is capped at potentialPayout; verify the penalty reduced the value
+        assertTrue(cashoutPaid < potentialPayout, "cashout less than potential payout");
+        assertEq(cashoutPaid, 17_550_000, "cashout matches expected value");
     }
 
     // ── 12. Voided leg treated as unresolved ──────────────────────────────
@@ -375,9 +372,10 @@ contract EarlyCashoutTest is Test {
         uint256 received = usdc.balanceOf(alice) - aliceBefore;
 
         // Should be same as basic test (1 won, 2 unresolved)
-        // wonMultiplier = 2x, fairValue discounted by both unresolved probs
-        // The voided leg uses its original probability for discounting
-        assertEq(received, 877_500, "voided leg treated as unresolved with original prob");
+        // wonMultiplier = 2x, fairValue = wonValue = 19_500_000
+        // Voided leg counts toward unresolved count (affects penalty) but
+        // doesn't affect fairValue (no discount loop)
+        assertEq(received, 17_550_000, "voided leg treated as unresolved");
 
         ParlayEngine.Ticket memory tAfter = engine.getTicket(ticketId);
         assertEq(uint8(tAfter.status), uint8(ParlayEngine.TicketStatus.Claimed));
@@ -403,9 +401,9 @@ contract EarlyCashoutTest is Test {
         engine.cashoutEarly(ticketId, 0);
 
         // penaltyBps = 2000 * 2 / 3 = 1333 (13.33%)
-        // fairValue = 975_000 (same as basic test)
-        // cashoutValue = 975_000 * (10_000 - 1333) / 10_000 = 975_000 * 8667 / 10_000 = 845_032
-        uint256 expectedCashout = 845_032;
+        // fairValue = 19_500_000 (same as basic test)
+        // cashoutValue = 19_500_000 * (10_000 - 1333) / 10_000 = 19_500_000 * 8667 / 10_000 = 16_900_650
+        uint256 expectedCashout = 16_900_650;
         assertEq(usdc.balanceOf(alice), aliceBefore + expectedCashout, "updated penalty applied");
 
         // Revert on too high
@@ -425,9 +423,9 @@ contract EarlyCashoutTest is Test {
         oracle.resolve(0, LegStatus.Won, keccak256("yes"));
 
         // penaltyBps = 1500 * 2 / 3 = 1000
-        // cashoutValue = 877_500
+        // cashoutValue = 17_550_000
         vm.expectEmit(true, true, false, true);
-        emit ParlayEngine.EarlyCashout(ticketId, alice, 877_500, 1000);
+        emit ParlayEngine.EarlyCashout(ticketId, alice, 17_550_000, 1000);
 
         vm.prank(alice);
         engine.cashoutEarly(ticketId, 0);

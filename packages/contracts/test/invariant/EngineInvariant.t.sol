@@ -7,6 +7,7 @@ import {HouseVault} from "../../src/core/HouseVault.sol";
 import {LegRegistry} from "../../src/core/LegRegistry.sol";
 import {ParlayEngine} from "../../src/core/ParlayEngine.sol";
 import {AdminOracleAdapter} from "../../src/oracle/AdminOracleAdapter.sol";
+import {LockVault} from "../../src/core/LockVault.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {LegStatus} from "../../src/interfaces/IOracleAdapter.sol";
 
@@ -293,6 +294,12 @@ contract EngineInvariantTest is Test {
         engine = new ParlayEngine(vault, registry, IERC20(address(usdc)), BOOTSTRAP_ENDS);
 
         vault.setEngine(address(engine));
+
+        // Wire up LockVault + safetyModule for FeeRouter
+        LockVault lockVault = new LockVault(vault);
+        vault.setLockVault(lockVault);
+        vault.setSafetyModule(makeAddr("safetyModule"));
+        lockVault.setFeeDistributor(address(vault));
 
         // Seed vault with substantial initial liquidity (mint in batches due to MockUSDC cap)
         usdc.approve(address(vault), type(uint256).max);

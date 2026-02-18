@@ -63,7 +63,8 @@ contract CashoutMathFuzzTest is Test {
         assertLe(penaltyBps, basePenaltyBps, "penalty must not exceed base");
     }
 
-    /// @notice Cashout with zero penalty equals the full discounted fair value.
+    /// @notice Cashout with zero penalty equals the won-leg expected value.
+    ///         fairValue = wonValue (no discount by unresolved probs — wonValue IS the EV).
     function testFuzz_cashout_zeroPenalty_equalsFairValue(
         uint256 stake,
         uint256 wonProb,
@@ -85,12 +86,11 @@ contract CashoutMathFuzzTest is Test {
 
         assertEq(penaltyBps, 0, "penalty should be zero");
 
-        // Manually compute: wonMultiplier * stake / PPM * unresolvedProb / PPM
+        // wonValue = stake * wonMultiplier / PPM = expected value given won legs
         uint256 wonMult = ParlayMath.computeMultiplier(wonProbs);
         uint256 wonValue = ParlayMath.computePayout(stake, wonMult);
-        uint256 fairValue = (wonValue * unresolvedProb) / PPM;
 
-        assertEq(cashoutValue, fairValue, "zero-penalty cashout must equal fair value");
+        assertEq(cashoutValue, wonValue, "zero-penalty cashout must equal won-leg EV");
     }
 
     /// @notice More won legs at same probs should produce higher cashout value

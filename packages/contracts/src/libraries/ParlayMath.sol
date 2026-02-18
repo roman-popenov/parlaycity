@@ -74,14 +74,13 @@ library ParlayMath {
         require(wonProbsPPM.length > 0, "ParlayMath: no won legs");
         require(unresolvedProbsPPM.length > 0, "ParlayMath: no unresolved legs");
 
-        // Compute won leg multiplier and fair value so far
+        // Fair value = expected payout given won legs.
+        // wonMultiplier = 1/product(wonProbs) in PPM; wonValue = stake / product(wonProbs).
+        // This already equals Prob(unresolved win) × fullPayout because the unresolved
+        // probabilities cancel out when deriving EV from won legs alone.
+        // The penalty (below) prices in the risk of unresolved legs.
         uint256 wonMultiplier = computeMultiplier(wonProbsPPM);
         uint256 fairValue = computePayout(effectiveStake, wonMultiplier);
-
-        // Discount by probability of each unresolved leg winning
-        for (uint256 i = 0; i < unresolvedProbsPPM.length; i++) {
-            fairValue = (fairValue * unresolvedProbsPPM[i]) / PPM;
-        }
 
         // Apply scaled penalty: more unresolved legs = higher penalty
         penaltyBps = (basePenaltyBps * unresolvedProbsPPM.length) / totalLegs;

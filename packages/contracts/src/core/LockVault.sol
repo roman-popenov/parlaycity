@@ -119,6 +119,16 @@ contract LockVault is Ownable, ReentrancyGuard {
         uint256 unlockAt = block.timestamp + duration;
 
         uint256 weighted = (shares * multiplierBps) / BPS_BASE;
+
+        // Sweep undistributed fees to EXISTING lockers before adding the new one.
+        // This prevents a new locker from earning fees that accrued before they locked.
+        if (undistributedFees > 0 && totalWeightedShares > 0) {
+            uint256 fees = undistributedFees;
+            undistributedFees = 0;
+            accRewardPerWeightedShare += (fees * PRECISION) / totalWeightedShares;
+            emit FeesDistributed(fees, accRewardPerWeightedShare);
+        }
+
         totalWeightedShares += weighted;
         totalLockedShares += shares;
 
@@ -133,6 +143,9 @@ contract LockVault is Ownable, ReentrancyGuard {
             rewardDebt: (weighted * accRewardPerWeightedShare) / PRECISION
         });
 
+        // First-locker bootstrap: when totalWeightedShares was 0 before this lock,
+        // the sweep above was skipped. Distribute now so the first locker can claim
+        // fees that accrued with no recipients (otherwise they'd be stuck forever).
         if (undistributedFees > 0) {
             uint256 fees = undistributedFees;
             undistributedFees = 0;
