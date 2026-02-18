@@ -10,6 +10,7 @@ export const OPTIMISTIC_LIVENESS_SECONDS = 1800;
 export const OPTIMISTIC_BOND_USDC = 10;
 export const MAX_UTILIZATION_BPS = 8000;
 export const MAX_PAYOUT_BPS = 500;
+export const BASE_CASHOUT_PENALTY_BPS = 1500; // 15% base penalty, scaled by unresolved/total legs
 
 export const BASE_SEPOLIA_CHAIN_ID = 84532;
 export const ANVIL_CHAIN_ID = 31337;
