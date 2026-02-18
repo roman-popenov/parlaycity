@@ -5,6 +5,7 @@ import catalogRouter from "./catalog/index.js";
 import quoteRouter from "./quote/index.js";
 import hedgerRouter from "./hedger/index.js";
 import premiumRouter from "./premium/index.js";
+import { createX402Middleware } from "./premium/x402.js";
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
@@ -22,6 +23,9 @@ const limiter = rateLimit({
   legacyHeaders: false,
 });
 app.use(limiter);
+
+// x402 payment middleware (protects /premium/sim endpoint)
+app.use(createX402Middleware());
 
 // Health check
 app.get("/health", (_req, res) => {

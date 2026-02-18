@@ -1,6 +1,5 @@
 import { Router } from "express";
 import { parseSimRequest, PPM } from "@parlaycity/shared";
-import { x402Guard } from "./x402.js";
 
 const router = Router();
 
@@ -8,8 +7,9 @@ const router = Router();
  * POST /premium/sim
  * x402-gated endpoint that returns analytical "simulation" results:
  * win probability, expected value, Kelly criterion suggestion.
+ * Payment verification is handled at app level by x402 middleware.
  */
-router.post("/sim", x402Guard, (req, res) => {
+router.post("/sim", (req, res) => {
   const parsed = parseSimRequest(req.body);
   if (!parsed.success) {
     return res.status(400).json({
