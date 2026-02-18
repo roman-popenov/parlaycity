@@ -19,6 +19,9 @@ export const CONTRACT_ADDRESSES: Record<string, string> = {
   lockVault: process.env.NEXT_PUBLIC_LOCK_VAULT_ADDRESS ?? "",
 };
 
+export const SERVICES_API_URL =
+  process.env.NEXT_PUBLIC_SERVICES_URL ?? "http://localhost:3001";
+
 export const PARLAY_CONFIG = {
   maxLegs: 5,
   minLegs: 2,
