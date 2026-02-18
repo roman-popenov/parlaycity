@@ -140,7 +140,6 @@ export function computeCashoutValue(
   basePenaltyBps: number,
   totalLegs: number,
   potentialPayout: bigint,
-  alreadyClaimed: bigint = 0n
 ): { cashoutValue: bigint; penaltyBps: number; fairValue: bigint } {
   if (wonProbsPPM.length === 0 || unresolvedProbsPPM.length === 0) {
     return { cashoutValue: 0n, penaltyBps: 0, fairValue: 0n };
@@ -166,11 +165,6 @@ export function computeCashoutValue(
   // Cap at potential payout
   if (cashoutValue > potentialPayout) {
     cashoutValue = potentialPayout;
-  }
-
-  // Subtract already claimed
-  if (alreadyClaimed > 0n) {
-    cashoutValue = cashoutValue > alreadyClaimed ? cashoutValue - alreadyClaimed : 0n;
   }
 
   return { cashoutValue, penaltyBps, fairValue };
