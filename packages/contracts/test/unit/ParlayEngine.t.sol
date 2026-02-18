@@ -279,6 +279,7 @@ contract ParlayEngineTest is Test {
         assertEq(usdc.balanceOf(alice), aliceBalBefore + expectedPayout);
         ParlayEngine.Ticket memory tAfter = engine.getTicket(ticketId);
         assertEq(uint8(tAfter.status), uint8(ParlayEngine.TicketStatus.Claimed));
+        assertEq(tAfter.claimedAmount, tAfter.potentialPayout, "claimedAmount should equal potentialPayout");
     }
 
     function test_claimPayout_revertsIfNotWon() public {
