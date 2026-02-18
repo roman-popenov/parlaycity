@@ -137,14 +137,14 @@ USDC flows directly from gambler to vault in a single `safeTransferFrom`. There 
 
 The owner can adjust fee parameters and pause the protocol. The owner CANNOT redirect user deposits, LP capital, or accumulated fees to arbitrary addresses. There is no `selfdestruct`, no proxy upgrade, no admin withdrawal function. Penalty redistribution is deterministic, not discretionary.
 
-**5. SafetyModule backstop.**
+**5. SafetyModule backstop (in development, PR2).**
 
-An insurance buffer funded by three independent income streams:
+A planned insurance buffer funded by three independent income streams:
 - 5% of all fees (grows with volume)
 - Swap fees from AMM liquidity provision (grows with DeFi activity)
 - Portion of early-withdrawal penalties (grows with locker activity)
 
-No one can withdraw from the SafetyModule. It covers deficit events (oracle failure, bug, black swan). If the buffer exceeds a cap, excess flows back to LPs or lockers -- it never accumulates into a war chest.
+No one will be able to withdraw from the SafetyModule. It will cover deficit events (oracle failure, bug, black swan). If the buffer exceeds a cap, excess flows back to LPs or lockers -- it never accumulates into a war chest.
 
 ### LP Risk Profile
 
@@ -154,7 +154,7 @@ The risk is real but bounded:
 - Any single loss is capped at 5% of TVL
 - Total exposure is capped at 80% of TVL
 - The fee income provides a continuous yield cushion even in periods where gamblers win more than expected
-- The SafetyModule provides an additional backstop layer
+- The SafetyModule (planned, PR2) will provide an additional backstop layer
 
 ### LockVault: Rewarding Commitment
 

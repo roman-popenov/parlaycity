@@ -24,7 +24,7 @@ Parlays have a 17-35% structural house edge (the probability of ALL legs hitting
 
 ### 3. How are bets safe for depositors?
 
-Five on-chain invariants protect depositors: (1) the solvency invariant (`totalReserved <= 80% * totalAssets()`) ensures 20% always stays unencumbered, (2) no single bet can claim more than 5% of the vault, (3) the engine never holds funds -- USDC flows directly to the vault in one `safeTransferFrom`, (4) there is no admin withdrawal function, no `selfdestruct`, no proxy upgrade, (5) the SafetyModule provides an insurance buffer funded by three independent income streams. These are tested with invariant fuzzing (64 runs, depth 32).
+Four on-chain invariants protect depositors today: (1) the solvency invariant (`totalReserved <= 80% * totalAssets()`) ensures 20% always stays unencumbered, (2) no single bet can claim more than 5% of the vault, (3) the engine never holds funds -- USDC flows directly to the vault in one `safeTransferFrom`, (4) there is no admin withdrawal function, no `selfdestruct`, no proxy upgrade. These are tested with invariant fuzzing (64 runs, depth 32). Additionally, the SafetyModule (in development) will provide an insurance buffer funded by three independent income streams.
 
 **On-chain:** `VaultInvariant.t.sol` -- invariant test for `totalReserved <= totalAssets()`
 **Number:** 80% utilization cap + 5% per-ticket cap = bounded risk.
@@ -42,7 +42,7 @@ The multiplier is computed from on-chain probability data using pure math (`Parl
 
 ### 5. What prevents the team from draining funds?
 
-The owner can adjust fee parameters and pause the protocol. The owner CANNOT redirect user deposits, LP capital, or accumulated fees. There is no `selfdestruct`, no proxy upgrade, no admin withdrawal function. Penalty redistribution is deterministic (to lockers, SafetyModule, social good) -- not discretionary. The engine never holds a single dollar. The vault's `reservePayout` / `releasePayout` / `payWinner` functions are restricted to the engine address set at deployment.
+The owner can adjust fee parameters and pause the protocol. The owner CANNOT redirect user deposits, LP capital, or accumulated fees. There is no `selfdestruct`, no proxy upgrade, no admin withdrawal function. Penalty redistribution will be deterministic (to lockers, SafetyModule, social good) -- not discretionary. The engine never holds a single dollar. The vault's `reservePayout` / `releasePayout` / `payWinner` functions are restricted to the engine address set at deployment.
 
 **On-chain:** No admin drain function in HouseVault, ParlayEngine, or LockVault
 **Number:** 0 USDC accessible to owner outside protocol rules.
@@ -62,7 +62,7 @@ Polymarket uses per-market orderbooks -- liquidity fragments, thin markets have 
 
 The multiplier climbs as each leg resolves favorably, like Aviator's ascending plane. After each leg wins, the bettor can cash out at the current multiplier or ride for more. If a leg loses, the multiplier crashes to zero. This transforms parlays from passive lottery tickets into live instruments with real-time exit decisions. Aviator generates $14B/month in wagers with 42-77M MAU -- the mechanic is proven at massive scale. We apply it to real-event parlays (sports, politics, markets) instead of pure randomness.
 
-**On-chain:** `cashoutTicket(ticketId, minOut)` with slippage protection
+**On-chain:** `cashoutTicket(ticketId, minOut)` with slippage protection (shipping in PR3)
 **Number:** Aviator: $14B/month in wagers, 42-77M MAU.
 
 ---
@@ -71,14 +71,14 @@ The multiplier climbs as each leg resolves favorably, like Aviator's ascending p
 
 We don't need a token. The protocol is self-sustaining: gamblers pay 2-3.5% explicit fees. 90% flows to lockers, 5% to SafetyModule, 5% stays in vault. When gamblers lose (~94% of 3-leg parlays), the vault profits from the structural house edge. LPs earn from both fees and losing bets. No governance token, no founder allocation, no admin take. The economics work because parlay markets have 17-35% structural margins -- the highest in sports betting.
 
-**On-chain:** Fee split constants in FeeRouter: `feeToLockersBps=9000`, `feeToSafetyBps=500`, `feeToVaultBps=500`
+**On-chain:** Fee split constants in ParlayEngine: `FEE_TO_LOCKERS_BPS=9000`, `FEE_TO_SAFETY_BPS=500` (shipped in PR1)
 **Number:** 0% team take. 90% to liquidity providers.
 
 ---
 
 ### 9. What happens if a bunch of people win at once?
 
-The 80% utilization cap means 20% of vault capital is always unencumbered. No new bets are accepted when utilization approaches the cap. The 5% per-ticket cap means no single payout exceeds 5% of TVL. If multiple wins occur, the loss distributes proportionally across ALL LPs via share price decline. The SafetyModule provides additional backstop for black swan events. This is the same model used by GMX ($500M TVL), Hyperliquid, and Gains Network -- vault-as-counterparty is battle-tested.
+The 80% utilization cap means 20% of vault capital is always unencumbered. No new bets are accepted when utilization approaches the cap. The 5% per-ticket cap means no single payout exceeds 5% of TVL. If multiple wins occur, the loss distributes proportionally across ALL LPs via share price decline. The SafetyModule (in development, PR2) will provide additional backstop for black swan events. This is the same model used by GMX ($500M TVL), Hyperliquid, and Gains Network -- vault-as-counterparty is battle-tested.
 
 **On-chain:** `HouseVault.reservePayout()` enforces both caps on every ticket purchase
 **Number:** Max total exposure = 80% TVL. Max single payout = 5% TVL.

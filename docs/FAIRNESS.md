@@ -115,7 +115,7 @@ Any skeptical judge or user can verify these claims independently:
 | No hidden vig | Compare ParlayMath output to theoretical fair value (1/product of probabilities) |
 | No account bans | Check `settleTicket()` for access control modifiers (there are none) |
 | No admin drain | Search HouseVault for withdraw functions callable by owner (there are none) |
-| Fee routing | Read FeeRouter split constants: 9000/500/500 (90/5/5) |
+| Fee routing | Read ParlayEngine split constants: `FEE_TO_LOCKERS_BPS=9000`, `FEE_TO_SAFETY_BPS=500` (shipped in PR1) |
 | Solvency invariant | Run `VaultInvariant.t.sol` -- fuzzes `totalReserved <= totalAssets()` |
 | Math parity | Run `make test-all` -- parity tests compare Solidity vs TypeScript output |
 
