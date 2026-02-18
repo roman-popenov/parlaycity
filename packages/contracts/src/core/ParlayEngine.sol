@@ -614,7 +614,7 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
             uint256 remainingReserve = ticket.potentialPayout - ticket.claimedAmount;
             if (remainingReserve > 0) vault.releasePayout(remainingReserve);
 
-            emit EarlyCashout(ticketId, msg.sender, cashoutValue, penaltyBps);
+            emit EarlyCashout(ticketId, msg.sender, payout, penaltyBps);
         }
     }
 }

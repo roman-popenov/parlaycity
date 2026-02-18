@@ -3,6 +3,7 @@ import {
   BPS,
   BASE_FEE_BPS,
   PER_LEG_FEE_BPS,
+  BASE_CASHOUT_PENALTY_BPS,
   USDC_DECIMALS,
   MIN_LEGS,
   MAX_LEGS,
@@ -134,7 +135,7 @@ export function computeCashoutValue(
   effectiveStake: bigint,
   wonProbsPPM: number[],
   unresolvedCount: number,
-  basePenaltyBps: number,
+  basePenaltyBps: number = BASE_CASHOUT_PENALTY_BPS,
   totalLegs: number,
   potentialPayout: bigint,
 ): { cashoutValue: bigint; penaltyBps: number; fairValue: bigint } {
