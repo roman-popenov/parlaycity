@@ -65,6 +65,34 @@ describe("x402 Payment Gate", () => {
     });
   });
 
+  describe("POST /premium/sim with empty/whitespace payment header", () => {
+    it("rejects empty string payment header", async () => {
+      const res = await request(app)
+        .post("/premium/sim")
+        .set("x-402-payment", "")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "10",
+          probabilities: [600_000, 450_000],
+        });
+      expect(res.status).toBe(402);
+    });
+
+    it("rejects whitespace-only payment header", async () => {
+      const res = await request(app)
+        .post("/premium/sim")
+        .set("x-402-payment", "   ")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "10",
+          probabilities: [600_000, 450_000],
+        });
+      expect(res.status).toBe(402);
+    });
+  });
+
   describe("POST /premium/sim with payment header", () => {
     it("returns 200 with valid analytics", async () => {
       const res = await request(app)

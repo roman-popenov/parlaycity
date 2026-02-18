@@ -127,7 +127,7 @@ function x402GuardStub(req: Request, res: Response, next: NextFunction) {
   }
 
   const paymentHeader = req.headers["x-402-payment"];
-  if (!paymentHeader) {
+  if (!paymentHeader || (typeof paymentHeader === "string" && !paymentHeader.trim())) {
     const accepts: Record<string, string> = {
       scheme: "exact",
       network: X402_NETWORK,
