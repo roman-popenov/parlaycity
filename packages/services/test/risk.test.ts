@@ -7,6 +7,7 @@ const validBody = {
   outcomes: ["Yes", "Yes"],
   stake: "10",
   probabilities: [600_000, 450_000],
+  multiplierX1e6: "1500000",
   bankroll: "100",
   riskTolerance: "moderate",
 };
@@ -66,6 +67,7 @@ describe("POST /premium/risk-assess", () => {
         outcomes: ["Yes", "Yes", "Yes", "Yes"],
         stake: "10",
         probabilities: [600_000, 450_000, 500_000, 400_000],
+        multiplierX1e6: "2000000",
         bankroll: "100",
         riskTolerance: "conservative",
       });

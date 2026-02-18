@@ -109,6 +109,7 @@ export interface RiskAssessRequest {
   outcomes: string[];
   stake: string;
   probabilities: number[];
+  multiplierX1e6: string;
   bankroll: string;
   riskTolerance: RiskProfile;
   categories?: string[];

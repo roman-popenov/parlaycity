@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { formatUSDC } from "@parlaycity/shared";
 
 const router = Router();
 
@@ -26,15 +27,6 @@ const MOCK_YIELDS = [
   { name: "Compound V3 (Base)", apy: 3.95, tvl: "890M", riskScore: "A+", protocol: "compound-v3" },
   { name: "Aerodrome USDC/USDbC", apy: 7.12, tvl: "45M", riskScore: "B+", protocol: "aerodrome" },
 ];
-
-function formatUSDC(raw: bigint): string {
-  const divisor = 1_000_000n;
-  const whole = raw / divisor;
-  const frac = raw % divisor;
-  if (frac === 0n) return whole.toString();
-  const fracStr = frac.toString().padStart(6, "0").replace(/0+$/, "");
-  return `${whole}.${fracStr}`;
-}
 
 /**
  * GET /vault/health

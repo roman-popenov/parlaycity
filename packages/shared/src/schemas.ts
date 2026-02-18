@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { MAX_LEGS, MIN_LEGS, MIN_STAKE_USDC, USDC_DECIMALS } from "./constants.js";
+import { MAX_LEGS, MIN_LEGS, MIN_STAKE_USDC, PPM, USDC_DECIMALS } from "./constants.js";
 
 export const QuoteRequestSchema = z.object({
   legIds: z
@@ -71,9 +71,19 @@ export const RiskAssessRequestSchema = z.object({
     { message: `Stake must be at least ${MIN_STAKE_USDC} USDC` }
   ),
   probabilities: z
-    .array(z.number().min(0).max(1_000_000))
+    .array(z.number().int().min(1).max(PPM - 1))
     .min(MIN_LEGS)
     .max(MAX_LEGS),
+  multiplierX1e6: z.string().refine(
+    (val) => {
+      try {
+        return BigInt(val) > 0n;
+      } catch {
+        return false;
+      }
+    },
+    { message: "multiplierX1e6 must be a positive integer string" }
+  ),
   bankroll: z.string().refine(
     (val) => {
       const n = Number(val);

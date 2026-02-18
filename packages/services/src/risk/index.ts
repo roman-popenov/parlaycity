@@ -20,29 +20,24 @@ router.post("/risk-assess", (req, res) => {
     });
   }
 
-  const { legIds, outcomes, stake, probabilities, bankroll, riskTolerance, categories } = parsed.data;
+  const { legIds, outcomes, stake, probabilities, multiplierX1e6, bankroll, riskTolerance, categories } = parsed.data;
   const caps = RISK_CAPS[riskTolerance];
   const warnings: string[] = [];
 
   // Combined win probability
   const numLegs = probabilities.length;
-  let combinedProbNumerator = 1n;
+  let winProbability = 1;
   for (const p of probabilities) {
-    combinedProbNumerator *= BigInt(p);
+    winProbability *= p / PPM;
   }
-  const ppmBig = BigInt(PPM);
-  let combinedProbDenominator = 1n;
-  for (let i = 0; i < numLegs - 1; i++) {
-    combinedProbDenominator *= ppmBig;
-  }
-  const winProbability = Number(combinedProbNumerator) / Number(combinedProbDenominator) / PPM;
 
   // Fair multiplier
   const fairMultiplier = 1 / winProbability;
 
   // Edge
   const edgeBps = BASE_FEE_BPS + numLegs * PER_LEG_FEE_BPS;
-  const netMultiplier = fairMultiplier * (BPS - edgeBps) / BPS;
+  const netMultiplierX1e6 = BigInt(multiplierX1e6);
+  const netMultiplier = Number(netMultiplierX1e6) / PPM;
 
   // Expected value per dollar staked
   const ev = winProbability * netMultiplier - 1;
