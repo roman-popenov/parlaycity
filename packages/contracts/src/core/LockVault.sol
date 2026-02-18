@@ -65,6 +65,9 @@ contract LockVault is Ownable, ReentrancyGuard {
     /// @notice Address authorized to push fee distributions (typically HouseVault).
     address public feeDistributor;
 
+    /// @notice Fees received while no lockers exist (to distribute later).
+    uint256 public undistributedFees;
+
     /// @notice Accumulated claimable rewards per user.
     mapping(address => uint256) public pendingRewards;
 
@@ -129,6 +132,13 @@ contract LockVault is Ownable, ReentrancyGuard {
             feeMultiplierBps: multiplierBps,
             rewardDebt: (weighted * accRewardPerWeightedShare) / PRECISION
         });
+
+        if (undistributedFees > 0) {
+            uint256 fees = undistributedFees;
+            undistributedFees = 0;
+            accRewardPerWeightedShare += (fees * PRECISION) / totalWeightedShares;
+            emit FeesDistributed(fees, accRewardPerWeightedShare);
+        }
 
         emit Locked(positionId, msg.sender, shares, tier, unlockAt);
     }
@@ -205,10 +215,19 @@ contract LockVault is Ownable, ReentrancyGuard {
     function notifyFees(uint256 amount) external nonReentrant {
         require(msg.sender == feeDistributor, "LockVault: caller is not fee distributor");
         require(amount > 0, "LockVault: zero amount");
-        if (totalWeightedShares == 0) return; // no lockers to reward, USDC stays as surplus
+        if (totalWeightedShares == 0) {
+            undistributedFees += amount;
+            return;
+        }
 
-        accRewardPerWeightedShare += (amount * PRECISION) / totalWeightedShares;
-        emit FeesDistributed(amount, accRewardPerWeightedShare);
+        uint256 distributable = amount;
+        if (undistributedFees > 0) {
+            distributable += undistributedFees;
+            undistributedFees = 0;
+        }
+
+        accRewardPerWeightedShare += (distributable * PRECISION) / totalWeightedShares;
+        emit FeesDistributed(distributable, accRewardPerWeightedShare);
     }
 
     /// @notice Claim accumulated USDC rewards.

@@ -202,9 +202,9 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
         if (feePaid > 0) {
             uint256 feeToLockers = (feePaid * FEE_TO_LOCKERS_BPS) / 10_000;
             uint256 feeToSafety = (feePaid * FEE_TO_SAFETY_BPS) / 10_000;
-            // feeToVault = feePaid - feeToLockers - feeToSafety (dust goes to vault)
-            vault.routeFees(feeToLockers, feeToSafety);
-            emit FeesRouted(_nextTicketId, feeToLockers, feeToSafety, feePaid - feeToLockers - feeToSafety);
+            uint256 feeToVault = feePaid - feeToLockers - feeToSafety; // dust goes to vault
+            vault.routeFees(feeToLockers, feeToSafety, feeToVault);
+            emit FeesRouted(_nextTicketId, feeToLockers, feeToSafety, feeToVault);
         }
 
         // --- Mint NFT ticket ---

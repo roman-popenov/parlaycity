@@ -356,7 +356,7 @@ contract FeeRoutingTest is Test {
     function test_routeFees_onlyEngine() public {
         vm.prank(alice);
         vm.expectRevert("HouseVault: caller is not engine");
-        vault.routeFees(1e6, 1e6);
+        vault.routeFees(1e6, 1e6, 0);
     }
 
     // ── Admin Setters ──────────────────────────────────────────────────
@@ -437,5 +437,6 @@ contract FeeRoutingTest is Test {
         freshLockVault.notifyFees(1e6); // should not revert
 
         assertEq(freshLockVault.accRewardPerWeightedShare(), 0, "Accumulator unchanged with no lockers");
+        assertEq(freshLockVault.undistributedFees(), 1e6, "Fees tracked for later distribution");
     }
 }

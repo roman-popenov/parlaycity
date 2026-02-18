@@ -261,7 +261,11 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
     /// @notice Route fee portions out of the vault to LockVault and SafetyModule.
     ///         The remaining feeToVault stays in the vault implicitly (already deposited).
     ///         Only callable by ParlayEngine.
-    function routeFees(uint256 feeToLockers, uint256 feeToSafety) external onlyEngine nonReentrant {
+    function routeFees(uint256 feeToLockers, uint256 feeToSafety, uint256 feeToVault)
+        external
+        onlyEngine
+        nonReentrant
+    {
         uint256 totalOut = feeToLockers + feeToSafety;
         require(totalAssets() >= totalReserved + totalOut, "HouseVault: routing would break solvency");
 
@@ -276,7 +280,7 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
             asset.safeTransfer(safetyModule, feeToSafety);
         }
 
-        emit FeesRouted(feeToLockers, feeToSafety, 0);
+        emit FeesRouted(feeToLockers, feeToSafety, feeToVault);
     }
 
     // ── Yield Functions ───────────────────────────────────────────────────
