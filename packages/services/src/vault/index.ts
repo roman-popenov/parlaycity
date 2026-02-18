@@ -1,4 +1,5 @@
 import { Router } from "express";
+import { formatUSDC, VaultHealth, ConcentrationWarning, YieldAction } from "@parlaycity/shared";
 
 const router = Router();
 
@@ -27,15 +28,6 @@ const MOCK_YIELDS = [
   { name: "Aerodrome USDC/USDbC", apy: 7.12, tvl: "45M", riskScore: "B+", protocol: "aerodrome" },
 ];
 
-function formatUSDC(raw: bigint): string {
-  const divisor = 1_000_000n;
-  const whole = raw / divisor;
-  const frac = raw % divisor;
-  if (frac === 0n) return whole.toString();
-  const fracStr = frac.toString().padStart(6, "0").replace(/0+$/, "");
-  return `${whole}.${fracStr}`;
-}
-
 /**
  * GET /vault/health
  * Vault Guardian: health assessment, concentration risk, settlement clustering
@@ -48,10 +40,10 @@ router.get("/health", (_req, res) => {
   const utilization = utilizationBps / 10_000;
 
   // Health status based on utilization
-  let vaultHealth: "HEALTHY" | "CAUTION" | "CRITICAL";
-  if (utilizationBps <= 5000) vaultHealth = "HEALTHY";
-  else if (utilizationBps <= 7500) vaultHealth = "CAUTION";
-  else vaultHealth = "CRITICAL";
+  let vaultHealth: VaultHealth;
+  if (utilizationBps <= 5000) vaultHealth = VaultHealth.HEALTHY;
+  else if (utilizationBps <= 7500) vaultHealth = VaultHealth.CAUTION;
+  else vaultHealth = VaultHealth.CRITICAL;
 
   // Concentration risk: flag any leg > 5% of TVL
   const concentrationRisk = Object.entries(MOCK_LEG_EXPOSURE)
@@ -63,7 +55,7 @@ router.get("/health", (_req, res) => {
         ticketCount: data.ticketCount,
         category: data.category,
         pctOfTVL: Math.round(pctOfTVL * 10_000) / 10_000,
-        warning: pctOfTVL > 0.05 ? "HIGH" as const : pctOfTVL > 0.03 ? "MEDIUM" as const : "LOW" as const,
+        warning: pctOfTVL > 0.05 ? ConcentrationWarning.HIGH : pctOfTVL > 0.03 ? ConcentrationWarning.MEDIUM : ConcentrationWarning.LOW,
       };
     })
     .sort((a, b) => b.pctOfTVL - a.pctOfTVL);
@@ -75,7 +67,7 @@ router.get("/health", (_req, res) => {
 
   // Recommendations
   const recommendations: string[] = [];
-  const highConcentration = concentrationRisk.filter(c => c.warning === "HIGH");
+  const highConcentration = concentrationRisk.filter(c => c.warning === ConcentrationWarning.HIGH);
   if (highConcentration.length > 0) {
     const categories = [...new Set(highConcentration.map(c => c.category))];
     recommendations.push(`Increase edge by 50bps for legs in ${categories.join(", ")} (high concentration)`);
@@ -139,7 +131,7 @@ router.get("/yield-report", (_req, res) => {
       idle: formatUSDC(idleUSDC),
     },
     recommendation: {
-      action: improvement > 0.5 ? "ROTATE" : "HOLD",
+      action: improvement > 0.5 ? YieldAction.ROTATE : YieldAction.HOLD,
       targetProtocol: optimal.name,
       targetApy: optimalApy,
       reasoning: improvement > 0.5

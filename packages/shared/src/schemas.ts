@@ -49,7 +49,7 @@ export const SimRequestSchema = z.object({
     { message: `Stake must be at least ${MIN_STAKE_USDC} USDC` }
   ),
   probabilities: z
-    .array(z.number().min(0).max(1_000_000))
+    .array(z.number().int().min(1).max(999_999))
     .min(MIN_LEGS)
     .max(MAX_LEGS),
 }).refine(
@@ -71,7 +71,7 @@ export const RiskAssessRequestSchema = z.object({
     { message: `Stake must be at least ${MIN_STAKE_USDC} USDC` }
   ),
   probabilities: z
-    .array(z.number().min(0).max(1_000_000))
+    .array(z.number().int().min(1).max(999_999))
     .min(MIN_LEGS)
     .max(MAX_LEGS),
   bankroll: z.string().refine(
