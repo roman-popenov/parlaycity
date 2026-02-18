@@ -7,6 +7,7 @@ import {HouseVault} from "../../src/core/HouseVault.sol";
 import {LegRegistry} from "../../src/core/LegRegistry.sol";
 import {ParlayEngine} from "../../src/core/ParlayEngine.sol";
 import {AdminOracleAdapter} from "../../src/oracle/AdminOracleAdapter.sol";
+import {LockVault} from "../../src/core/LockVault.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {LegStatus} from "../../src/interfaces/IOracleAdapter.sol";
 
@@ -33,6 +34,12 @@ contract ProgressiveSettleTest is Test {
         engine = new ParlayEngine(vault, registry, IERC20(address(usdc)), BOOTSTRAP_ENDS);
 
         vault.setEngine(address(engine));
+
+        // Wire up LockVault + safetyModule for FeeRouter
+        LockVault lockVault = new LockVault(vault);
+        vault.setLockVault(lockVault);
+        vault.setSafetyModule(makeAddr("safetyModule"));
+        lockVault.setFeeDistributor(address(vault));
 
         // Seed vault with liquidity
         usdc.mint(owner, 10_000e6);
@@ -203,6 +210,40 @@ contract ProgressiveSettleTest is Test {
 
         ParlayEngine.Ticket memory tFinal = engine.getTicket(ticketId);
         assertEq(uint8(tFinal.status), uint8(ParlayEngine.TicketStatus.Claimed));
+    }
+
+    // ── 4b. Regression: fully claimed progressive doesn't get stuck in Won ──
+
+    function test_progressive_fullyClaimed_settlesAsClaimed() public {
+        uint256 ticketId = _buyProgressive3Leg();
+
+        // Resolve all legs and claim progressively after each
+        oracle.resolve(0, LegStatus.Won, keccak256("yes"));
+        vm.prank(alice);
+        engine.claimProgressive(ticketId);
+
+        oracle.resolve(1, LegStatus.Won, keccak256("yes"));
+        vm.prank(alice);
+        engine.claimProgressive(ticketId);
+
+        oracle.resolve(2, LegStatus.Won, keccak256("yes"));
+        vm.prank(alice);
+        engine.claimProgressive(ticketId);
+
+        // All legs resolved, full payout claimed progressively
+        ParlayEngine.Ticket memory t = engine.getTicket(ticketId);
+        assertEq(t.claimedAmount, t.potentialPayout, "fully claimed via progressive");
+
+        // Settle: should mark as Claimed (not Won), since nothing remains
+        engine.settleTicket(ticketId);
+
+        ParlayEngine.Ticket memory tSettled = engine.getTicket(ticketId);
+        assertEq(uint8(tSettled.status), uint8(ParlayEngine.TicketStatus.Claimed), "should be Claimed, not Won");
+
+        // claimPayout should revert since everything's already claimed
+        vm.expectRevert("ParlayEngine: not won");
+        vm.prank(alice);
+        engine.claimPayout(ticketId);
     }
 
     // ── 5. Progressive claim detects loss ──────────────────────────────────

@@ -7,6 +7,7 @@ import {HouseVault} from "../../src/core/HouseVault.sol";
 import {LegRegistry} from "../../src/core/LegRegistry.sol";
 import {ParlayEngine} from "../../src/core/ParlayEngine.sol";
 import {AdminOracleAdapter} from "../../src/oracle/AdminOracleAdapter.sol";
+import {LockVault} from "../../src/core/LockVault.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {LegStatus} from "../../src/interfaces/IOracleAdapter.sol";
 
@@ -33,6 +34,12 @@ contract EarlyCashoutTest is Test {
         engine = new ParlayEngine(vault, registry, IERC20(address(usdc)), BOOTSTRAP_ENDS);
 
         vault.setEngine(address(engine));
+
+        // Wire up LockVault + safetyModule for FeeRouter
+        LockVault lockVault = new LockVault(vault);
+        vault.setLockVault(lockVault);
+        vault.setSafetyModule(makeAddr("safetyModule"));
+        lockVault.setFeeDistributor(address(vault));
 
         // Seed vault with liquidity
         usdc.mint(owner, 10_000e6);
@@ -322,9 +329,11 @@ contract EarlyCashoutTest is Test {
         ParlayEngine.Ticket memory t = engine.getTicket(ticketId);
         uint256 potentialPayout = t.potentialPayout;
 
-        // After buy: vault received 10 USDC stake, totalReserved == potentialPayout
+        // After buy: vault received 10 USDC stake, routed fees out (90% lockers + 5% safety)
+        // Fee = stake * (baseFee + perLegFee * 3) / 10_000 = 10e6 * 250 / 10_000 = 250000
+        // Routed out = 90% to lockers + 5% to safety = 95% of 250000 = 237500
         assertEq(vault.totalReserved(), potentialPayout);
-        assertEq(vault.totalAssets(), vaultAssetsBefore + 10e6);
+        assertEq(vault.totalAssets(), vaultAssetsBefore + 10e6 - 237500);
 
         // Resolve leg 0 as Won
         oracle.resolve(0, LegStatus.Won, keccak256("yes"));
@@ -337,8 +346,8 @@ contract EarlyCashoutTest is Test {
         // Vault reserve fully released
         assertEq(vault.totalReserved(), 0, "all reserves released");
 
-        // Vault assets decreased by cashout amount
-        assertEq(vault.totalAssets(), vaultAssetsBefore + 10e6 - cashoutPaid, "vault assets correct");
+        // Vault assets decreased by cashout amount (relative to post-buy balance)
+        assertEq(vault.totalAssets(), vaultAssetsBefore + 10e6 - 237500 - cashoutPaid, "vault assets correct");
 
         // Penalty amount = stake - fee - cashout stays in vault as LP profit
         // (implicitly verified by vault assets being higher than before minus cashout)

@@ -324,8 +324,10 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
             uint256 remainingReserve = originalPayout - ticket.claimedAmount;
             if (remainingReserve > 0) vault.releasePayout(remainingReserve);
         } else if (allWon) {
-            ticket.status = TicketStatus.Won;
-            // payout stays reserved until claim
+            ticket.status = ticket.potentialPayout > ticket.claimedAmount
+                ? TicketStatus.Won
+                : TicketStatus.Claimed;
+            // If Won, payout stays reserved until claim. If already fully claimed via progressive, mark Claimed.
         } else {
             // Some legs voided, rest won. Recalculate with remaining legs.
             uint256 remainingLegs = ticket.legIds.length - voidedCount;
