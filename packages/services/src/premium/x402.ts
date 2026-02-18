@@ -128,15 +128,16 @@ function x402GuardStub(req: Request, res: Response, next: NextFunction) {
 
   const paymentHeader = req.headers["x-402-payment"];
   if (!paymentHeader || (typeof paymentHeader === "string" && !paymentHeader.trim())) {
-    const accepts: Record<string, string> = {
+    const acceptOption: Record<string, string> = {
       scheme: "exact",
       network: X402_NETWORK,
       asset: "USDC",
       price: X402_PRICE,
     };
     if (X402_RECIPIENT !== ZERO_ADDRESS) {
-      accepts.payTo = X402_RECIPIENT;
+      acceptOption.payTo = X402_RECIPIENT;
     }
+    const accepts = [acceptOption];
     return res.status(402).json({
       error: "Payment Required",
       message: "This endpoint requires x402 payment (USDC on Base)",

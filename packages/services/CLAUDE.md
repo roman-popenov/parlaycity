@@ -18,9 +18,9 @@ Express on port 3001. Rate-limited.
 
 ## x402 Status
 
-Current: stub middleware only -- checks for non-empty `X-402-Payment` header, no real on-chain payment verification.
+Production (`NODE_ENV=production`): real x402 verification via `@x402/express` + `ExactEvmScheme`. USDC payment on Base, verified through facilitator. Env vars: `X402_RECIPIENT_WALLET`, `X402_NETWORK`, `X402_FACILITATOR_URL`, `X402_PRICE`.
 
-Target (for Kite AI $10k bounty): real x402 verification with on-chain payment proof. If stubbed for development, clearly label it and gate with `NODE_ENV`.
+Non-production (dev/test/CI, or `X402_STUB=true`): stub middleware accepts any non-empty `X-402-Payment` header. Returns x402-compliant 402 responses with `accepts` array.
 
 ## Testing
 

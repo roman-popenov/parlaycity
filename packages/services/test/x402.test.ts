@@ -30,9 +30,10 @@ describe("x402 Payment Gate", () => {
 
       expect(res.body.protocol).toBe("x402");
       expect(res.body.accepts).toBeDefined();
-      expect(res.body.accepts.scheme).toBe("exact");
-      expect(res.body.accepts.network).toContain("eip155:");
-      expect(res.body.accepts.asset).toBe("USDC");
+      expect(res.body.accepts).toHaveLength(1);
+      expect(res.body.accepts[0].scheme).toBe("exact");
+      expect(res.body.accepts[0].network).toContain("eip155:");
+      expect(res.body.accepts[0].asset).toBe("USDC");
       expect(res.body.facilitator).toBeDefined();
     });
 
