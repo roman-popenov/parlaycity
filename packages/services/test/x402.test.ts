@@ -74,6 +74,23 @@ describe("x402 Payment Gate", () => {
     });
   });
 
+  describe("Path normalization", () => {
+    it("is case-insensitive and still requires payment", async () => {
+      const paths = ["/premium/sim", "/Premium/Sim", "/PREMIUM/SIM"];
+      for (const path of paths) {
+        const res = await request(app)
+          .post(path)
+          .send({
+            legIds: [1, 2],
+            outcomes: ["Yes", "Yes"],
+            stake: "10",
+            probabilities: [600_000, 450_000],
+          });
+        expect(res.status).toBe(402);
+      }
+    });
+  });
+
   describe("Non-premium routes are not gated", () => {
     it("GET /health passes without payment", async () => {
       const res = await request(app).get("/health");

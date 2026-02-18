@@ -12,7 +12,7 @@ const KNOWN_NETWORKS: Record<string, { name: string; testnet: boolean }> = {
 
 // x402 configuration from environment
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
-const X402_RECIPIENT = process.env.X402_RECIPIENT_WALLET || ZERO_ADDRESS;
+const X402_RECIPIENT = (process.env.X402_RECIPIENT_WALLET || ZERO_ADDRESS).toLowerCase();
 const X402_FACILITATOR_URL = process.env.X402_FACILITATOR_URL || "https://facilitator.x402.org";
 const X402_PRICE = process.env.X402_PRICE || "$0.01"; // Price per request
 
@@ -40,14 +40,14 @@ export function createX402Middleware() {
     if (process.env.NODE_ENV === "production" && process.env.X402_STUB === "true") {
       console.warn("[x402] WARNING: X402_STUB=true in production — payment verification is DISABLED");
     }
-    if (X402_RECIPIENT.toLowerCase() === ZERO_ADDRESS) {
+    if (X402_RECIPIENT === ZERO_ADDRESS) {
       console.warn("[x402] X402_RECIPIENT_WALLET not set — stub 402 responses will omit payTo");
     }
     return x402GuardStub;
   }
 
-  if (X402_RECIPIENT.toLowerCase() === ZERO_ADDRESS) {
-    throw new Error("X402_RECIPIENT_WALLET must be set to a non-zero address in production");
+  if (X402_RECIPIENT === ZERO_ADDRESS) {
+    throw new Error("X402_RECIPIENT_WALLET must be set to a valid non-zero Ethereum address in production");
   }
 
   const facilitatorClient = new HTTPFacilitatorClient({
@@ -101,7 +101,7 @@ function x402GuardStub(req: Request, res: Response, next: NextFunction) {
       asset: "USDC",
       price: X402_PRICE,
     };
-    if (X402_RECIPIENT.toLowerCase() !== ZERO_ADDRESS) {
+    if (X402_RECIPIENT !== ZERO_ADDRESS) {
       accepts.payTo = X402_RECIPIENT;
     }
     return res.status(402).json({
