@@ -53,4 +53,43 @@ library ParlayMath {
     {
         totalBps = baseBps + (numLegs * perLegBps);
     }
+
+    /// @notice Compute the cashout value for an early exit.
+    /// @param effectiveStake The wager amount after fees.
+    /// @param wonProbsPPM Probabilities of already-won legs (each in PPM).
+    /// @param unresolvedProbsPPM Probabilities of unresolved legs (each in PPM).
+    /// @param basePenaltyBps Base penalty in bps (scaled by unresolved/total legs).
+    /// @param totalLegs Total number of legs in the ticket.
+    /// @param potentialPayout Maximum payout (cap).
+    /// @return cashoutValue The amount the user receives.
+    /// @return penaltyBps The applied penalty in bps.
+    function computeCashoutValue(
+        uint256 effectiveStake,
+        uint256[] memory wonProbsPPM,
+        uint256[] memory unresolvedProbsPPM,
+        uint256 basePenaltyBps,
+        uint256 totalLegs,
+        uint256 potentialPayout
+    ) internal pure returns (uint256 cashoutValue, uint256 penaltyBps) {
+        require(wonProbsPPM.length > 0, "ParlayMath: no won legs");
+        require(unresolvedProbsPPM.length > 0, "ParlayMath: no unresolved legs");
+
+        // Compute won leg multiplier and fair value so far
+        uint256 wonMultiplier = computeMultiplier(wonProbsPPM);
+        uint256 fairValue = computePayout(effectiveStake, wonMultiplier);
+
+        // Discount by probability of each unresolved leg winning
+        for (uint256 i = 0; i < unresolvedProbsPPM.length; i++) {
+            fairValue = (fairValue * unresolvedProbsPPM[i]) / PPM;
+        }
+
+        // Apply scaled penalty: more unresolved legs = higher penalty
+        penaltyBps = (basePenaltyBps * unresolvedProbsPPM.length) / totalLegs;
+        cashoutValue = (fairValue * (BPS - penaltyBps)) / BPS;
+
+        // Cap at potential payout
+        if (cashoutValue > potentialPayout) {
+            cashoutValue = potentialPayout;
+        }
+    }
 }

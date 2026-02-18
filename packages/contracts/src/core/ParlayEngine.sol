@@ -33,6 +33,11 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
         Voided,
         Claimed
     }
+    enum PayoutMode {
+        CLASSIC,
+        PROGRESSIVE,
+        EARLY_CASHOUT
+    }
 
     // ── Structs ──────────────────────────────────────────────────────────
 
@@ -47,6 +52,8 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
         SettlementMode mode;
         TicketStatus status;
         uint256 createdAt;
+        PayoutMode payoutMode;
+        uint256 claimedAmount;
     }
 
     // ── State ────────────────────────────────────────────────────────────
@@ -60,6 +67,7 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
     uint256 public perLegFee = 50; // bps
     uint256 public minStake = 1e6; // 1 USDC
     uint256 public maxLegs = 5;
+    uint256 public baseCashoutPenaltyBps = 1500; // 15% base penalty
 
     /// @notice Fee split constants (BPS of feePaid).
     uint256 public constant FEE_TO_LOCKERS_BPS = 9000; // 90%
@@ -84,6 +92,9 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
     event TicketSettled(uint256 indexed ticketId, TicketStatus status);
     event PayoutClaimed(uint256 indexed ticketId, address indexed winner, uint256 amount);
     event FeesRouted(uint256 indexed ticketId, uint256 feeToLockers, uint256 feeToSafety, uint256 feeToVault);
+    event ProgressiveClaimed(uint256 indexed ticketId, address indexed claimer, uint256 amount, uint256 totalClaimed);
+    event EarlyCashout(uint256 indexed ticketId, address indexed owner, uint256 cashoutValue, uint256 penaltyBps);
+    event BaseCashoutPenaltyUpdated(uint256 oldBps, uint256 newBps);
     event BaseFeeUpdated(uint256 oldFee, uint256 newFee);
     event PerLegFeeUpdated(uint256 oldFee, uint256 newFee);
     event MinStakeUpdated(uint256 oldStake, uint256 newStake);
@@ -135,6 +146,12 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
         maxLegs = _maxLegs;
     }
 
+    function setBaseCashoutPenalty(uint256 _bps) external onlyOwner {
+        require(_bps <= 5000, "ParlayEngine: penalty too high");
+        emit BaseCashoutPenaltyUpdated(baseCashoutPenaltyBps, _bps);
+        baseCashoutPenaltyBps = _bps;
+    }
+
     // ── Views ────────────────────────────────────────────────────────────
 
     function getTicket(uint256 ticketId) external view returns (Ticket memory) {
@@ -148,45 +165,66 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
 
     // ── Core Logic ───────────────────────────────────────────────────────
 
-    /// @notice Purchase a parlay ticket by combining multiple legs.
-    function buyTicket(uint256[] calldata legIds, bytes32[] calldata outcomes, uint256 stake)
-        external
-        nonReentrant
-        whenNotPaused
-        returns (uint256 ticketId)
-    {
+    /// @notice Purchase a classic parlay ticket (backward-compatible).
+    function buyTicket(
+        uint256[] calldata legIds,
+        bytes32[] calldata outcomes,
+        uint256 stake
+    ) external nonReentrant whenNotPaused returns (uint256 ticketId) {
+        return _buyTicket(legIds, outcomes, stake, PayoutMode.CLASSIC);
+    }
+
+    /// @notice Purchase a parlay ticket with a chosen payout mode.
+    function buyTicketWithMode(
+        uint256[] calldata legIds,
+        bytes32[] calldata outcomes,
+        uint256 stake,
+        PayoutMode payoutMode
+    ) external nonReentrant whenNotPaused returns (uint256 ticketId) {
+        return _buyTicket(legIds, outcomes, stake, payoutMode);
+    }
+
+    function _buyTicket(
+        uint256[] calldata legIds,
+        bytes32[] calldata outcomes,
+        uint256 stake,
+        PayoutMode payoutMode
+    ) internal returns (uint256 ticketId) {
         // --- Validations ---
         require(legIds.length >= 2, "ParlayEngine: need >= 2 legs");
         require(legIds.length <= maxLegs, "ParlayEngine: too many legs");
         require(legIds.length == outcomes.length, "ParlayEngine: length mismatch");
         require(stake >= minStake, "ParlayEngine: stake too low");
 
-        // Check legs are valid, active, not past cutoff, and no duplicates
-        uint256[] memory probsPPM = new uint256[](legIds.length);
-        for (uint256 i = 0; i < legIds.length; i++) {
-            LegRegistry.Leg memory leg = registry.getLeg(legIds[i]);
-            require(leg.active, "ParlayEngine: leg not active");
-            require(block.timestamp < leg.cutoffTime, "ParlayEngine: cutoff passed");
+        uint256 multiplierX1e6;
+        uint256 feePaid;
+        uint256 potentialPayout;
 
-            // Duplicate check (O(n^2) but n <= 5 so fine)
-            for (uint256 j = 0; j < i; j++) {
-                require(legIds[i] != legIds[j], "ParlayEngine: duplicate leg");
+        {
+            // Scoped to avoid stack-too-deep
+            uint256[] memory probsPPM = new uint256[](legIds.length);
+            for (uint256 i = 0; i < legIds.length; i++) {
+                LegRegistry.Leg memory leg = registry.getLeg(legIds[i]);
+                require(leg.active, "ParlayEngine: leg not active");
+                require(block.timestamp < leg.cutoffTime, "ParlayEngine: cutoff passed");
+
+                for (uint256 j = 0; j < i; j++) {
+                    require(legIds[i] != legIds[j], "ParlayEngine: duplicate leg");
+                }
+
+                if (outcomes[i] == bytes32(uint256(2))) {
+                    probsPPM[i] = 1_000_000 - leg.probabilityPPM;
+                } else {
+                    probsPPM[i] = leg.probabilityPPM;
+                }
             }
 
-            // Use complement probability for "No" bets (outcome == 0x02)
-            if (outcomes[i] == bytes32(uint256(2))) {
-                probsPPM[i] = 1_000_000 - leg.probabilityPPM;
-            } else {
-                probsPPM[i] = leg.probabilityPPM;
-            }
+            multiplierX1e6 = ParlayMath.computeMultiplier(probsPPM);
+            uint256 totalEdgeBps = ParlayMath.computeEdge(legIds.length, baseFee, perLegFee);
+            feePaid = (stake * totalEdgeBps) / 10_000;
+            uint256 effectiveStake = stake - feePaid;
+            potentialPayout = ParlayMath.computePayout(effectiveStake, multiplierX1e6);
         }
-
-        // --- Compute pricing ---
-        uint256 multiplierX1e6 = ParlayMath.computeMultiplier(probsPPM);
-        uint256 totalEdgeBps = ParlayMath.computeEdge(legIds.length, baseFee, perLegFee);
-        uint256 feePaid = (stake * totalEdgeBps) / 10_000;
-        uint256 effectiveStake = stake - feePaid;
-        uint256 potentialPayout = ParlayMath.computePayout(effectiveStake, multiplierX1e6);
 
         // --- Vault capacity check ---
         require(potentialPayout <= vault.maxPayout(), "ParlayEngine: exceeds vault max payout");
@@ -224,7 +262,9 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
             feePaid: feePaid,
             mode: mode,
             status: TicketStatus.Active,
-            createdAt: block.timestamp
+            createdAt: block.timestamp,
+            payoutMode: payoutMode,
+            claimedAmount: 0
         });
 
         emit TicketPurchased(ticketId, msg.sender, legIds, outcomes, stake, multiplierX1e6, potentialPayout, mode);
@@ -277,7 +317,8 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
 
         if (anyLost) {
             ticket.status = TicketStatus.Lost;
-            vault.releasePayout(originalPayout);
+            uint256 remainingReserve = originalPayout - ticket.claimedAmount;
+            if (remainingReserve > 0) vault.releasePayout(remainingReserve);
         } else if (allWon) {
             ticket.status = TicketStatus.Won;
             // payout stays reserved until claim
@@ -287,9 +328,13 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
             if (remainingLegs < 2) {
                 // Not enough legs for a valid parlay, void the ticket
                 ticket.status = TicketStatus.Voided;
-                vault.releasePayout(originalPayout);
-                // Refund stake minus fee (fee stays in vault as house profit)
-                uint256 refundAmount = ticket.stake - ticket.feePaid;
+                uint256 remainingReserve = originalPayout - ticket.claimedAmount;
+                if (remainingReserve > 0) vault.releasePayout(remainingReserve);
+                // Refund stake minus fee minus any progressive claims already paid out
+                uint256 effectiveStake = ticket.stake - ticket.feePaid;
+                uint256 refundAmount = effectiveStake > ticket.claimedAmount
+                    ? effectiveStake - ticket.claimedAmount
+                    : 0;
                 if (refundAmount > 0) {
                     vault.refundVoided(ownerOf(ticketId), refundAmount);
                 }
@@ -315,12 +360,22 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
                 uint256 effectiveStake = ticket.stake - ticket.feePaid;
                 uint256 newPayout = ParlayMath.computePayout(effectiveStake, newMultiplier);
 
-                if (newPayout < originalPayout) {
-                    vault.releasePayout(originalPayout - newPayout);
-                }
-                // If newPayout > originalPayout we cap at original (vault already reserved that much)
+                // Cap newPayout at originalPayout (vault only reserved that much)
                 if (newPayout > originalPayout) {
                     newPayout = originalPayout;
+                }
+
+                // Account for progressive claims when releasing excess reserve
+                if (newPayout > ticket.claimedAmount) {
+                    // Some payout remains after claims; release the difference between original and new
+                    if (originalPayout > newPayout) {
+                        vault.releasePayout(originalPayout - newPayout);
+                    }
+                } else {
+                    // Claims already exceed or match the recalculated payout
+                    uint256 remainingReserve = originalPayout - ticket.claimedAmount;
+                    if (remainingReserve > 0) vault.releasePayout(remainingReserve);
+                    newPayout = ticket.claimedAmount;
                 }
 
                 ticket.potentialPayout = newPayout;
@@ -340,8 +395,207 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
         require(ownerOf(ticketId) == msg.sender, "ParlayEngine: not ticket owner");
 
         ticket.status = TicketStatus.Claimed;
-        vault.payWinner(msg.sender, ticket.potentialPayout);
+        uint256 remaining = ticket.potentialPayout - ticket.claimedAmount;
+        require(remaining > 0, "ParlayEngine: nothing to claim");
+        vault.payWinner(msg.sender, remaining);
 
-        emit PayoutClaimed(ticketId, msg.sender, ticket.potentialPayout);
+        emit PayoutClaimed(ticketId, msg.sender, remaining);
+    }
+
+    /// @notice Claim partial payout for a progressive ticket as legs resolve.
+    function claimProgressive(uint256 ticketId) external nonReentrant whenNotPaused {
+        require(ticketId < _nextTicketId, "ParlayEngine: invalid ticketId");
+        Ticket storage ticket = _tickets[ticketId];
+        require(ticket.payoutMode == PayoutMode.PROGRESSIVE, "ParlayEngine: not progressive");
+        require(ticket.status == TicketStatus.Active, "ParlayEngine: not active");
+        require(ownerOf(ticketId) == msg.sender, "ParlayEngine: not ticket owner");
+
+        // Scan legs: count won, detect losses
+        uint256 wonCount;
+        bool anyLost;
+
+        for (uint256 i = 0; i < ticket.legIds.length; i++) {
+            LegRegistry.Leg memory leg = registry.getLeg(ticket.legIds[i]);
+            IOracleAdapter oracle = IOracleAdapter(leg.oracleAdapter);
+
+            if (!oracle.canResolve(ticket.legIds[i])) continue; // unresolved, skip
+
+            (LegStatus legStatus,) = oracle.getStatus(ticket.legIds[i]);
+
+            if (legStatus == LegStatus.Voided) continue; // voided legs don't count
+
+            bool isNoBet = ticket.outcomes[i] == bytes32(uint256(2));
+            bool bettorWon;
+            if (legStatus == LegStatus.Won) {
+                bettorWon = !isNoBet;
+            } else if (legStatus == LegStatus.Lost) {
+                bettorWon = isNoBet;
+            } else {
+                continue;
+            }
+
+            if (!bettorWon) {
+                anyLost = true;
+                break;
+            }
+            wonCount++;
+        }
+
+        // If any leg lost -> mark ticket lost, release remaining reserve
+        if (anyLost) {
+            ticket.status = TicketStatus.Lost;
+            uint256 remainingReserve = ticket.potentialPayout - ticket.claimedAmount;
+            if (remainingReserve > 0) vault.releasePayout(remainingReserve);
+            emit TicketSettled(ticketId, TicketStatus.Lost);
+            return;
+        }
+
+        require(wonCount > 0, "ParlayEngine: no won legs to claim");
+
+        // Collect won leg probabilities (second pass)
+        uint256[] memory wonProbs = new uint256[](wonCount);
+        uint256 idx;
+        for (uint256 i = 0; i < ticket.legIds.length; i++) {
+            LegRegistry.Leg memory leg = registry.getLeg(ticket.legIds[i]);
+            IOracleAdapter oracle = IOracleAdapter(leg.oracleAdapter);
+
+            if (!oracle.canResolve(ticket.legIds[i])) continue;
+            (LegStatus legStatus,) = oracle.getStatus(ticket.legIds[i]);
+            if (legStatus == LegStatus.Voided) continue;
+
+            // All non-voided resolved legs are won (we already checked for losses)
+            if (ticket.outcomes[i] == bytes32(uint256(2))) {
+                wonProbs[idx++] = 1_000_000 - leg.probabilityPPM;
+            } else {
+                wonProbs[idx++] = leg.probabilityPPM;
+            }
+        }
+
+        // Compute partial payout from won legs
+        uint256 partialMultiplier = ParlayMath.computeMultiplier(wonProbs);
+        uint256 effectiveStake = ticket.stake - ticket.feePaid;
+        uint256 partialPayout = ParlayMath.computePayout(effectiveStake, partialMultiplier);
+
+        // Cap at potentialPayout
+        if (partialPayout > ticket.potentialPayout) {
+            partialPayout = ticket.potentialPayout;
+        }
+
+        uint256 claimable = partialPayout > ticket.claimedAmount ? partialPayout - ticket.claimedAmount : 0;
+        require(claimable > 0, "ParlayEngine: nothing to claim");
+
+        ticket.claimedAmount += claimable;
+        vault.payWinner(msg.sender, claimable);
+
+        emit ProgressiveClaimed(ticketId, msg.sender, claimable, ticket.claimedAmount);
+    }
+
+    /// @notice Cash out an EARLY_CASHOUT ticket before all legs resolve.
+    /// @param ticketId The ticket to cash out.
+    /// @param minOut Minimum cashout value (slippage protection).
+    function cashoutEarly(uint256 ticketId, uint256 minOut) external nonReentrant whenNotPaused {
+        require(ticketId < _nextTicketId, "ParlayEngine: invalid ticketId");
+        Ticket storage ticket = _tickets[ticketId];
+        require(ticket.payoutMode == PayoutMode.EARLY_CASHOUT, "ParlayEngine: not early cashout");
+        require(ticket.status == TicketStatus.Active, "ParlayEngine: not active");
+        require(ownerOf(ticketId) == msg.sender, "ParlayEngine: not ticket owner");
+
+        uint256 wonCount;
+        uint256 unresolvedCount;
+
+        // First pass: categorize legs and check for losses
+        {
+            for (uint256 i = 0; i < ticket.legIds.length; i++) {
+                LegRegistry.Leg memory leg = registry.getLeg(ticket.legIds[i]);
+                IOracleAdapter oracle = IOracleAdapter(leg.oracleAdapter);
+
+                if (!oracle.canResolve(ticket.legIds[i])) {
+                    unresolvedCount++;
+                    continue;
+                }
+
+                (LegStatus legStatus,) = oracle.getStatus(ticket.legIds[i]);
+
+                if (legStatus == LegStatus.Voided) {
+                    unresolvedCount++;
+                    continue;
+                }
+
+                bool isNoBet = ticket.outcomes[i] == bytes32(uint256(2));
+                bool bettorWon;
+                if (legStatus == LegStatus.Won) {
+                    bettorWon = !isNoBet;
+                } else if (legStatus == LegStatus.Lost) {
+                    bettorWon = isNoBet;
+                } else {
+                    unresolvedCount++;
+                    continue;
+                }
+
+                require(bettorWon, "ParlayEngine: leg already lost");
+                wonCount++;
+            }
+        }
+
+        require(wonCount > 0, "ParlayEngine: need at least 1 won leg");
+        require(unresolvedCount > 0, "ParlayEngine: all resolved, use settleTicket");
+
+        // Second pass: collect won and unresolved probabilities
+        uint256[] memory wonProbs = new uint256[](wonCount);
+        uint256[] memory unresolvedProbs = new uint256[](unresolvedCount);
+
+        {
+            uint256 wIdx;
+            uint256 uIdx;
+
+            for (uint256 i = 0; i < ticket.legIds.length; i++) {
+                LegRegistry.Leg memory leg = registry.getLeg(ticket.legIds[i]);
+                IOracleAdapter oracle = IOracleAdapter(leg.oracleAdapter);
+
+                uint256 prob = ticket.outcomes[i] == bytes32(uint256(2))
+                    ? 1_000_000 - leg.probabilityPPM
+                    : leg.probabilityPPM;
+
+                if (!oracle.canResolve(ticket.legIds[i])) {
+                    unresolvedProbs[uIdx++] = prob;
+                    continue;
+                }
+
+                (LegStatus legStatus,) = oracle.getStatus(ticket.legIds[i]);
+
+                if (legStatus == LegStatus.Voided) {
+                    unresolvedProbs[uIdx++] = prob;
+                    continue;
+                }
+
+                // Must be a won leg (losses already reverted above)
+                wonProbs[wIdx++] = prob;
+            }
+        }
+
+        // Compute cashout value and pay
+        {
+            uint256 effectiveStake = ticket.stake - ticket.feePaid;
+            (uint256 cashoutValue, uint256 penaltyBps) = ParlayMath.computeCashoutValue(
+                effectiveStake,
+                wonProbs,
+                unresolvedProbs,
+                baseCashoutPenaltyBps,
+                ticket.legIds.length,
+                ticket.potentialPayout
+            );
+
+            uint256 payout = cashoutValue > ticket.claimedAmount ? cashoutValue - ticket.claimedAmount : 0;
+            require(payout >= minOut, "ParlayEngine: below min cashout");
+
+            ticket.status = TicketStatus.Claimed;
+            ticket.claimedAmount += payout;
+
+            vault.payWinner(msg.sender, payout);
+            uint256 remainingReserve = ticket.potentialPayout - ticket.claimedAmount;
+            if (remainingReserve > 0) vault.releasePayout(remainingReserve);
+
+            emit EarlyCashout(ticketId, msg.sender, payout, penaltyBps);
+        }
     }
 }
