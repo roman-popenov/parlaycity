@@ -187,6 +187,8 @@ contract HouseVaultFuzzTest is Test {
         uint256 totalDeposited = a1 + a2 + yield_;
         uint256 totalReturned = r1 + r2;
         uint256 tolerance = 2 * sharePrice + 2;
-        assertApproxEqAbs(totalReturned, totalDeposited, tolerance, "total returned diverges from total deposited + yield");
+        assertApproxEqAbs(
+            totalReturned, totalDeposited, tolerance, "total returned diverges from total deposited + yield"
+        );
     }
 }

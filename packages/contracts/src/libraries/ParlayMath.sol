@@ -46,7 +46,11 @@ library ParlayMath {
     /// @param baseBps Base edge in basis points.
     /// @param perLegBps Additional edge per leg in basis points.
     /// @return totalBps The total edge in basis points.
-    function computeEdge(uint256 numLegs, uint256 baseBps, uint256 perLegBps) internal pure returns (uint256 totalBps) {
+    function computeEdge(uint256 numLegs, uint256 baseBps, uint256 perLegBps)
+        internal
+        pure
+        returns (uint256 totalBps)
+    {
         totalBps = baseBps + (numLegs * perLegBps);
     }
 }

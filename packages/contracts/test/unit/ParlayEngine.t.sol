@@ -100,8 +100,10 @@ contract ParlayEngineTest is Test {
         outcomes[1] = keccak256("yes");
 
         // Need to re-create legs since cutoff must be in the future
-        uint256 leg0 = registry.createLeg("Q1", "s", block.timestamp + 1000, block.timestamp + 2000, address(oracle), 500_000);
-        uint256 leg1 = registry.createLeg("Q2", "s", block.timestamp + 1000, block.timestamp + 2000, address(oracle), 250_000);
+        uint256 leg0 =
+            registry.createLeg("Q1", "s", block.timestamp + 1000, block.timestamp + 2000, address(oracle), 500_000);
+        uint256 leg1 =
+            registry.createLeg("Q2", "s", block.timestamp + 1000, block.timestamp + 2000, address(oracle), 250_000);
 
         uint256[] memory newLegs = new uint256[](2);
         newLegs[0] = leg0;
@@ -551,9 +553,15 @@ contract ParlayEngineTest is Test {
         uint256 h4 = _createLeg("H4", 700_000);
 
         uint256[] memory legs = new uint256[](5);
-        legs[0] = h0; legs[1] = h1; legs[2] = h2; legs[3] = h3; legs[4] = h4;
+        legs[0] = h0;
+        legs[1] = h1;
+        legs[2] = h2;
+        legs[3] = h3;
+        legs[4] = h4;
         bytes32[] memory outcomes = new bytes32[](5);
-        for (uint256 i = 0; i < 5; i++) outcomes[i] = keccak256("yes");
+        for (uint256 i = 0; i < 5; i++) {
+            outcomes[i] = keccak256("yes");
+        }
 
         vm.prank(alice);
         uint256 ticketId = engine.buyTicket(legs, outcomes, 10e6);

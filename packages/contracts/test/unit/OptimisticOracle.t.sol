@@ -37,7 +37,7 @@ contract OptimisticOracleTest is Test {
         vm.prank(proposer);
         oracle.propose(1, LegStatus.Won, keccak256("yes"));
 
-        (,,,,OptimisticOracleAdapter.ProposalState state,,,,) = oracle.proposals(1);
+        (,,,, OptimisticOracleAdapter.ProposalState state,,,,) = oracle.proposals(1);
         assertEq(uint8(state), uint8(OptimisticOracleAdapter.ProposalState.Proposed));
 
         // Bond should have been taken
@@ -101,7 +101,7 @@ contract OptimisticOracleTest is Test {
         vm.prank(challenger);
         oracle.challenge(1);
 
-        (,,,,OptimisticOracleAdapter.ProposalState state, address ch,,,) = oracle.proposals(1);
+        (,,,, OptimisticOracleAdapter.ProposalState state, address ch,,,) = oracle.proposals(1);
         assertEq(uint8(state), uint8(OptimisticOracleAdapter.ProposalState.Challenged));
         assertEq(ch, challenger);
 

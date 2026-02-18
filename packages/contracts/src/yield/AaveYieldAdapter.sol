@@ -24,12 +24,7 @@ contract AaveYieldAdapter is IYieldAdapter, Ownable {
     IERC20 public immutable aUsdc;
     address public immutable vault;
 
-    constructor(
-        IAavePool _aavePool,
-        IERC20 _usdc,
-        IERC20 _aUsdc,
-        address _vault
-    ) Ownable(msg.sender) {
+    constructor(IAavePool _aavePool, IERC20 _usdc, IERC20 _aUsdc, address _vault) Ownable(msg.sender) {
         aavePool = _aavePool;
         usdc = _usdc;
         aUsdc = _aUsdc;
