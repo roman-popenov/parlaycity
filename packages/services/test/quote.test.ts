@@ -165,6 +165,23 @@ describe("computeMultiplier Solidity parity", () => {
     const result = computeMultiplier([999_999, 999_999]);
     expect(result).toBe(1_000_002n);
   });
+
+  // Input validation — mirrors ParlayMath.sol require guards
+  it("throws on empty probs", () => {
+    expect(() => computeMultiplier([])).toThrow("empty probs");
+  });
+
+  it("throws on zero probability", () => {
+    expect(() => computeMultiplier([0, 500_000])).toThrow("prob out of range");
+  });
+
+  it("throws on probability above PPM", () => {
+    expect(() => computeMultiplier([1_000_001, 500_000])).toThrow("prob out of range");
+  });
+
+  it("throws on negative probability", () => {
+    expect(() => computeMultiplier([-1, 500_000])).toThrow("prob out of range");
+  });
 });
 
 describe("computeQuote edge cases", () => {

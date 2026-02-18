@@ -12,16 +12,19 @@ import type { QuoteResponse } from "./types.js";
 
 /**
  * Multiply probabilities (each in PPM) to get combined fair multiplier in x1e6.
- * multiplier = PPM^n / product(probs)
- * This mirrors ParlayMath.sol: combined probability = p1*p2*...*pn / PPM^(n-1),
- * multiplier = PPM / combinedProbability = PPM^n / product(probs).
+ * Iterative division mirrors ParlayMath.sol exactly:
+ * multiplier = PPM; multiplier = multiplier * PPM / prob_i for each leg.
  */
 export function computeMultiplier(probsPPM: number[]): bigint {
+  if (probsPPM.length === 0) {
+    throw new Error("computeMultiplier: empty probs");
+  }
   const ppm = BigInt(PPM);
-  // Iterative multiply-then-divide mirrors ParlayMath.sol exactly.
-  // Each step truncates, matching Solidity's integer division behavior.
   let multiplier = ppm; // start at 1x (1_000_000)
   for (const p of probsPPM) {
+    if (p <= 0 || p > PPM) {
+      throw new Error("computeMultiplier: prob out of range");
+    }
     multiplier = (multiplier * ppm) / BigInt(p);
   }
   return multiplier;
