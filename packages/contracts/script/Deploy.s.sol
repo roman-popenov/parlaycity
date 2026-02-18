@@ -15,7 +15,8 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract Deploy is Script {
     function run() external {
-        uint256 deployerKey = vm.envOr("PRIVATE_KEY", uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80));
+        uint256 deployerKey =
+            vm.envOr("PRIVATE_KEY", uint256(0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80));
         address deployer = vm.addr(deployerKey);
 
         vm.startBroadcast(deployerKey);
@@ -37,8 +38,7 @@ contract Deploy is Script {
         console.log("AdminOracleAdapter:     ", address(adminOracle));
 
         // 5. Deploy OptimisticOracleAdapter (30 min liveness, 10 USDC bond)
-        OptimisticOracleAdapter optimisticOracle =
-            new OptimisticOracleAdapter(IERC20(address(usdc)), 1800, 10e6);
+        OptimisticOracleAdapter optimisticOracle = new OptimisticOracleAdapter(IERC20(address(usdc)), 1800, 10e6);
         console.log("OptimisticOracleAdapter:", address(optimisticOracle));
 
         // 6. Deploy ParlayEngine (bootstrap ends 7 days from now)
@@ -50,9 +50,17 @@ contract Deploy is Script {
         vault.setEngine(address(engine));
         console.log("Engine authorized on vault");
 
-        // 7b. Deploy LockVault
+        // 7b. Deploy LockVault and wire fee routing
         LockVault lockVault = new LockVault(vault);
         console.log("LockVault:              ", address(lockVault));
+
+        // Wire fee routing: vault -> lockVault (90%), vault -> safetyModule (5%), 5% stays in vault
+        vault.setLockVault(lockVault);
+        // SafetyModule doesn't exist yet -- use deployer as placeholder for now
+        // TODO: Replace with real SafetyModule address in PR2
+        vault.setSafetyModule(deployer);
+        lockVault.setFeeDistributor(address(vault));
+        console.log("Fee routing wired (90/5/5)");
 
         // 7c. Deploy MockYieldAdapter (for local testing)
         MockYieldAdapter yieldAdapter = new MockYieldAdapter(IERC20(address(usdc)), address(vault));
@@ -63,9 +71,15 @@ contract Deploy is Script {
         uint256 cutoff = block.timestamp + 1 days;
         uint256 resolve = cutoff + 1 hours;
 
-        registry.createLeg("Will ETH hit $5000 by end of March?", "coingecko:eth", cutoff, resolve, address(adminOracle), 350_000);
-        registry.createLeg("Will BTC hit $150k by end of March?", "coingecko:btc", cutoff, resolve, address(adminOracle), 250_000);
-        registry.createLeg("Will SOL hit $300 by end of March?", "coingecko:sol", cutoff, resolve, address(adminOracle), 200_000);
+        registry.createLeg(
+            "Will ETH hit $5000 by end of March?", "coingecko:eth", cutoff, resolve, address(adminOracle), 350_000
+        );
+        registry.createLeg(
+            "Will BTC hit $150k by end of March?", "coingecko:btc", cutoff, resolve, address(adminOracle), 250_000
+        );
+        registry.createLeg(
+            "Will SOL hit $300 by end of March?", "coingecko:sol", cutoff, resolve, address(adminOracle), 200_000
+        );
         console.log("Created 3 sample legs");
 
         // 9. Mint USDC to deployer and second Anvil account

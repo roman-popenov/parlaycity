@@ -9,6 +9,7 @@ import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 import {IYieldAdapter} from "../interfaces/IYieldAdapter.sol";
+import {LockVault} from "./LockVault.sol";
 
 /// @title HouseVault
 /// @notice ERC4626-like vault that holds USDC liquidity for the ParlayCity house.
@@ -32,6 +33,12 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
 
     /// @notice Address of the ParlayEngine authorized to reserve/release/pay.
     address public engine;
+
+    /// @notice LockVault for routing fee income to lockers.
+    LockVault public lockVault;
+
+    /// @notice Safety module address for routing fee income to insurance buffer.
+    address public safetyModule;
 
     /// @notice Optional yield adapter for deploying idle capital.
     IYieldAdapter public yieldAdapter;
@@ -57,6 +64,9 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
     event YieldBufferBpsSet(uint256 bps);
     event IdleDeployed(uint256 amount);
     event RecalledFromAdapter(uint256 amount);
+    event LockVaultSet(address indexed lockVault);
+    event SafetyModuleSet(address indexed safetyModule);
+    event FeesRouted(uint256 feeToLockers, uint256 feeToSafety, uint256 feeToVault);
 
     // ── Modifiers ────────────────────────────────────────────────────────
 
@@ -91,6 +101,18 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
         require(_bps <= 10_000, "HouseVault: invalid bps");
         maxPayoutBps = _bps;
         emit MaxPayoutBpsSet(_bps);
+    }
+
+    function setLockVault(LockVault _lockVault) external onlyOwner {
+        require(address(_lockVault) != address(0), "HouseVault: zero address");
+        lockVault = _lockVault;
+        emit LockVaultSet(address(_lockVault));
+    }
+
+    function setSafetyModule(address _safetyModule) external onlyOwner {
+        require(_safetyModule != address(0), "HouseVault: zero address");
+        safetyModule = _safetyModule;
+        emit SafetyModuleSet(_safetyModule);
     }
 
     function setYieldAdapter(IYieldAdapter _adapter) external onlyOwner {
@@ -234,6 +256,27 @@ contract HouseVault is ERC20, Ownable, Pausable, ReentrancyGuard {
     function refundVoided(address user, uint256 amount) external onlyEngine nonReentrant {
         asset.safeTransfer(user, amount);
         emit VoidedRefund(user, amount);
+    }
+
+    /// @notice Route fee portions out of the vault to LockVault and SafetyModule.
+    ///         The remaining feeToVault stays in the vault implicitly (already deposited).
+    ///         Only callable by ParlayEngine.
+    function routeFees(uint256 feeToLockers, uint256 feeToSafety) external onlyEngine nonReentrant {
+        uint256 totalOut = feeToLockers + feeToSafety;
+        require(totalAssets() >= totalReserved + totalOut, "HouseVault: routing would break solvency");
+
+        // Transfer to LockVault and notify
+        if (feeToLockers > 0 && address(lockVault) != address(0)) {
+            asset.safeTransfer(address(lockVault), feeToLockers);
+            lockVault.notifyFees(feeToLockers);
+        }
+
+        // Transfer to safety module
+        if (feeToSafety > 0 && safetyModule != address(0)) {
+            asset.safeTransfer(safetyModule, feeToSafety);
+        }
+
+        emit FeesRouted(feeToLockers, feeToSafety, 0);
     }
 
     // ── Yield Functions ───────────────────────────────────────────────────

@@ -61,6 +61,11 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
     uint256 public minStake = 1e6; // 1 USDC
     uint256 public maxLegs = 5;
 
+    /// @notice Fee split constants (BPS of feePaid).
+    uint256 public constant FEE_TO_LOCKERS_BPS = 9000; // 90%
+    uint256 public constant FEE_TO_SAFETY_BPS = 500; // 5%
+    // Remaining 5% stays in vault implicitly
+
     uint256 private _nextTicketId;
     mapping(uint256 => Ticket) private _tickets;
 
@@ -78,6 +83,7 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
     );
     event TicketSettled(uint256 indexed ticketId, TicketStatus status);
     event PayoutClaimed(uint256 indexed ticketId, address indexed winner, uint256 amount);
+    event FeesRouted(uint256 indexed ticketId, uint256 feeToLockers, uint256 feeToSafety, uint256 feeToVault);
     event BaseFeeUpdated(uint256 oldFee, uint256 newFee);
     event PerLegFeeUpdated(uint256 oldFee, uint256 newFee);
     event MinStakeUpdated(uint256 oldStake, uint256 newStake);
@@ -85,12 +91,10 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
 
     // ── Constructor ──────────────────────────────────────────────────────
 
-    constructor(
-        HouseVault _vault,
-        LegRegistry _registry,
-        IERC20 _usdc,
-        uint256 _bootstrapEndsAt
-    ) ERC721("ParlayCity Ticket", "PCKT") Ownable(msg.sender) {
+    constructor(HouseVault _vault, LegRegistry _registry, IERC20 _usdc, uint256 _bootstrapEndsAt)
+        ERC721("ParlayCity Ticket", "PCKT")
+        Ownable(msg.sender)
+    {
         vault = _vault;
         registry = _registry;
         usdc = _usdc;
@@ -145,11 +149,12 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
     // ── Core Logic ───────────────────────────────────────────────────────
 
     /// @notice Purchase a parlay ticket by combining multiple legs.
-    function buyTicket(
-        uint256[] calldata legIds,
-        bytes32[] calldata outcomes,
-        uint256 stake
-    ) external nonReentrant whenNotPaused returns (uint256 ticketId) {
+    function buyTicket(uint256[] calldata legIds, bytes32[] calldata outcomes, uint256 stake)
+        external
+        nonReentrant
+        whenNotPaused
+        returns (uint256 ticketId)
+    {
         // --- Validations ---
         require(legIds.length >= 2, "ParlayEngine: need >= 2 legs");
         require(legIds.length <= maxLegs, "ParlayEngine: too many legs");
@@ -192,6 +197,15 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
 
         // --- Reserve the payout ---
         vault.reservePayout(potentialPayout);
+
+        // --- Route fees (90/5/5 split) ---
+        if (feePaid > 0) {
+            uint256 feeToLockers = (feePaid * FEE_TO_LOCKERS_BPS) / 10_000;
+            uint256 feeToSafety = (feePaid * FEE_TO_SAFETY_BPS) / 10_000;
+            // feeToVault = feePaid - feeToLockers - feeToSafety (dust goes to vault)
+            vault.routeFees(feeToLockers, feeToSafety);
+            emit FeesRouted(_nextTicketId, feeToLockers, feeToSafety, feePaid - feeToLockers - feeToSafety);
+        }
 
         // --- Mint NFT ticket ---
         ticketId = _nextTicketId++;
@@ -247,7 +261,7 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
             } else if (legStatus == LegStatus.Won) {
                 bettorWon = !isNoBet; // Yes bettor wins, No bettor loses
             } else if (legStatus == LegStatus.Lost) {
-                bettorWon = isNoBet;  // No bettor wins, Yes bettor loses
+                bettorWon = isNoBet; // No bettor wins, Yes bettor loses
             } else {
                 revert("ParlayEngine: unexpected leg status");
             }

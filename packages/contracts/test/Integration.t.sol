@@ -205,6 +205,64 @@ contract IntegrationTest is Test {
         assertEq(vault.balanceOf(lp), 10_000e6); // all back
     }
 
+    // ── Lifecycle 5: Fee routing end-to-end ─────────────────────────────
+
+    function test_lifecycle_feeRouting_endToEnd() public {
+        address safetyModule = makeAddr("safetyModule");
+
+        // Wire up fee routing
+        vault.setLockVault(lockVault);
+        vault.setSafetyModule(safetyModule);
+        lockVault.setFeeDistributor(address(vault));
+
+        // LP locks vUSDC to be eligible for fee rewards
+        vm.prank(lp);
+        uint256 posId = lockVault.lock(5_000e6, LockVault.LockTier.THIRTY);
+
+        uint256 vaultBefore = vault.totalAssets();
+        uint256 lockVaultUsdcBefore = usdc.balanceOf(address(lockVault));
+
+        // Bettor buys a ticket
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0;
+        legs[1] = 1;
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
+
+        vm.prank(bettor);
+        uint256 ticketId = engine.buyTicket(legs, outcomes, 10e6);
+
+        ParlayEngine.Ticket memory t = engine.getTicket(ticketId);
+        uint256 feePaid = t.feePaid;
+        uint256 feeToLockers = (feePaid * 9000) / 10_000;
+        uint256 feeToSafety = (feePaid * 500) / 10_000;
+
+        // Verify fees were routed
+        assertEq(usdc.balanceOf(address(lockVault)) - lockVaultUsdcBefore, feeToLockers, "LockVault got fee share");
+        assertEq(usdc.balanceOf(safetyModule), feeToSafety, "SafetyModule got fee share");
+
+        // Solvency invariant holds
+        assertLe(vault.totalReserved(), vault.totalAssets(), "Solvency after fee routing");
+
+        // Settle as win, claim, verify full flow still works
+        oracle.resolve(0, LegStatus.Won, keccak256("yes"));
+        oracle.resolve(1, LegStatus.Won, keccak256("yes"));
+        engine.settleTicket(ticketId);
+
+        uint256 bettorBefore = usdc.balanceOf(bettor);
+        vm.prank(bettor);
+        engine.claimPayout(ticketId);
+        assertEq(usdc.balanceOf(bettor), bettorBefore + t.potentialPayout, "Bettor gets payout");
+
+        // LP settles rewards and claims fee income
+        vm.prank(lp);
+        lockVault.settleRewards(posId);
+        vm.prank(lp);
+        lockVault.claimFees();
+        assertGt(usdc.balanceOf(lp), 0, "LP earned fee income");
+    }
+
     function test_yieldAdapter_integration() public {
         // Deploy idle funds to yield adapter
         vault.deployIdle(5_000e6);

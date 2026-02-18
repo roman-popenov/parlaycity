@@ -18,21 +18,22 @@ contract LockVault is Ownable, ReentrancyGuard {
     // ── Enums ────────────────────────────────────────────────────────────
 
     enum LockTier {
-        THIRTY,  // 30 days  -> 1.1x multiplier
-        SIXTY,   // 60 days  -> 1.25x multiplier
-        NINETY   // 90 days  -> 1.5x multiplier
+        THIRTY, // 30 days  -> 1.1x multiplier
+        SIXTY, // 60 days  -> 1.25x multiplier
+        NINETY // 90 days  -> 1.5x multiplier
+
     }
 
     // ── Structs ──────────────────────────────────────────────────────────
 
     struct LockPosition {
         address owner;
-        uint256 shares;          // vUSDC shares locked
+        uint256 shares; // vUSDC shares locked
         LockTier tier;
         uint256 lockedAt;
         uint256 unlockAt;
         uint256 feeMultiplierBps; // 11000 = 1.1x, 12500 = 1.25x, 15000 = 1.5x
-        uint256 rewardDebt;       // Snapshot of accRewardPerWeightedShare at entry
+        uint256 rewardDebt; // Snapshot of accRewardPerWeightedShare at entry
     }
 
     // ── Constants ────────────────────────────────────────────────────────
@@ -61,6 +62,9 @@ contract LockVault is Ownable, ReentrancyGuard {
     /// @notice Base early withdrawal penalty in bps (default 10%).
     uint256 public basePenaltyBps = 1000;
 
+    /// @notice Address authorized to push fee distributions (typically HouseVault).
+    address public feeDistributor;
+
     /// @notice Accumulated claimable rewards per user.
     mapping(address => uint256) public pendingRewards;
 
@@ -68,12 +72,15 @@ contract LockVault is Ownable, ReentrancyGuard {
 
     event Locked(uint256 indexed positionId, address indexed owner, uint256 shares, LockTier tier, uint256 unlockAt);
     event Unlocked(uint256 indexed positionId, address indexed owner, uint256 shares);
-    event EarlyWithdraw(uint256 indexed positionId, address indexed owner, uint256 sharesReturned, uint256 penaltyShares);
+    event EarlyWithdraw(
+        uint256 indexed positionId, address indexed owner, uint256 sharesReturned, uint256 penaltyShares
+    );
     event PenaltySharesSwept(address indexed receiver, uint256 shares);
     event FeesDistributed(uint256 amount, uint256 newAccRewardPerWeightedShare);
     event RewardsClaimed(address indexed user, uint256 amount);
     event Harvested(uint256 indexed positionId, address indexed owner, uint256 reward);
     event BasePenaltyUpdated(uint256 oldPenalty, uint256 newPenalty);
+    event FeeDistributorSet(address indexed distributor);
 
     // ── Constructor ──────────────────────────────────────────────────────
 
@@ -88,6 +95,12 @@ contract LockVault is Ownable, ReentrancyGuard {
         require(_bps <= 5000, "LockVault: penalty too high");
         emit BasePenaltyUpdated(basePenaltyBps, _bps);
         basePenaltyBps = _bps;
+    }
+
+    function setFeeDistributor(address _distributor) external onlyOwner {
+        require(_distributor != address(0), "LockVault: zero address");
+        feeDistributor = _distributor;
+        emit FeeDistributorSet(_distributor);
     }
 
     // ── Core ─────────────────────────────────────────────────────────────
@@ -174,7 +187,7 @@ contract LockVault is Ownable, ReentrancyGuard {
     }
 
     /// @notice Distribute fee income proportionally to weighted locked shares.
-    ///         Called by owner/keeper with USDC amount already transferred to this contract.
+    ///         Called by owner/keeper -- pulls USDC from msg.sender.
     function distributeFees(uint256 amount) external onlyOwner nonReentrant {
         require(totalWeightedShares > 0, "LockVault: no locked shares");
         require(amount > 0, "LockVault: zero amount");
@@ -182,6 +195,17 @@ contract LockVault is Ownable, ReentrancyGuard {
         // Transfer USDC fee income into this contract
         IERC20 usdc = vault.asset();
         usdc.safeTransferFrom(msg.sender, address(this), amount);
+
+        accRewardPerWeightedShare += (amount * PRECISION) / totalWeightedShares;
+        emit FeesDistributed(amount, accRewardPerWeightedShare);
+    }
+
+    /// @notice Notify the LockVault of fee income already transferred to this contract.
+    ///         Called by the feeDistributor (typically HouseVault) after pushing USDC.
+    function notifyFees(uint256 amount) external nonReentrant {
+        require(msg.sender == feeDistributor, "LockVault: caller is not fee distributor");
+        require(amount > 0, "LockVault: zero amount");
+        if (totalWeightedShares == 0) return; // no lockers to reward, USDC stays as surplus
 
         accRewardPerWeightedShare += (amount * PRECISION) / totalWeightedShares;
         emit FeesDistributed(amount, accRewardPerWeightedShare);
@@ -245,9 +269,9 @@ contract LockVault is Ownable, ReentrancyGuard {
     }
 
     function _tierMultiplier(LockTier tier) internal pure returns (uint256) {
-        if (tier == LockTier.THIRTY) return 11000;  // 1.1x
-        if (tier == LockTier.SIXTY) return 12500;    // 1.25x
-        return 15000;                                  // 1.5x (NINETY)
+        if (tier == LockTier.THIRTY) return 11000; // 1.1x
+        if (tier == LockTier.SIXTY) return 12500; // 1.25x
+        return 15000; // 1.5x (NINETY)
     }
 
     function _tierDuration(LockTier tier) internal pure returns (uint256) {
