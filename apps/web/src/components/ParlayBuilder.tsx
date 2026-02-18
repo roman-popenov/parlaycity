@@ -105,6 +105,19 @@ export function ParlayBuilder() {
 
   const vaultEmpty = mounted && freeLiquidity !== undefined && freeLiquidity === 0n;
 
+  function buyButtonLabel(): string {
+    if (!mounted || !isConnected) return "Connect Wallet";
+    if (vaultEmpty) return "No Vault Liquidity";
+    if (selectedLegs.length < PARLAY_CONFIG.minLegs) return `Select at least ${PARLAY_CONFIG.minLegs} legs`;
+    if (insufficientBalance) return "Insufficient USDC Balance";
+    if (exceedsMaxPayout) return `Max Payout $${maxPayoutNum.toFixed(0)}`;
+    if (insufficientLiquidity) return "Insufficient Vault Liquidity";
+    if (isPending) return "Waiting for approval...";
+    if (isConfirming) return "Confirming...";
+    if (isSuccess) return "Ticket Bought!";
+    return "Buy Ticket";
+  }
+
   return (
     <div className={`grid gap-8 lg:grid-cols-5 transition-opacity duration-300 ${mounted ? "opacity-100" : "pointer-events-none opacity-50"}`}>
       {/* Leg selector */}
@@ -278,25 +291,7 @@ export function ParlayBuilder() {
                   : "cursor-not-allowed bg-gray-800 text-gray-500"
             }`}
           >
-            {!mounted || !isConnected
-              ? "Connect Wallet"
-              : vaultEmpty
-                ? "No Vault Liquidity"
-                : selectedLegs.length < PARLAY_CONFIG.minLegs
-                  ? `Select at least ${PARLAY_CONFIG.minLegs} legs`
-                  : insufficientBalance
-                  ? "Insufficient USDC Balance"
-                  : exceedsMaxPayout
-                    ? `Max Payout $${maxPayoutNum.toFixed(0)}`
-                    : insufficientLiquidity
-                      ? "Insufficient Vault Liquidity"
-                      : isPending
-                        ? "Waiting for approval..."
-                        : isConfirming
-                          ? "Confirming..."
-                          : isSuccess
-                            ? "Ticket Bought!"
-                            : "Buy Ticket"}
+            {buyButtonLabel()}
           </button>
 
           {/* Tx feedback */}
