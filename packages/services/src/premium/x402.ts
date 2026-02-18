@@ -4,12 +4,30 @@ import { HTTPFacilitatorClient } from "@x402/core/server";
 import type { Network } from "@x402/core/types";
 import type { Request, Response, NextFunction } from "express";
 
+// Known x402-supported networks and their testnet status
+const KNOWN_NETWORKS: Record<string, { name: string; testnet: boolean }> = {
+  "eip155:84532": { name: "Base Sepolia", testnet: true },
+  "eip155:8453": { name: "Base", testnet: false },
+};
+
 // x402 configuration from environment
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 const X402_RECIPIENT = process.env.X402_RECIPIENT_WALLET || ZERO_ADDRESS;
-const X402_NETWORK: Network = (process.env.X402_NETWORK || "eip155:84532") as Network; // Base Sepolia
 const X402_FACILITATOR_URL = process.env.X402_FACILITATOR_URL || "https://facilitator.x402.org";
 const X402_PRICE = process.env.X402_PRICE || "$0.01"; // Price per request
+
+function getX402Network(): { network: Network; testnet: boolean } {
+  const raw = process.env.X402_NETWORK || "eip155:84532";
+  const info = KNOWN_NETWORKS[raw];
+  if (!info) {
+    throw new Error(
+      `[x402] Unsupported X402_NETWORK "${raw}". Supported: ${Object.keys(KNOWN_NETWORKS).join(", ")}`,
+    );
+  }
+  return { network: raw as Network, testnet: info.testnet };
+}
+
+const { network: X402_NETWORK, testnet: X402_IS_TESTNET } = getX402Network();
 
 /**
  * Create the x402 payment middleware for the premium sim endpoint.
@@ -19,6 +37,9 @@ const X402_PRICE = process.env.X402_PRICE || "$0.01"; // Price per request
 export function createX402Middleware() {
   // Non-production mode or explicit stub override: use stub for local/CI testing
   if (process.env.NODE_ENV !== "production" || process.env.X402_STUB === "true") {
+    if (process.env.NODE_ENV === "production" && process.env.X402_STUB === "true") {
+      console.warn("[x402] WARNING: X402_STUB=true in production — payment verification is DISABLED");
+    }
     if (X402_RECIPIENT.toLowerCase() === ZERO_ADDRESS) {
       console.warn("[x402] X402_RECIPIENT_WALLET not set — stub 402 responses will omit payTo");
     }
@@ -54,7 +75,7 @@ export function createX402Middleware() {
     resourceServer,
     {
       appName: "ParlayCity",
-      testnet: X402_NETWORK === "eip155:84532",
+      testnet: X402_IS_TESTNET,
     },
     undefined,
     false, // don't sync facilitator on startup (avoids blocking)
