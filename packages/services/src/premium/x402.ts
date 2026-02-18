@@ -32,13 +32,15 @@ function getX402Recipient(): string {
 const X402_RECIPIENT = getX402Recipient();
 function getX402FacilitatorUrl(): string {
   const raw = process.env.X402_FACILITATOR_URL || "https://facilitator.x402.org";
+  let url: URL;
   try {
-    const url = new URL(raw);
-    if (url.protocol !== "https:" && url.protocol !== "http:") {
-      throw new Error("unsupported protocol");
-    }
-  } catch {
-    throw new Error(`[x402] Invalid X402_FACILITATOR_URL "${raw}" — must be a valid HTTP(S) URL`);
+    url = new URL(raw);
+  } catch (err) {
+    const detail = err instanceof Error ? err.message : String(err);
+    throw new Error(`[x402] Invalid X402_FACILITATOR_URL "${raw}" — failed to parse: ${detail}`);
+  }
+  if (url.protocol !== "https:" && url.protocol !== "http:") {
+    throw new Error(`[x402] Invalid X402_FACILITATOR_URL "${raw}" — unsupported protocol "${url.protocol}"`);
   }
   return raw;
 }
@@ -161,7 +163,11 @@ function x402GuardStub(req: Request, res: Response, next: NextFunction) {
   }
 
   const paymentHeader = req.headers["x-402-payment"];
-  if (!paymentHeader || (typeof paymentHeader === "string" && !paymentHeader.trim())) {
+  if (
+    !paymentHeader ||
+    Array.isArray(paymentHeader) ||
+    !paymentHeader.trim()
+  ) {
     const acceptOption: Record<string, string> = {
       scheme: "exact",
       network: X402_NETWORK,

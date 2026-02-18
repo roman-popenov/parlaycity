@@ -94,6 +94,7 @@ describe("x402 Payment Gate", () => {
         });
       expect(res.status).toBe(402);
     });
+
   });
 
   describe("POST /premium/sim with payment header", () => {
@@ -297,14 +298,14 @@ describe("x402 Config Validators", () => {
       expect(getX402FacilitatorUrl()).toBe("http://localhost:3000");
     });
 
-    it("throws on invalid URL", () => {
+    it("throws on invalid URL with parse details", () => {
       process.env.X402_FACILITATOR_URL = "not-a-url";
-      expect(() => getX402FacilitatorUrl()).toThrow("Invalid X402_FACILITATOR_URL");
+      expect(() => getX402FacilitatorUrl()).toThrow("failed to parse");
     });
 
-    it("throws on non-HTTP protocol", () => {
+    it("throws on non-HTTP protocol with protocol name", () => {
       process.env.X402_FACILITATOR_URL = "ftp://files.example.com";
-      expect(() => getX402FacilitatorUrl()).toThrow("Invalid X402_FACILITATOR_URL");
+      expect(() => getX402FacilitatorUrl()).toThrow("unsupported protocol");
     });
   });
 });
