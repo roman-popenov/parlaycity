@@ -5,7 +5,8 @@ import type { Network } from "@x402/core/types";
 import type { Request, Response, NextFunction } from "express";
 
 // x402 configuration from environment
-const X402_RECIPIENT = process.env.X402_PAYMENT_ADDRESS || "0x0000000000000000000000000000000000000000";
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
+const X402_RECIPIENT = process.env.X402_PAYMENT_ADDRESS || ZERO_ADDRESS;
 const X402_NETWORK: Network = (process.env.X402_NETWORK || "eip155:84532") as Network; // Base Sepolia
 const X402_FACILITATOR_URL = process.env.X402_FACILITATOR_URL || "https://x402.org/facilitator";
 const X402_PRICE = process.env.X402_PRICE || "$0.01"; // Price per request
@@ -19,6 +20,10 @@ export function createX402Middleware() {
   // Development/test mode: use stub for local testing
   if (process.env.NODE_ENV !== "production" || process.env.X402_STUB === "true") {
     return x402GuardStub;
+  }
+
+  if (X402_RECIPIENT.toLowerCase() === ZERO_ADDRESS) {
+    throw new Error("X402_PAYMENT_ADDRESS must be set to a non-zero address in production");
   }
 
   const facilitatorClient = new HTTPFacilitatorClient({
