@@ -57,12 +57,47 @@ export const SimRequestSchema = z.object({
   { message: "legIds, outcomes, and probabilities must have the same length" }
 );
 
+export const RiskAssessRequestSchema = z.object({
+  legIds: z
+    .array(z.number().int().positive())
+    .min(MIN_LEGS)
+    .max(MAX_LEGS),
+  outcomes: z.array(z.string().min(1)).min(MIN_LEGS).max(MAX_LEGS),
+  stake: z.string().refine(
+    (val) => {
+      const n = Number(val);
+      return !isNaN(n) && n >= MIN_STAKE_USDC;
+    },
+    { message: `Stake must be at least ${MIN_STAKE_USDC} USDC` }
+  ),
+  probabilities: z
+    .array(z.number().min(0).max(1_000_000))
+    .min(MIN_LEGS)
+    .max(MAX_LEGS),
+  bankroll: z.string().refine(
+    (val) => {
+      const n = Number(val);
+      return !isNaN(n) && n > 0;
+    },
+    { message: "Bankroll must be positive" }
+  ),
+  riskTolerance: z.enum(["conservative", "moderate", "aggressive"]),
+  categories: z.array(z.string()).optional(),
+}).refine(
+  (data) => data.legIds.length === data.outcomes.length && data.legIds.length === data.probabilities.length,
+  { message: "legIds, outcomes, and probabilities must have the same length" }
+);
+
 export function parseQuoteRequest(data: unknown) {
   return QuoteRequestSchema.safeParse(data);
 }
 
 export function parseSimRequest(data: unknown) {
   return SimRequestSchema.safeParse(data);
+}
+
+export function parseRiskAssessRequest(data: unknown) {
+  return RiskAssessRequestSchema.safeParse(data);
 }
 
 // Re-export USDC parse helper

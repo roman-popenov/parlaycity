@@ -3,6 +3,12 @@ export enum SettlementMode {
   OPTIMISTIC = "OPTIMISTIC",
 }
 
+export enum PayoutMode {
+  CLASSIC = "CLASSIC",
+  PROGRESSIVE = "PROGRESSIVE",
+  EARLY_CASHOUT = "EARLY_CASHOUT",
+}
+
 export enum TicketStatus {
   Active = "Active",
   Won = "Won",
@@ -47,6 +53,8 @@ export interface Ticket {
   potentialPayout: bigint;
   feePaid: bigint;
   mode: SettlementMode;
+  payoutMode: PayoutMode;
+  claimedAmount: bigint;
   status: TicketStatus;
   createdAt: number;
 }
@@ -92,4 +100,30 @@ export interface HedgeAction {
   action: "hedge" | "unwind";
   status: "simulated" | "executed";
   timestamp: number;
+}
+
+export type RiskProfile = "conservative" | "moderate" | "aggressive";
+
+export interface RiskAssessRequest {
+  legIds: number[];
+  outcomes: string[];
+  stake: string;
+  probabilities: number[];
+  bankroll: string;
+  riskTolerance: RiskProfile;
+  categories?: string[];
+}
+
+export interface RiskAssessResponse {
+  action: "BUY" | "REDUCE_STAKE" | "AVOID";
+  suggestedStake: string;
+  kellyFraction: number;
+  winProbability: number;
+  expectedValue: number;
+  confidence: number;
+  reasoning: string;
+  warnings: string[];
+  riskTolerance: RiskProfile;
+  fairMultiplier: number;
+  edgeBps: number;
 }
