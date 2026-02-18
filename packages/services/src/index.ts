@@ -5,6 +5,8 @@ import catalogRouter from "./catalog/index.js";
 import quoteRouter from "./quote/index.js";
 import hedgerRouter from "./hedger/index.js";
 import premiumRouter from "./premium/index.js";
+import riskRouter from "./risk/index.js";
+import vaultRouter from "./vault/index.js";
 import { createX402Middleware } from "./premium/x402.js";
 
 const app = express();
@@ -37,6 +39,8 @@ app.use("/markets", catalogRouter);
 app.use("/quote", quoteRouter);
 app.use("/exposure", hedgerRouter);
 app.use("/premium", premiumRouter);
+app.use("/premium", riskRouter);
+app.use("/vault", vaultRouter);
 
 if (process.env.NODE_ENV !== "test") {
   app.listen(PORT, () => {

@@ -104,6 +104,18 @@ export function createX402Middleware() {
         ],
         description: "ParlayCity premium analytics: win probability, expected value, Kelly criterion",
       },
+      "POST /premium/risk-assess": {
+        accepts: [
+          {
+            scheme: "exact",
+            price: X402_PRICE,
+            network: X402_NETWORK,
+            payTo: X402_RECIPIENT,
+            maxTimeoutSeconds: 120,
+          },
+        ],
+        description: "ParlayCity risk advisor: Kelly criterion, correlation detection, position sizing",
+      },
     },
     resourceServer,
     {
@@ -122,7 +134,8 @@ export function createX402Middleware() {
 function x402GuardStub(req: Request, res: Response, next: NextFunction) {
   // Only gate the premium sim endpoint (normalize to prevent trailing-slash / case bypass)
   const normalizedPath = req.path.toLowerCase().replace(/\/+$/, "");
-  if (req.method !== "POST" || normalizedPath !== "/premium/sim") {
+  const gatedPaths = ["/premium/sim", "/premium/risk-assess"];
+  if (req.method !== "POST" || !gatedPaths.includes(normalizedPath)) {
     return next();
   }
 
