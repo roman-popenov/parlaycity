@@ -17,11 +17,11 @@ contract LockVault is Ownable, ReentrancyGuard {
 
     // ── Enums ────────────────────────────────────────────────────────────
 
+    /// @dev THIRTY=30d (1.1x), SIXTY=60d (1.25x), NINETY=90d (1.5x)
     enum LockTier {
-        THIRTY, // 30 days  -> 1.1x multiplier
-        SIXTY, // 60 days  -> 1.25x multiplier
-        NINETY // 90 days  -> 1.5x multiplier
-
+        THIRTY,
+        SIXTY,
+        NINETY
     }
 
     // ── Structs ──────────────────────────────────────────────────────────
