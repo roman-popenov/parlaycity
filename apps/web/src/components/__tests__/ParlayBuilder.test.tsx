@@ -159,12 +159,15 @@ describe("ParlayBuilder", () => {
 
     it("does not allow leg selection", async () => {
       render(<ParlayBuilder />);
+      // Wait for buttons to be disabled first
       await vi.waitFor(() => {
         const yesButtons = screen.getAllByText("Yes");
-        fireEvent.click(yesButtons[0]);
-        // Count should remain 0/5
-        expect(screen.getByText("(0/5)")).toBeInTheDocument();
+        expect(yesButtons[0].closest("button")).toBeDisabled();
       });
+      // Then click outside waitFor to avoid retry side effects
+      const yesButtons = screen.getAllByText("Yes");
+      fireEvent.click(yesButtons[0]);
+      expect(screen.getByText("(0/5)")).toBeInTheDocument();
     });
   });
 });
