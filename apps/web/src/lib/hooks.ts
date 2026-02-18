@@ -267,6 +267,8 @@ export interface OnChainTicket {
   mode: number;
   status: number;
   createdAt: bigint;
+  payoutMode: number;
+  claimedAmount: bigint;
 }
 
 export function useTicket(ticketId: bigint | undefined) {
@@ -399,7 +401,8 @@ export function useBuyTicket() {
   const buyTicket = async (
     legIds: bigint[],
     outcomes: number[],
-    stakeUsdc: number
+    stakeUsdc: number,
+    payoutMode: number = 0
   ): Promise<boolean> => {
     if (!address || !publicClient) return false;
 
@@ -426,14 +429,16 @@ export function useBuyTicket() {
       // Encode outcomes as bytes32[]
       const outcomesBytes32 = outcomes.map((o) => pad(toHex(o), { size: 32 })) as `0x${string}`[];
 
-      // Buy ticket
+      // Buy ticket (use mode-aware function when non-classic)
       setIsPending(false);
       setIsConfirming(true);
       const buyHash = await writeContractAsync({
         address: contractAddresses.parlayEngine as `0x${string}`,
         abi: PARLAY_ENGINE_ABI,
-        functionName: "buyTicket",
-        args: [legIds, outcomesBytes32, stakeAmount],
+        functionName: payoutMode === 0 ? "buyTicket" : "buyTicketWithMode",
+        args: payoutMode === 0
+          ? [legIds, outcomesBytes32, stakeAmount]
+          : [legIds, outcomesBytes32, stakeAmount, payoutMode],
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash: buyHash });
 
@@ -677,6 +682,100 @@ export function useClaimPayout() {
   };
 
   return { claim, hash, isPending, isConfirming, isSuccess, error };
+}
+
+export function useClaimProgressive() {
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
+  const [isPending, setIsPending] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const claimProgressive = async (ticketId: bigint): Promise<boolean> => {
+    if (!publicClient) return false;
+
+    setIsPending(true);
+    setIsConfirming(false);
+    setIsSuccess(false);
+    setError(null);
+
+    try {
+      const txHash = await writeContractAsync({
+        address: contractAddresses.parlayEngine as `0x${string}`,
+        abi: PARLAY_ENGINE_ABI,
+        functionName: "claimProgressive",
+        args: [ticketId],
+      });
+
+      setIsPending(false);
+      setIsConfirming(true);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status === "reverted") {
+        throw new Error("Progressive claim reverted on-chain");
+      }
+
+      setIsConfirming(false);
+      setIsSuccess(true);
+      return true;
+    } catch (err) {
+      console.error("Progressive claim failed:", err);
+      setError(err instanceof Error ? err : new Error(String(err)));
+      return false;
+    } finally {
+      setIsPending(false);
+      setIsConfirming(false);
+    }
+  };
+
+  return { claimProgressive, isPending, isConfirming, isSuccess, error };
+}
+
+export function useCashoutEarly() {
+  const publicClient = usePublicClient();
+  const { writeContractAsync } = useWriteContract();
+  const [isPending, setIsPending] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<Error | null>(null);
+
+  const cashoutEarly = async (ticketId: bigint, minOut: bigint = 0n): Promise<boolean> => {
+    if (!publicClient) return false;
+
+    setIsPending(true);
+    setIsConfirming(false);
+    setIsSuccess(false);
+    setError(null);
+
+    try {
+      const txHash = await writeContractAsync({
+        address: contractAddresses.parlayEngine as `0x${string}`,
+        abi: PARLAY_ENGINE_ABI,
+        functionName: "cashoutEarly",
+        args: [ticketId, minOut],
+      });
+
+      setIsPending(false);
+      setIsConfirming(true);
+      const receipt = await publicClient.waitForTransactionReceipt({ hash: txHash });
+      if (receipt.status === "reverted") {
+        throw new Error("Early cashout reverted on-chain");
+      }
+
+      setIsConfirming(false);
+      setIsSuccess(true);
+      return true;
+    } catch (err) {
+      console.error("Early cashout failed:", err);
+      setError(err instanceof Error ? err : new Error(String(err)));
+      return false;
+    } finally {
+      setIsPending(false);
+      setIsConfirming(false);
+    }
+  };
+
+  return { cashoutEarly, isPending, isConfirming, isSuccess, error };
 }
 
 // ---- Lock Vault hooks ----
