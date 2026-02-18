@@ -43,7 +43,8 @@ dev:
 	@nohup anvil > $(PID_DIR)/anvil.log 2>&1 & echo $$! > $(PID_DIR)/anvil.pid
 	@echo "  Anvil started (pid $$(cat $(PID_DIR)/anvil.pid)) on :8545"
 	@sleep 2
-	@# Deploy contracts and sync env
+	@# Deploy contracts and sync env (clean cache to avoid stale source refs across branches)
+	@cd packages/contracts && forge clean > /dev/null 2>&1 || true
 	@cd packages/contracts && forge script script/Deploy.s.sol --broadcast --rpc-url http://127.0.0.1:8545 > ../../$(PID_DIR)/deploy.log 2>&1
 	@./scripts/sync-env.sh
 	@echo "  Contracts deployed, .env.local synced"
@@ -83,7 +84,9 @@ dev-stop:
 dev-status:
 	@echo "ParlayCity dev services:"
 	@for port in 8545 3001 3000; do \
-		name=$$(case $$port in 8545) echo "Anvil";; 3001) echo "Services";; 3000) echo "Web";; esac); \
+		if [ "$$port" = "8545" ]; then name="Anvil"; \
+		elif [ "$$port" = "3001" ]; then name="Services"; \
+		else name="Web"; fi; \
 		pid=$$(lsof -ti :$$port 2>/dev/null | head -1); \
 		if [ -n "$$pid" ]; then \
 			echo "  $$name (:$$port) - running (pid $$pid)"; \
