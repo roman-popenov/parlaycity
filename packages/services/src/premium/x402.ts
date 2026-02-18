@@ -58,8 +58,9 @@ export function createX402Middleware() {
  * Only intercepts POST /premium/sim. Accepts any non-empty X-402-Payment header.
  */
 function x402GuardStub(req: Request, res: Response, next: NextFunction) {
-  // Only gate the premium sim endpoint
-  if (req.method !== "POST" || req.path !== "/premium/sim") {
+  // Only gate the premium sim endpoint (normalize to prevent trailing-slash / case bypass)
+  const normalizedPath = req.path.toLowerCase().replace(/\/+$/, "");
+  if (req.method !== "POST" || normalizedPath !== "/premium/sim") {
     return next();
   }
 
