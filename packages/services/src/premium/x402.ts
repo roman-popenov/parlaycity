@@ -90,7 +90,7 @@ export function createX402Middleware() {
   const resourceServer = new x402ResourceServer(facilitatorClient)
     .register(X402_NETWORK, new ExactEvmScheme());
 
-  return paymentMiddleware(
+  const x402Middleware = paymentMiddleware(
     {
       "POST /premium/sim": {
         accepts: [
@@ -113,6 +113,20 @@ export function createX402Middleware() {
     undefined,
     false, // don't sync facilitator on startup (avoids blocking)
   );
+  return (req, res, next) => {
+    const normalizedPath = req.path.toLowerCase().replace(/\/+$/, "");
+    if (req.method === "POST" && normalizedPath === "/premium/sim") {
+      const originalUrl = req.url;
+      const queryIndex = originalUrl.indexOf("?");
+      const query = queryIndex === -1 ? "" : originalUrl.slice(queryIndex);
+      req.url = `${normalizedPath}${query}`;
+      return x402Middleware(req, res, (err) => {
+        req.url = originalUrl;
+        next(err);
+      });
+    }
+    return x402Middleware(req, res, next);
+  };
 }
 
 /**
