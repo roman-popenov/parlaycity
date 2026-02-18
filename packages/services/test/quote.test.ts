@@ -5,6 +5,8 @@ import {
   applyEdge,
   computePayout,
   computeQuote,
+  computeProgressivePayout,
+  computeCashoutValue,
   parseUSDC,
   formatUSDC,
   parseQuoteRequest,
@@ -262,5 +264,121 @@ describe("parseSimRequest", () => {
       probabilities: [500_000],
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("computeProgressivePayout", () => {
+  it("computes partial payout for won legs", () => {
+    const stake = BigInt(10 * 10 ** USDC_DECIMALS);
+    const potentialPayout = BigInt(40 * 10 ** USDC_DECIMALS);
+    const { partialPayout, claimable } = computeProgressivePayout(
+      stake,
+      [500_000],
+      potentialPayout,
+      0n,
+    );
+    // 1 won leg at 50% => multiplier = 2x => partial = 20 USDC
+    expect(partialPayout).toBe(20_000_000n);
+    expect(claimable).toBe(20_000_000n);
+  });
+
+  it("subtracts already claimed amount", () => {
+    const stake = BigInt(10 * 10 ** USDC_DECIMALS);
+    const potentialPayout = BigInt(40 * 10 ** USDC_DECIMALS);
+    const alreadyClaimed = 5_000_000n;
+    const { partialPayout, claimable } = computeProgressivePayout(
+      stake,
+      [500_000],
+      potentialPayout,
+      alreadyClaimed,
+    );
+    expect(partialPayout).toBe(20_000_000n);
+    expect(claimable).toBe(15_000_000n); // 20 - 5
+  });
+
+  it("caps at potential payout", () => {
+    const stake = BigInt(100 * 10 ** USDC_DECIMALS);
+    const potentialPayout = 5_000_000n; // only 5 USDC cap
+    const { partialPayout } = computeProgressivePayout(
+      stake,
+      [1_000], // very low prob => huge multiplier
+      potentialPayout,
+      0n,
+    );
+    expect(partialPayout).toBe(potentialPayout);
+  });
+
+  it("throws on empty won legs", () => {
+    expect(() =>
+      computeProgressivePayout(10_000_000n, [], 40_000_000n, 0n),
+    ).toThrow("no won legs");
+  });
+});
+
+describe("computeCashoutValue", () => {
+  it("computes cashout with penalty scaled by unresolved legs", () => {
+    const stake = BigInt(10 * 10 ** USDC_DECIMALS);
+    const potentialPayout = BigInt(40 * 10 ** USDC_DECIMALS);
+    const { cashoutValue, penaltyBps, fairValue } = computeCashoutValue(
+      stake,
+      [500_000],     // 1 won leg at 50%
+      2,             // 2 unresolved
+      1500,          // basePenaltyBps
+      3,             // totalLegs
+      potentialPayout,
+    );
+    // fairValue = stake * multiplier(500_000) = 10 * 2 = 20 USDC
+    expect(fairValue).toBe(20_000_000n);
+    // penaltyBps = 1500 * 2 / 3 = 1000
+    expect(penaltyBps).toBe(1000);
+    // cashout = 20_000_000 * (10000 - 1000) / 10000 = 18_000_000
+    expect(cashoutValue).toBe(18_000_000n);
+  });
+
+  it("penaltyBps uses integer division matching Solidity", () => {
+    // Key parity test: values where floating-point would diverge
+    // basePenaltyBps=1500, unresolvedCount=1, totalLegs=4
+    // Solidity: (1500 * 1) / 4 = 375 (integer truncation)
+    // Math.floor(1500 * 1 / 4) = 375 (same here, but not always)
+    const stake = BigInt(10 * 10 ** USDC_DECIMALS);
+    const { penaltyBps: penalty1 } = computeCashoutValue(
+      stake, [500_000], 1, 1500, 4, 100_000_000n,
+    );
+    expect(penalty1).toBe(375);
+
+    // basePenaltyBps=1000, unresolvedCount=2, totalLegs=3
+    // Solidity: (1000 * 2) / 3 = 666 (truncated from 666.666...)
+    const { penaltyBps: penalty2 } = computeCashoutValue(
+      stake, [500_000], 2, 1000, 3, 100_000_000n,
+    );
+    expect(penalty2).toBe(666);
+
+    // basePenaltyBps=1500, unresolvedCount=1, totalLegs=7
+    // Solidity: (1500 * 1) / 7 = 214 (truncated from 214.285...)
+    const { penaltyBps: penalty3 } = computeCashoutValue(
+      stake, [500_000], 1, 1500, 7, 100_000_000n,
+    );
+    expect(penalty3).toBe(214);
+  });
+
+  it("caps cashoutValue at potentialPayout", () => {
+    const stake = BigInt(100 * 10 ** USDC_DECIMALS);
+    const potentialPayout = 5_000_000n;
+    const { cashoutValue } = computeCashoutValue(
+      stake, [1_000], 1, 100, 3, potentialPayout,
+    );
+    expect(cashoutValue).toBe(potentialPayout);
+  });
+
+  it("throws on empty won legs", () => {
+    expect(() =>
+      computeCashoutValue(10_000_000n, [], 1, 1000, 3, 40_000_000n),
+    ).toThrow("no won legs");
+  });
+
+  it("throws on zero unresolved count", () => {
+    expect(() =>
+      computeCashoutValue(10_000_000n, [500_000], 0, 1000, 3, 40_000_000n),
+    ).toThrow("no unresolved legs");
   });
 });

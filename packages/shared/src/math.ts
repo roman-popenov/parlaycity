@@ -159,7 +159,9 @@ export function computeCashoutValue(
   const fairValue = computePayout(effectiveStake, wonMultiplier);
 
   // Scaled penalty
-  const penaltyBps = Math.floor((basePenaltyBps * unresolvedCount) / totalLegs);
+  const penaltyBps = Number(
+    (BigInt(basePenaltyBps) * BigInt(unresolvedCount)) / BigInt(totalLegs),
+  );
   let cashoutValue = (fairValue * (bps - BigInt(penaltyBps))) / bps;
 
   // Cap at potential payout
