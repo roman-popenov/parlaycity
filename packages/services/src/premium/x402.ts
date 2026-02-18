@@ -58,12 +58,38 @@ function getX402Network(): { network: Network; testnet: boolean } {
   return { network: raw as Network, testnet: info.testnet };
 }
 
-// ── Module-level initialization (all getters defined above) ──────────────
+// ── Resolved config (lazily initialized inside createX402Middleware) ─────
 
-const X402_RECIPIENT = getX402Recipient();
-const X402_FACILITATOR_URL = getX402FacilitatorUrl();
-const X402_PRICE = process.env.X402_PRICE || "$0.01";
-const { network: X402_NETWORK, testnet: X402_IS_TESTNET } = getX402Network();
+interface X402Config {
+  recipient: string;
+  facilitatorUrl: string;
+  price: string;
+  network: Network;
+  testnet: boolean;
+}
+
+function resolveConfig(): X402Config {
+  return {
+    recipient: getX402Recipient(),
+    facilitatorUrl: getX402FacilitatorUrl(),
+    price: process.env.X402_PRICE || "$0.01",
+    ...getX402Network(),
+  };
+}
+
+function resolveConfigSafe(): X402Config {
+  let recipient: string;
+  try { recipient = getX402Recipient(); } catch { recipient = ZERO_ADDRESS; }
+
+  let facilitatorUrl: string;
+  try { facilitatorUrl = getX402FacilitatorUrl(); } catch { facilitatorUrl = "https://facilitator.x402.org"; }
+
+  let network: Network = "eip155:84532" as Network;
+  let testnet = true;
+  try { ({ network, testnet } = getX402Network()); } catch { /* keep defaults */ }
+
+  return { recipient, facilitatorUrl, price: process.env.X402_PRICE || "$0.01", network, testnet };
+}
 
 // ── Utilities ────────────────────────────────────────────────────────────
 
@@ -111,27 +137,31 @@ export const _testExports = {
  * Otherwise (dev, test, staging, or X402_STUB=true): falls back to stub that accepts any non-empty header.
  */
 export function createX402Middleware() {
-  // Non-production mode or explicit stub override: use stub for local/CI testing
+  // Non-production mode or explicit stub override: use safe defaults (never crash on import)
   if (process.env.NODE_ENV !== "production" || process.env.X402_STUB === "true") {
+    const cfg = resolveConfigSafe();
     if (process.env.NODE_ENV === "production" && process.env.X402_STUB === "true") {
       console.warn("[x402] WARNING: X402_STUB=true in production — payment verification is DISABLED");
     }
-    if (X402_RECIPIENT === ZERO_ADDRESS) {
+    if (cfg.recipient === ZERO_ADDRESS) {
       console.warn("[x402] X402_RECIPIENT_WALLET not set — stub 402 responses will omit payTo");
     }
-    return x402GuardStub;
+    return wrapWithPathNormalization(createStub(cfg), X402_GATED_PATHS);
   }
 
-  if (X402_RECIPIENT === ZERO_ADDRESS) {
+  // Production: fail fast on bad config
+  const cfg = resolveConfig();
+
+  if (cfg.recipient === ZERO_ADDRESS) {
     throw new Error("X402_RECIPIENT_WALLET must be set to a valid non-zero Ethereum address in production");
   }
 
   const facilitatorClient = new HTTPFacilitatorClient({
-    url: X402_FACILITATOR_URL,
+    url: cfg.facilitatorUrl,
   });
 
   const resourceServer = new x402ResourceServer(facilitatorClient)
-    .register(X402_NETWORK, new ExactEvmScheme());
+    .register(cfg.network, new ExactEvmScheme());
 
   const x402Middleware = paymentMiddleware(
     {
@@ -139,9 +169,9 @@ export function createX402Middleware() {
         accepts: [
           {
             scheme: "exact",
-            price: X402_PRICE,
-            network: X402_NETWORK,
-            payTo: X402_RECIPIENT,
+            price: cfg.price,
+            network: cfg.network,
+            payTo: cfg.recipient,
             maxTimeoutSeconds: 120,
           },
         ],
@@ -151,7 +181,7 @@ export function createX402Middleware() {
     resourceServer,
     {
       appName: "ParlayCity",
-      testnet: X402_IS_TESTNET,
+      testnet: cfg.testnet,
     },
     undefined,
     false, // don't sync facilitator on startup (avoids blocking)
@@ -160,40 +190,43 @@ export function createX402Middleware() {
 }
 
 /**
- * Stub middleware for development/testing.
- * Only intercepts POST /premium/sim. Accepts any non-empty X-402-Payment header.
+ * Create a stub middleware closure for development/testing.
+ * Accepts any non-empty X-402-Payment header. Path normalization
+ * is handled by the wrapWithPathNormalization wrapper.
  */
-function x402GuardStub(req: Request, res: Response, next: NextFunction) {
-  // Only gate the premium sim endpoint (normalize to prevent trailing-slash / case bypass)
-  const normalizedPath = req.path.toLowerCase().replace(/\/+$/, "");
-  if (req.method !== "POST" || !X402_GATED_PATHS.includes(normalizedPath)) {
-    return next();
-  }
-
-  const paymentHeader = req.headers["x-402-payment"];
-  if (
-    !paymentHeader ||
-    Array.isArray(paymentHeader) ||
-    !paymentHeader.trim()
-  ) {
-    const acceptOption: Record<string, string> = {
-      scheme: "exact",
-      network: X402_NETWORK,
-      asset: "USDC",
-      price: X402_PRICE,
-    };
-    if (X402_RECIPIENT !== ZERO_ADDRESS) {
-      acceptOption.payTo = X402_RECIPIENT;
+function createStub(cfg: X402Config) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    // wrapWithPathNormalization already normalized req.path for matching POST
+    // requests. Non-matching requests pass through unchanged.
+    if (req.method !== "POST" || !X402_GATED_PATHS.includes(req.path)) {
+      return next();
     }
-    const accepts = [acceptOption];
-    return res.status(402).json({
-      error: "Payment Required",
-      message: "This endpoint requires x402 payment (USDC on Base)",
-      protocol: "x402",
-      accepts,
-      facilitator: X402_FACILITATOR_URL,
-      mode: "stub",
-    });
-  }
-  next();
+
+    const paymentHeader = req.headers["x-402-payment"];
+    if (
+      !paymentHeader ||
+      Array.isArray(paymentHeader) ||
+      !paymentHeader.trim()
+    ) {
+      const acceptOption: Record<string, string> = {
+        scheme: "exact",
+        network: cfg.network,
+        asset: "USDC",
+        price: cfg.price,
+      };
+      if (cfg.recipient !== ZERO_ADDRESS) {
+        acceptOption.payTo = cfg.recipient;
+      }
+      const accepts = [acceptOption];
+      return res.status(402).json({
+        error: "Payment Required",
+        message: "This endpoint requires x402 payment (USDC on Base)",
+        protocol: "x402",
+        accepts,
+        facilitator: cfg.facilitatorUrl,
+        mode: "stub",
+      });
+    }
+    next();
+  };
 }
