@@ -50,6 +50,7 @@ vi.mock("../MultiplierClimb", () => ({
 }));
 
 import { useAccount } from "wagmi";
+import { useVaultStats } from "@/lib/hooks";
 
 describe("ParlayBuilder", () => {
   beforeEach(() => {
@@ -114,6 +115,56 @@ describe("ParlayBuilder", () => {
 
     await vi.waitFor(() => {
       expect(screen.getByText("Select at least 2 legs")).toBeInTheDocument();
+    });
+  });
+
+  describe("when vault is empty", () => {
+    beforeEach(() => {
+      vi.mocked(useAccount).mockReturnValue({
+        isConnected: true,
+        address: "0x1234",
+      } as unknown as ReturnType<typeof useAccount>);
+      vi.mocked(useVaultStats).mockReturnValue({
+        freeLiquidity: 0n,
+        totalAssets: 0n,
+        totalReserved: 0n,
+        maxPayout: 0n,
+        refetch: vi.fn(),
+      } as unknown as ReturnType<typeof useVaultStats>);
+    });
+
+    it("shows 'No Vault Liquidity' on buy button", async () => {
+      render(<ParlayBuilder />);
+      await vi.waitFor(() => {
+        expect(screen.getByText("No Vault Liquidity")).toBeInTheDocument();
+      });
+    });
+
+    it("shows vault empty warning banner", async () => {
+      render(<ParlayBuilder />);
+      await vi.waitFor(() => {
+        expect(screen.getByText(/No liquidity in the vault/)).toBeInTheDocument();
+      });
+    });
+
+    it("disables Yes/No leg buttons", async () => {
+      render(<ParlayBuilder />);
+      await vi.waitFor(() => {
+        const yesButtons = screen.getAllByText("Yes");
+        yesButtons.forEach((btn) => {
+          expect(btn.closest("button")).toBeDisabled();
+        });
+      });
+    });
+
+    it("does not allow leg selection", async () => {
+      render(<ParlayBuilder />);
+      await vi.waitFor(() => {
+        const yesButtons = screen.getAllByText("Yes");
+        fireEvent.click(yesButtons[0]);
+        // Count should remain 0/5
+        expect(screen.getByText("(0/5)")).toBeInTheDocument();
+      });
     });
   });
 });
