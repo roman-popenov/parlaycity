@@ -14,8 +14,11 @@ const KNOWN_NETWORKS: Record<string, { name: string; testnet: boolean }> = {
 // x402 configuration from environment
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
+/** Individual gated path constants — add new paths here, then include in X402_GATED_PATHS. */
+const PREMIUM_SIM_PATH = "/premium/sim";
+
 /** Paths that require x402 payment. Single source of truth for production + stub. */
-const X402_GATED_PATHS = ["/premium/sim"];
+const X402_GATED_PATHS = [PREMIUM_SIM_PATH];
 
 function getX402Recipient(): string {
   const raw = process.env.X402_RECIPIENT_WALLET;
@@ -75,6 +78,7 @@ export const _testExports = {
   getX402FacilitatorUrl,
   KNOWN_NETWORKS,
   ZERO_ADDRESS,
+  PREMIUM_SIM_PATH,
   X402_GATED_PATHS,
 };
 
@@ -121,7 +125,7 @@ export function createX402Middleware() {
 
   const x402Middleware = paymentMiddleware(
     {
-      "POST /premium/sim": {
+      [`POST ${PREMIUM_SIM_PATH}`]: {
         accepts: [
           {
             scheme: "exact",
