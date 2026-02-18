@@ -412,6 +412,52 @@ contract EarlyCashoutTest is FeeRouterSetup {
         engine.setBaseCashoutPenalty(1000);
     }
 
+    // ── 13b. Penalty snapshot: owner change after buy doesn't affect ticket ─
+
+    function test_cashoutEarly_penaltySnapshotted() public {
+        // Buy at default penalty (1500 bps)
+        uint256 ticketId = _buyCashout3Leg();
+
+        // Verify snapshot stored in ticket
+        ParlayEngine.Ticket memory t = engine.getTicket(ticketId);
+        assertEq(t.cashoutPenaltyBps, 1500, "penalty snapshotted at 1500");
+
+        // Owner changes penalty to 3000 AFTER ticket was bought
+        engine.setBaseCashoutPenalty(3000);
+        assertEq(engine.baseCashoutPenaltyBps(), 3000);
+
+        oracle.resolve(0, LegStatus.Won, keccak256("yes"));
+
+        uint256 aliceBefore = usdc.balanceOf(alice);
+        vm.prank(alice);
+        engine.cashoutEarly(ticketId, 0);
+
+        // Should use 1500 (snapshotted), NOT 3000 (current)
+        // penaltyBps = 1500 * 2 / 3 = 1000 (10%)
+        // cashoutValue = 19_500_000 * 9_000 / 10_000 = 17_550_000
+        assertEq(usdc.balanceOf(alice), aliceBefore + 17_550_000, "uses snapshotted penalty");
+    }
+
+    // ── 13c. CLASSIC and PROGRESSIVE tickets store zero penalty ───────────
+
+    function test_cashoutPenaltyBps_zeroForNonCashoutModes() public {
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0;
+        legs[1] = 1;
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
+
+        vm.prank(alice);
+        uint256 classicId = engine.buyTicket(legs, outcomes, 10e6);
+        assertEq(engine.getTicket(classicId).cashoutPenaltyBps, 0, "classic: no penalty stored");
+
+        usdc.mint(alice, 10e6);
+        vm.prank(alice);
+        uint256 progressiveId = engine.buyTicketWithMode(legs, outcomes, 10e6, ParlayEngine.PayoutMode.PROGRESSIVE);
+        assertEq(engine.getTicket(progressiveId).cashoutPenaltyBps, 0, "progressive: no penalty stored");
+    }
+
     // ── 14. EarlyCashout event emitted ────────────────────────────────────
 
     function test_cashoutEarly_emitsEvent() public {
