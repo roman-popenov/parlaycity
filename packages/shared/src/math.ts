@@ -142,8 +142,17 @@ export function computeCashoutValue(
   if (wonProbsPPM.length === 0) {
     throw new Error("computeCashoutValue: no won legs");
   }
-  if (unresolvedCount === 0) {
+  if (totalLegs <= 0) {
+    throw new Error("computeCashoutValue: zero totalLegs");
+  }
+  if (unresolvedCount <= 0) {
     throw new Error("computeCashoutValue: no unresolved legs");
+  }
+  if (unresolvedCount > totalLegs) {
+    throw new Error("computeCashoutValue: unresolved > total");
+  }
+  if (basePenaltyBps < 0 || basePenaltyBps > BPS) {
+    throw new Error("computeCashoutValue: penalty out of range");
   }
 
   const bps = BigInt(BPS);

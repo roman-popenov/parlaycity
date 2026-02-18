@@ -408,4 +408,28 @@ describe("computeCashoutValue", () => {
       computeCashoutValue(10_000_000n, [500_000], 0, 1000, 3, 40_000_000n),
     ).toThrow("no unresolved legs");
   });
+
+  it("throws on zero totalLegs", () => {
+    expect(() =>
+      computeCashoutValue(10_000_000n, [500_000], 1, 1000, 0, 40_000_000n),
+    ).toThrow("zero totalLegs");
+  });
+
+  it("throws on unresolvedCount > totalLegs", () => {
+    expect(() =>
+      computeCashoutValue(10_000_000n, [500_000], 5, 1000, 3, 40_000_000n),
+    ).toThrow("unresolved > total");
+  });
+
+  it("throws on basePenaltyBps > BPS", () => {
+    expect(() =>
+      computeCashoutValue(10_000_000n, [500_000], 1, 10_001, 3, 40_000_000n),
+    ).toThrow("penalty out of range");
+  });
+
+  it("throws on negative basePenaltyBps", () => {
+    expect(() =>
+      computeCashoutValue(10_000_000n, [500_000], 1, -1, 3, 40_000_000n),
+    ).toThrow("penalty out of range");
+  });
 });

@@ -72,7 +72,10 @@ library ParlayMath {
         uint256 potentialPayout
     ) internal pure returns (uint256 cashoutValue, uint256 penaltyBps) {
         require(wonProbsPPM.length > 0, "ParlayMath: no won legs");
+        require(totalLegs > 0, "ParlayMath: zero totalLegs");
         require(unresolvedCount > 0, "ParlayMath: no unresolved legs");
+        require(unresolvedCount <= totalLegs, "ParlayMath: unresolved > total");
+        require(basePenaltyBps <= BPS, "ParlayMath: penalty > 100%");
 
         // Fair value = expected payout given won legs.
         // wonMultiplier = 1/product(wonProbs) in PPM; wonValue = stake / product(wonProbs).

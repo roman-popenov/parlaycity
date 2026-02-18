@@ -21,6 +21,17 @@ contract ParlayMathWrapper {
     function computeEdge(uint256 numLegs, uint256 baseBps, uint256 perLegBps) external pure returns (uint256) {
         return ParlayMath.computeEdge(numLegs, baseBps, perLegBps);
     }
+
+    function computeCashoutValue(
+        uint256 effectiveStake,
+        uint256[] memory wonProbsPPM,
+        uint256 unresolvedCount,
+        uint256 basePenaltyBps,
+        uint256 totalLegs,
+        uint256 potentialPayout
+    ) external pure returns (uint256, uint256) {
+        return ParlayMath.computeCashoutValue(effectiveStake, wonProbsPPM, unresolvedCount, basePenaltyBps, totalLegs, potentialPayout);
+    }
 }
 
 contract ParlayMathTest is Test {
@@ -197,5 +208,28 @@ contract ParlayMathTest is Test {
     function test_computeEdge_zeroLegs() public pure {
         uint256 edge = ParlayMath.computeEdge(0, 100, 50);
         assertEq(edge, 100);
+    }
+
+    // ── computeCashoutValue input validation ──────────────────────────────
+
+    function test_cashout_revertsOnZeroTotalLegs() public {
+        uint256[] memory wonProbs = new uint256[](1);
+        wonProbs[0] = 500_000;
+        vm.expectRevert("ParlayMath: zero totalLegs");
+        wrapper.computeCashoutValue(10e6, wonProbs, 1, 1500, 0, type(uint128).max);
+    }
+
+    function test_cashout_revertsOnUnresolvedExceedsTotal() public {
+        uint256[] memory wonProbs = new uint256[](1);
+        wonProbs[0] = 500_000;
+        vm.expectRevert("ParlayMath: unresolved > total");
+        wrapper.computeCashoutValue(10e6, wonProbs, 5, 1500, 3, type(uint128).max);
+    }
+
+    function test_cashout_revertsOnPenaltyAboveBPS() public {
+        uint256[] memory wonProbs = new uint256[](1);
+        wonProbs[0] = 500_000;
+        vm.expectRevert("ParlayMath: penalty > 100%");
+        wrapper.computeCashoutValue(10e6, wonProbs, 1, 10_001, 2, type(uint128).max);
     }
 }
