@@ -142,6 +142,34 @@ contract CashoutMathFuzzTest is Test {
         assertEq(penaltyBps, basePenaltyBps / 2, "penalty scales as unresolved/total");
     }
 
+    /// @notice Full cashout pipeline: multiplier -> fairValue -> penalty -> cashout.
+    ///         Verifies the entire chain produces sane results and no overflow.
+    function testFuzz_cashout_fullPipeline(
+        uint256 stake,
+        uint256 w0,
+        uint256 basePenaltyBps,
+        uint256 unresolvedCount,
+        uint256 totalLegs
+    ) public pure {
+        stake = bound(stake, 1e6, 1e12);
+        w0 = bound(w0, 10_000, 999_999);
+        totalLegs = bound(totalLegs, 2, 5);
+        unresolvedCount = bound(unresolvedCount, 1, totalLegs - 1);
+        basePenaltyBps = bound(basePenaltyBps, 0, 5000);
+
+        uint256[] memory wonProbs = new uint256[](1);
+        wonProbs[0] = w0;
+
+        (uint256 cashoutValue, uint256 penaltyBps) = ParlayMath.computeCashoutValue(
+            stake, wonProbs, unresolvedCount, basePenaltyBps, totalLegs, type(uint128).max
+        );
+
+        // penaltyBps <= basePenaltyBps (since unresolvedCount/totalLegs <= 1)
+        assertLe(penaltyBps, basePenaltyBps, "penalty bounded by base");
+        // cashoutValue > 0 for non-degenerate inputs
+        assertGt(cashoutValue, 0, "cashout must be positive");
+    }
+
     // ── Progressive payout invariants ─────────────────────────────────────
 
     /// @notice Progressive partial payout never exceeds potentialPayout.

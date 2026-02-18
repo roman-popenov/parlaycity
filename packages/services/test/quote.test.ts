@@ -29,14 +29,10 @@ describe("computeMultiplier", () => {
     expect(result).toBe(4_000_000n);
   });
 
-  it("returns correct multiplier for three legs", () => {
-    // 60% * 40% * 50% = 0.12 => multiplier = 8.333...
-    // In PPM: 600000 * 400000 * 500000
-    // numerator = PPM^3 * PPM = PPM^4
-    // denominator = 600000 * 400000 * 500000
+  it("returns correct multiplier for three legs (iterative truncation)", () => {
+    // Mirrors ParlayMath.sol iterative: m = 1e6 -> 1e12/600000=1666666 -> 1666666e6/400000=4166665 -> 4166665e6/500000=8333330
     const result = computeMultiplier([600_000, 400_000, 500_000]);
-    // 1 / (0.6 * 0.4 * 0.5) = 1/0.12 = 8.333... => 8_333_333n (truncated)
-    expect(result).toBe(8_333_333n);
+    expect(result).toBe(8_333_330n);
   });
 
   it("handles high-probability legs", () => {
@@ -140,18 +136,34 @@ describe("computeQuote", () => {
   });
 });
 
-describe("computeMultiplier boundary cases", () => {
+describe("computeMultiplier Solidity parity", () => {
+  // Reference values from ParlayMath.t.sol — must match exactly.
+  // These catch TS/Solidity divergence from iterative truncation.
+
+  it("non-round two legs: 333_333 / 666_667", () => {
+    expect(computeMultiplier([333_333, 666_667])).toBe(4_500_002n);
+  });
+
+  it("non-round three legs: 600_000 / 400_000 / 500_000", () => {
+    expect(computeMultiplier([600_000, 400_000, 500_000])).toBe(8_333_330n);
+  });
+
+  it("non-round four legs: 700_000 / 300_000 / 800_000 / 450_000", () => {
+    expect(computeMultiplier([700_000, 300_000, 800_000, 450_000])).toBe(13_227_506n);
+  });
+
+  it("non-round five legs: 550_000 / 350_000 / 650_000 / 420_000 / 780_000", () => {
+    expect(computeMultiplier([550_000, 350_000, 650_000, 420_000, 780_000])).toBe(24_395_612n);
+  });
+
   it("handles lowest valid probability (1 PPM)", () => {
     const result = computeMultiplier([1, 1]);
-    // TS impl: PPM^n * PPM / product(probs) = 1e6^2 * 1e6 / (1*1) = 1e18
     expect(result).toBe(1_000_000_000_000_000_000n);
   });
 
   it("handles near-maximum probability (999_999 PPM)", () => {
     const result = computeMultiplier([999_999, 999_999]);
-    // Just slightly above 1x
-    expect(result).toBeGreaterThanOrEqual(1_000_000n);
-    expect(result).toBeLessThan(1_000_003n);
+    expect(result).toBe(1_000_002n);
   });
 });
 
@@ -336,29 +348,27 @@ describe("computeCashoutValue", () => {
   });
 
   it("penaltyBps uses integer division matching Solidity", () => {
-    // Key parity test: values where floating-point would diverge
-    // basePenaltyBps=1500, unresolvedCount=1, totalLegs=4
-    // Solidity: (1500 * 1) / 4 = 375 (integer truncation)
-    // Math.floor(1500 * 1 / 4) = 375 (same here, but not always)
+    // Reference values from ParlayMath.t.sol — must match exactly.
     const stake = BigInt(10 * 10 ** USDC_DECIMALS);
+
+    // basePenaltyBps=1500, unresolvedCount=1, totalLegs=4 => 375
     const { penaltyBps: penalty1 } = computeCashoutValue(
       stake, [500_000], 1, 1500, 4, 100_000_000n,
     );
     expect(penalty1).toBe(375);
 
-    // basePenaltyBps=1000, unresolvedCount=2, totalLegs=3
-    // Solidity: (1000 * 2) / 3 = 666 (truncated from 666.666...)
+    // basePenaltyBps=1000, unresolvedCount=2, totalLegs=3 => 666
     const { penaltyBps: penalty2 } = computeCashoutValue(
       stake, [500_000], 2, 1000, 3, 100_000_000n,
     );
     expect(penalty2).toBe(666);
 
-    // basePenaltyBps=1500, unresolvedCount=1, totalLegs=7
-    // Solidity: (1500 * 1) / 7 = 214 (truncated from 214.285...)
+    // basePenaltyBps=1500, unresolvedCount=2, totalLegs=7 => 428
+    // (matches test_computeCashoutValue_nonRound_penalty in ParlayMath.t.sol)
     const { penaltyBps: penalty3 } = computeCashoutValue(
-      stake, [500_000], 1, 1500, 7, 100_000_000n,
+      stake, [500_000], 2, 1500, 7, 100_000_000n,
     );
-    expect(penalty3).toBe(214);
+    expect(penalty3).toBe(428);
   });
 
   it("caps cashoutValue at potentialPayout", () => {

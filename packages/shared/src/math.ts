@@ -18,19 +18,13 @@ import type { QuoteResponse } from "./types.js";
  */
 export function computeMultiplier(probsPPM: number[]): bigint {
   const ppm = BigInt(PPM);
-  let numerator = 1n;
-  let denominator = 1n;
+  // Iterative multiply-then-divide mirrors ParlayMath.sol exactly.
+  // Each step truncates, matching Solidity's integer division behavior.
+  let multiplier = ppm; // start at 1x (1_000_000)
   for (const p of probsPPM) {
-    numerator *= ppm;
-    denominator *= BigInt(p);
+    multiplier = (multiplier * ppm) / BigInt(p);
   }
-  // Result is in x1e6 (same scale as PPM)
-  // multiplierX1e6 = (PPM^n * PPM) / product(probs)
-  // Actually: fair multiplier = 1/combinedProb, expressed in x1e6
-  // combinedProb = product(probs) / PPM^(n-1)
-  // multiplier = 1/combinedProb = PPM^(n-1) / product(probs), but we want x1e6 output
-  // multiplierX1e6 = PPM^n / product(probs)
-  return (numerator * ppm) / denominator;
+  return multiplier;
 }
 
 /**
