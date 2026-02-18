@@ -31,13 +31,15 @@ export function createX402Middleware() {
   return paymentMiddleware(
     {
       "POST /premium/sim": {
-        accepts: {
-          scheme: "exact",
-          price: X402_PRICE,
-          network: X402_NETWORK,
-          payTo: X402_RECIPIENT,
-          maxTimeoutSeconds: 120,
-        },
+        accepts: [
+          {
+            scheme: "exact",
+            price: X402_PRICE,
+            network: X402_NETWORK,
+            payTo: X402_RECIPIENT,
+            maxTimeoutSeconds: 120,
+          },
+        ],
         description: "ParlayCity premium analytics: win probability, expected value, Kelly criterion",
       },
     },
@@ -81,8 +83,3 @@ function x402GuardStub(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-/**
- * Legacy export for backwards compatibility.
- * @deprecated Use createX402Middleware() instead.
- */
-export const x402Guard = x402GuardStub;
