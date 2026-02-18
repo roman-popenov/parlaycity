@@ -14,6 +14,9 @@ const KNOWN_NETWORKS: Record<string, { name: string; testnet: boolean }> = {
 // x402 configuration from environment
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
+/** Paths that require x402 payment. Single source of truth for production + stub. */
+const X402_GATED_PATHS = ["/premium/sim"];
+
 function getX402Recipient(): string {
   const raw = process.env.X402_RECIPIENT_WALLET;
   if (!raw) return ZERO_ADDRESS;
@@ -40,6 +43,31 @@ function getX402FacilitatorUrl(): string {
 const X402_FACILITATOR_URL = getX402FacilitatorUrl();
 const X402_PRICE = process.env.X402_PRICE || "$0.01";
 
+/**
+ * Wraps an Express middleware with path normalization so that case-variant
+ * or trailing-slash URLs still match the gated route config.
+ * Normalizes req.url for matching POST requests, restores original after.
+ */
+export function wrapWithPathNormalization(
+  inner: (req: Request, res: Response, next: NextFunction) => void,
+  gatedPaths: string[],
+) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    const normalizedPath = req.path.toLowerCase().replace(/\/+$/, "");
+    if (req.method === "POST" && gatedPaths.includes(normalizedPath)) {
+      const originalUrl = req.url;
+      const queryIndex = originalUrl.indexOf("?");
+      const query = queryIndex === -1 ? "" : originalUrl.slice(queryIndex);
+      req.url = `${normalizedPath}${query}`;
+      return inner(req, res, (err?: unknown) => {
+        req.url = originalUrl;
+        next(err);
+      });
+    }
+    return inner(req, res, next);
+  };
+}
+
 // Exported for unit testing
 export const _testExports = {
   getX402Recipient,
@@ -47,6 +75,7 @@ export const _testExports = {
   getX402FacilitatorUrl,
   KNOWN_NETWORKS,
   ZERO_ADDRESS,
+  X402_GATED_PATHS,
 };
 
 function getX402Network(): { network: Network; testnet: boolean } {
@@ -113,20 +142,7 @@ export function createX402Middleware() {
     undefined,
     false, // don't sync facilitator on startup (avoids blocking)
   );
-  return (req, res, next) => {
-    const normalizedPath = req.path.toLowerCase().replace(/\/+$/, "");
-    if (req.method === "POST" && normalizedPath === "/premium/sim") {
-      const originalUrl = req.url;
-      const queryIndex = originalUrl.indexOf("?");
-      const query = queryIndex === -1 ? "" : originalUrl.slice(queryIndex);
-      req.url = `${normalizedPath}${query}`;
-      return x402Middleware(req, res, (err) => {
-        req.url = originalUrl;
-        next(err);
-      });
-    }
-    return x402Middleware(req, res, next);
-  };
+  return wrapWithPathNormalization(x402Middleware, X402_GATED_PATHS);
 }
 
 /**
@@ -136,7 +152,7 @@ export function createX402Middleware() {
 function x402GuardStub(req: Request, res: Response, next: NextFunction) {
   // Only gate the premium sim endpoint (normalize to prevent trailing-slash / case bypass)
   const normalizedPath = req.path.toLowerCase().replace(/\/+$/, "");
-  if (req.method !== "POST" || normalizedPath !== "/premium/sim") {
+  if (req.method !== "POST" || !X402_GATED_PATHS.includes(normalizedPath)) {
     return next();
   }
 

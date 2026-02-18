@@ -1,7 +1,9 @@
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, vi, afterEach } from "vitest";
 import request from "supertest";
+import express from "express";
 import app from "../src/index.js";
-import { _testExports } from "../src/premium/x402.js";
+import { _testExports, wrapWithPathNormalization } from "../src/premium/x402.js";
+import type { Request, Response, NextFunction } from "express";
 
 describe("x402 Payment Gate", () => {
   describe("POST /premium/sim without payment", () => {
@@ -304,5 +306,120 @@ describe("x402 Config Validators", () => {
       process.env.X402_FACILITATOR_URL = "ftp://files.example.com";
       expect(() => getX402FacilitatorUrl()).toThrow("Invalid X402_FACILITATOR_URL");
     });
+  });
+});
+
+describe("wrapWithPathNormalization", () => {
+  function createTestApp(
+    inner: (req: Request, res: Response, next: NextFunction) => void,
+    gatedPaths: string[],
+  ) {
+    const testApp = express();
+    testApp.use(wrapWithPathNormalization(inner, gatedPaths));
+    testApp.all("*", (_req, res) => res.status(200).json({ reached: "handler" }));
+    return testApp;
+  }
+
+  it("normalizes uppercase path before calling inner middleware", async () => {
+    let capturedUrl: string | undefined;
+    const inner = (req: Request, _res: Response, next: NextFunction) => {
+      capturedUrl = req.url;
+      next();
+    };
+    const testApp = createTestApp(inner, ["/premium/sim"]);
+
+    await request(testApp).post("/Premium/SIM").send({});
+    expect(capturedUrl).toBe("/premium/sim");
+  });
+
+  it("normalizes trailing slash before calling inner middleware", async () => {
+    let capturedUrl: string | undefined;
+    const inner = (req: Request, _res: Response, next: NextFunction) => {
+      capturedUrl = req.url;
+      next();
+    };
+    const testApp = createTestApp(inner, ["/premium/sim"]);
+
+    await request(testApp).post("/premium/sim/").send({});
+    expect(capturedUrl).toBe("/premium/sim");
+  });
+
+  it("preserves query string during normalization", async () => {
+    let capturedUrl: string | undefined;
+    const inner = (req: Request, _res: Response, next: NextFunction) => {
+      capturedUrl = req.url;
+      next();
+    };
+    const testApp = createTestApp(inner, ["/premium/sim"]);
+
+    await request(testApp).post("/Premium/SIM?foo=bar&x=1").send({});
+    expect(capturedUrl).toBe("/premium/sim?foo=bar&x=1");
+  });
+
+  it("restores original URL after inner middleware calls next", async () => {
+    let urlAfterRestore: string | undefined;
+    const inner = (_req: Request, _res: Response, next: NextFunction) => next();
+    const testApp = express();
+    testApp.use(wrapWithPathNormalization(inner, ["/premium/sim"]));
+    testApp.all("*", (req, res) => {
+      urlAfterRestore = req.url;
+      res.status(200).json({});
+    });
+
+    await request(testApp).post("/Premium/SIM").send({});
+    expect(urlAfterRestore).toBe("/Premium/SIM");
+  });
+
+  it("passes non-matching POST paths through without normalization", async () => {
+    let capturedUrl: string | undefined;
+    const inner = (req: Request, _res: Response, next: NextFunction) => {
+      capturedUrl = req.url;
+      next();
+    };
+    const testApp = createTestApp(inner, ["/premium/sim"]);
+
+    await request(testApp).post("/quote").send({});
+    expect(capturedUrl).toBe("/quote");
+  });
+
+  it("passes GET requests through without normalization", async () => {
+    let capturedUrl: string | undefined;
+    const inner = (req: Request, _res: Response, next: NextFunction) => {
+      capturedUrl = req.url;
+      next();
+    };
+    const testApp = createTestApp(inner, ["/premium/sim"]);
+
+    await request(testApp).get("/Premium/SIM");
+    // GET should not be normalized even if path matches
+    expect(capturedUrl).toBe("/Premium/SIM");
+  });
+
+  it("supports multiple gated paths", async () => {
+    let capturedUrl: string | undefined;
+    const inner = (req: Request, _res: Response, next: NextFunction) => {
+      capturedUrl = req.url;
+      next();
+    };
+    const testApp = createTestApp(inner, ["/premium/sim", "/premium/risk-assess"]);
+
+    await request(testApp).post("/PREMIUM/RISK-ASSESS").send({});
+    expect(capturedUrl).toBe("/premium/risk-assess");
+  });
+
+  it("forwards errors from inner middleware", async () => {
+    const inner = (_req: Request, _res: Response, next: NextFunction) => {
+      next(new Error("payment failed"));
+    };
+    const testApp = express();
+    testApp.use(wrapWithPathNormalization(inner, ["/premium/sim"]));
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    testApp.use((err: Error, _req: Request, res: Response, _next: NextFunction) => {
+      res.status(500).json({ error: err.message });
+    });
+
+    const res = await request(testApp).post("/premium/sim").send({});
+    expect(res.status).toBe(500);
+    expect(res.body.error).toBe("payment failed");
   });
 });
