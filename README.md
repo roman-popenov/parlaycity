@@ -120,7 +120,7 @@ graph TB
     LP[LP with vUSDC] -->|lock| LV[LockVault]
     LV --> T1 & T2 & T3
 
-    FEE[Protocol Fee Income] -->|distributeFees| LV
+    FEE[Protocol Fee Income] -->|notifyFees| LV
     LV -->|weighted by tier| R1[Rewards Pool]
     R1 -->|claimFees| LP
 

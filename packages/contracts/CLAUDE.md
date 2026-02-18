@@ -16,7 +16,7 @@ All contracts use Ownable + Pausable + ReentrancyGuard, SafeERC20 on all token o
 - **HouseVault** -- ERC4626-like LP vault. Holds USDC, mints vUSDC shares. Tracks `totalReserved` exposure. Utilization cap 80% (`maxUtilizationBps=8000`), max single payout 5% TVL (`maxPayoutBps=500`). Yield buffer 25%. *Current: no fee routing -- fees stay as implicit vault profit.*
 - **ParlayEngine** -- Core betting engine. Mints ERC721 tickets. Validates legs, computes multipliers via ParlayMath, reserves vault exposure, handles settlement. *Current fee: `feePaid = stake * (baseFee + perLegFee * nLegs) / 10_000`. baseFee=100bps, perLegFee=50bps. No routing.*
 - **LegRegistry** -- Admin-managed registry of betting outcomes. Each leg: `probabilityPPM`, `cutoffTime`, `oracleAdapter`.
-- **LockVault** -- Lock vUSDC for 30/60/90 days. Synthetix-style `accRewardPerWeightedShare` accumulator. Tier weights: 1.1x/1.25x/1.5x. 10% linear early-exit penalty. *Current: `distributeFees()` is owner-only push, `sweepPenaltyShares()` manual.*
+- **LockVault** -- Lock vUSDC for 30/60/90 days. Synthetix-style `accRewardPerWeightedShare` accumulator. Tier weights: 1.1x/1.25x/1.5x. 10% linear early-exit penalty. Fee income via `notifyFees()` called by HouseVault during fee routing. `sweepPenaltyShares()` manual.*
 - **ParlayMath** -- Pure library: multiplier (PPM), edge (BPS), payout math.
 - **AdminOracleAdapter / OptimisticOracleAdapter** -- Bootstrap vs production oracles. `bootstrapEndsAt` determines mode per ticket at purchase (immutable).
 - **AaveYieldAdapter / MockYieldAdapter** -- Route idle USDC to Aave V3. Default deploy uses MockYieldAdapter only.

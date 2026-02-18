@@ -104,10 +104,9 @@ contract LockVaultHandler is Test {
         if (lockVault.totalWeightedShares() == 0) return;
         amount = bound(amount, 1, 100e6);
 
-        // Owner distributes fees (test contract is owner)
-        usdc.mint(address(this), amount);
-        usdc.approve(address(lockVault), amount);
-        lockVault.distributeFees(amount);
+        // Push USDC to lockVault and notify (mirrors HouseVault.routeFees)
+        usdc.mint(address(lockVault), amount);
+        lockVault.notifyFees(amount);
         totalFeesDistributed += amount;
     }
 
@@ -142,8 +141,8 @@ contract LockVaultInvariantTest is Test {
 
         handler = new LockVaultHandler(usdc, vault, lockVault);
 
-        // Transfer ownership to handler so it can call distributeFees
-        lockVault.transferOwnership(address(handler));
+        // Authorize handler as fee distributor (mirrors HouseVault in production)
+        lockVault.setFeeDistributor(address(handler));
 
         targetContract(address(handler));
     }
@@ -168,7 +167,7 @@ contract LockVaultInvariantTest is Test {
     /// @notice accRewardPerWeightedShare should never decrease.
     ///         (fees are only added, never removed)
     function invariant_rewardAccumulatorNonDecreasing() public view {
-        // This is structurally guaranteed since distributeFees only increases it,
+        // This is structurally guaranteed since notifyFees only increases it,
         // but verifying it holds under random action sequences.
         // We verify indirectly: totalFeesDistributed > 0 implies acc > 0
         if (handler.totalFeesDistributed() > 0 && lockVault.totalWeightedShares() > 0) {

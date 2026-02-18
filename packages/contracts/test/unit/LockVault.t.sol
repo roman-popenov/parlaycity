@@ -47,9 +47,14 @@ contract LockVaultTest is Test {
         IERC20(address(vault)).approve(address(lockVault), type(uint256).max);
         vm.stopPrank();
 
-        // Fund owner with USDC for fee distribution
-        _mintBulk(owner, 10_000e6);
-        usdc.approve(address(lockVault), type(uint256).max);
+        // Authorize this test contract as fee distributor (mirrors HouseVault in production)
+        lockVault.setFeeDistributor(address(this));
+    }
+
+    /// @dev Simulates the push that HouseVault.routeFees does: transfer USDC to lockVault, then notify.
+    function _pushFees(uint256 amount) internal {
+        usdc.mint(address(lockVault), amount);
+        lockVault.notifyFees(amount);
     }
 
     // ── Lock ──────────────────────────────────────────────────────────────
@@ -216,19 +221,19 @@ contract LockVaultTest is Test {
 
     // ── Fee Distribution ──────────────────────────────────────────────────
 
-    function test_distributeFees_singleLocker() public {
+    function test_feeDistribution_singleLocker() public {
         vm.prank(alice);
         lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
 
-        // Distribute 100 USDC in fees
-        lockVault.distributeFees(100e6);
+        // Push 100 USDC in fees
+        _pushFees(100e6);
 
         // Alice should have ~100 USDC pending (rounding from weighted share math)
         uint256 pending = lockVault.pendingReward(0);
         assertApproxEqAbs(pending, 100e6, 2); // allow 2 wei rounding
     }
 
-    function test_distributeFees_multiTier_weightedDistribution() public {
+    function test_feeDistribution_multiTier_weightedDistribution() public {
         // Alice locks 1000 at 30d (1.1x multiplier), weighted = 1100
         vm.prank(alice);
         lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
@@ -237,13 +242,13 @@ contract LockVaultTest is Test {
         vm.prank(bob);
         lockVault.lock(1000e6, LockVault.LockTier.NINETY);
 
-        // Distribute 260 USDC (to get nice numbers)
+        // Push 260 USDC (to get nice numbers)
         // weighted_alice = 1000e6 * 11000 / 10000 = 1100e6
         // weighted_bob   = 1000e6 * 15000 / 10000 = 1500e6
         // total = 2600e6
         // Alice gets: 260e6 * 1100e6 / 2600e6 = 110e6
         // Bob gets:   260e6 * 1500e6 / 2600e6 = 150e6
-        lockVault.distributeFees(260e6);
+        _pushFees(260e6);
 
         uint256 alicePending = lockVault.pendingReward(0);
         uint256 bobPending = lockVault.pendingReward(1);
@@ -256,7 +261,7 @@ contract LockVaultTest is Test {
         vm.prank(alice);
         lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
 
-        lockVault.distributeFees(100e6);
+        _pushFees(100e6);
 
         // Unlock position to settle rewards
         vm.warp(block.timestamp + 31 days);
@@ -276,18 +281,13 @@ contract LockVaultTest is Test {
         lockVault.claimFees();
     }
 
-    function test_distributeFees_noLockers_reverts() public {
-        vm.expectRevert("LockVault: no locked shares");
-        lockVault.distributeFees(100e6);
-    }
-
     // ── settleRewards (consolidated from former harvest) ───────────────
 
     function test_settleRewards_checkpointsWithoutUnlocking() public {
         vm.prank(alice);
         uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
 
-        lockVault.distributeFees(100e6);
+        _pushFees(100e6);
 
         // Settle rewards without unlocking
         vm.prank(alice);
@@ -312,7 +312,7 @@ contract LockVaultTest is Test {
         vm.prank(alice);
         uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
 
-        lockVault.distributeFees(100e6);
+        _pushFees(100e6);
 
         // Settle once
         vm.prank(alice);
@@ -463,7 +463,7 @@ contract LockVaultTest is Test {
         vm.prank(alice);
         uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
 
-        lockVault.distributeFees(100e6);
+        _pushFees(100e6);
 
         vm.warp(block.timestamp + 15 days);
 
@@ -482,7 +482,7 @@ contract LockVaultTest is Test {
 
         assertEq(lockVault.totalLockedShares(), 3000e6);
 
-        lockVault.distributeFees(260e6);
+        _pushFees(260e6);
 
         // Unlock first position only
         vm.warp(block.timestamp + 31 days);
@@ -516,7 +516,7 @@ contract LockVaultTest is Test {
         vm.prank(alice);
         uint256 posId = lockVault.lock(1000e6, LockVault.LockTier.THIRTY);
 
-        lockVault.distributeFees(100e6);
+        _pushFees(100e6);
 
         vm.prank(alice);
         vm.expectEmit(true, true, false, false);

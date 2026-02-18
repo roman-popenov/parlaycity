@@ -66,7 +66,7 @@ Per-package: `pnpm --filter web dev`, `pnpm --filter web test`, `pnpm --filter s
 
 ## Architecture (Current State)
 
-**Contracts:** ERC4626-like HouseVault (USDC, vUSDC shares, 80% utilization cap, 5% max payout). ParlayEngine (ERC721 tickets, baseFee=100bps + perLegFee=50bps, fees stay passively in vault). LegRegistry (admin-managed outcomes). LockVault (30/60/90 day locks, Synthetix-style rewards, owner-only distributeFees). ParlayMath (pure library mirrored in TS). Oracles: AdminOracleAdapter (bootstrap) + OptimisticOracleAdapter (production). Deploy order in `script/Deploy.s.sol`.
+**Contracts:** ERC4626-like HouseVault (USDC, vUSDC shares, 80% utilization cap, 5% max payout, 90/5/5 fee routing via `routeFees`). ParlayEngine (ERC721 tickets, baseFee=100bps + perLegFee=50bps). LegRegistry (admin-managed outcomes). LockVault (30/60/90 day locks, Synthetix-style rewards, fee income via `notifyFees` from HouseVault). ParlayMath (pure library mirrored in TS). Oracles: AdminOracleAdapter (bootstrap) + OptimisticOracleAdapter (production). Deploy order in `script/Deploy.s.sol`.
 
 **Frontend:** Next.js 14 pages: `/` (builder), `/vault`, `/tickets`, `/ticket/[id]`. wagmi 2 + viem 2 + ConnectKit. Polling 5s/10s with stale-fetch guards.
 
@@ -90,27 +90,24 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 ## Gap Analysis
 
 ### EXISTS (working, tested, deployed)
-- HouseVault: deposit, withdraw, reserve/release/pay, yield adapter
+- HouseVault: deposit, withdraw, reserve/release/pay, yield adapter, 90/5/5 fee routing via `routeFees`
 - ParlayEngine: buyTicket, settleTicket, claimPayout, partial void, ERC721
 - LegRegistry: CRUD, validation, oracle adapter references
-- LockVault: lock/unlock/earlyWithdraw, Synthetix-style fee distribution, penalty
+- LockVault: lock/unlock/earlyWithdraw, Synthetix-style fee distribution via `notifyFees`, penalty
 - ParlayMath: multiplier, edge, payout (Solidity + TypeScript mirror)
 - AdminOracleAdapter + OptimisticOracleAdapter
 - MockYieldAdapter + AaveYieldAdapter (not in default deploy)
 - Frontend: parlay builder, vault dashboard, tickets list, ticket detail, MultiplierClimb viz
-- Services: catalog, quote, exposure (mock), x402-gated premium/sim
+- Services: catalog, quote, exposure (mock), x402-gated premium/sim (real @x402/express verification)
 - Tests: unit, fuzz, invariant, integration (contracts), vitest (services + web)
 - CI: GitHub Actions (3 jobs), Makefile quality gate
 - Deploy script + sync-env
 
 ### NEEDS BUILDING
 - SafetyModule contract (insurance buffer, yield deployment)
-- FeeRouter logic (deterministic fee splits on buyTicket: 90/5/5)
 - Loss distribution routing (80/10/10 split on losing stakes to LP/AMM/rehab)
 - Cashout mechanism (`cashoutTicket` on ParlayEngine or separate contract)
-- Automatic fee distribution (replace owner-only push model in LockVault)
 - Automatic penalty distribution (replace sweepPenaltyShares manual sweep)
-- Real x402 verification (currently stub: accepts any non-empty header)
 - ERC-4337 paymaster integration (gasless buyTicket/cashout/lock via Base Paymaster)
 - Per-market exposure tracking and caps
 - Utilization-based dynamic pricing (riskPremiumBps)
@@ -118,7 +115,6 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 - Good cause donation routing (Gitcoin-style)
 
 ### DISCONNECTED (exists but not wired)
-- `LockVault.distributeFees`: owner-only, requires manual USDC transfer + call
 - `LockVault.sweepPenaltyShares`: penalty shares accumulate silently until owner sweeps
 - `MultiplierClimb` component exists but cashout game loop does not
 - `IHedgeAdapter` interface exists, services mock exists, but no deployed contract

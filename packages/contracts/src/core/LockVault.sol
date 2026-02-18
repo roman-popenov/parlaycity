@@ -196,20 +196,6 @@ contract LockVault is Ownable, ReentrancyGuard {
         emit Harvested(positionId, msg.sender, reward);
     }
 
-    /// @notice Distribute fee income proportionally to weighted locked shares.
-    ///         Called by owner/keeper -- pulls USDC from msg.sender.
-    function distributeFees(uint256 amount) external onlyOwner nonReentrant {
-        require(totalWeightedShares > 0, "LockVault: no locked shares");
-        require(amount > 0, "LockVault: zero amount");
-
-        // Transfer USDC fee income into this contract
-        IERC20 usdc = vault.asset();
-        usdc.safeTransferFrom(msg.sender, address(this), amount);
-
-        accRewardPerWeightedShare += (amount * PRECISION) / totalWeightedShares;
-        emit FeesDistributed(amount, accRewardPerWeightedShare);
-    }
-
     /// @notice Notify the LockVault of fee income already transferred to this contract.
     ///         Called by the feeDistributor (typically HouseVault) after pushing USDC.
     function notifyFees(uint256 amount) external nonReentrant {

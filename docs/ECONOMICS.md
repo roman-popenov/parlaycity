@@ -262,7 +262,7 @@ The LP side rewards financial judgment too. Choosing when to deposit (low utiliz
 | Loss distribution (80/10/10) | Not built | Losses currently 100% to vault |
 | SafetyModule | Not built | Contract does not exist yet |
 | Cashout mechanism | Not built | MultiplierClimb UI exists, no on-chain cashout |
-| Automatic fee distribution | Not built | LockVault.distributeFees is owner-only push model |
+| Automatic fee distribution | Deployed | HouseVault.routeFees → LockVault.notifyFees (90/5/5 split) |
 | Penalty redistribution | Not built | sweepPenaltyShares is owner-discretionary |
 
 See root `CLAUDE.md` gap analysis for the full EXISTS / NEEDS BUILDING / DISCONNECTED inventory.
