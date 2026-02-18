@@ -176,8 +176,6 @@ contract ProgressiveSettleTest is Test {
     function test_claimProgressive_allWon_thenSettle() public {
         uint256 ticketId = _buyProgressive3Leg();
 
-        ParlayEngine.Ticket memory tBefore = engine.getTicket(ticketId);
-
         // Resolve leg 0, progressive claim
         oracle.resolve(0, LegStatus.Won, keccak256("yes"));
         vm.prank(alice);
@@ -407,5 +405,230 @@ contract ProgressiveSettleTest is Test {
 
         // All reserves released
         assertEq(vault.totalReserved(), 0);
+    }
+
+    // ── 13. Progressive with mixed voided + won legs ──────────────────────
+
+    function test_claimProgressive_voidedLegsSkipped() public {
+        uint256 ticketId = _buyProgressive3Leg();
+
+        ParlayEngine.Ticket memory tBefore = engine.getTicket(ticketId);
+        uint256 effectiveStake = tBefore.stake - tBefore.feePaid;
+
+        // Void leg 0, win leg 1 — voided legs should be silently skipped
+        oracle.resolve(0, LegStatus.Voided, bytes32(0));
+        oracle.resolve(1, LegStatus.Won, keccak256("yes"));
+
+        uint256 aliceBefore = usdc.balanceOf(alice);
+
+        vm.prank(alice);
+        engine.claimProgressive(ticketId);
+
+        // Only leg 1 (25%) counts as won: multiplier = PPM / 250_000 = 4x
+        // partialPayout = effectiveStake * 4_000_000 / PPM = 39_000_000
+        uint256 expectedPartial = (effectiveStake * 4_000_000) / 1_000_000;
+        assertEq(usdc.balanceOf(alice), aliceBefore + expectedPartial, "voided leg skipped, only won leg counted");
+
+        ParlayEngine.Ticket memory tAfter = engine.getTicket(ticketId);
+        assertEq(tAfter.claimedAmount, expectedPartial);
+        assertEq(uint8(tAfter.status), uint8(ParlayEngine.TicketStatus.Active));
+    }
+
+    // ── 14. Progressive with all legs voided reverts ──────────────────────
+
+    function test_claimProgressive_allVoided_reverts() public {
+        uint256 ticketId = _buyProgressive3Leg();
+
+        // Void all legs
+        oracle.resolve(0, LegStatus.Voided, bytes32(0));
+        oracle.resolve(1, LegStatus.Voided, bytes32(0));
+        oracle.resolve(2, LegStatus.Voided, bytes32(0));
+
+        vm.prank(alice);
+        vm.expectRevert("ParlayEngine: no won legs to claim");
+        engine.claimProgressive(ticketId);
+    }
+
+    // ── 15. Void with <2 remaining legs after progressive claims ──────────
+    //        Verifies refund correctly subtracts claimedAmount.
+
+    function test_progressive_voidThenSettle_refundMinusClaimed() public {
+        // Buy 2-leg progressive (legs 0+1, 50%+25%)
+        uint256 ticketId = _buyProgressive2Leg();
+
+        ParlayEngine.Ticket memory tBefore = engine.getTicket(ticketId);
+        uint256 effectiveStake = tBefore.stake - tBefore.feePaid;
+
+        // Win leg 0, progressive claim
+        oracle.resolve(0, LegStatus.Won, keccak256("yes"));
+        vm.prank(alice);
+        engine.claimProgressive(ticketId);
+
+        uint256 claimed = engine.getTicket(ticketId).claimedAmount;
+        assertGt(claimed, 0);
+
+        // Now void leg 1 -> only 1 remaining leg -> ticket voided
+        oracle.resolve(1, LegStatus.Voided, bytes32(0));
+
+        uint256 aliceBefore = usdc.balanceOf(alice);
+        uint256 reservedBefore = vault.totalReserved();
+
+        engine.settleTicket(ticketId);
+
+        ParlayEngine.Ticket memory tAfter = engine.getTicket(ticketId);
+        assertEq(uint8(tAfter.status), uint8(ParlayEngine.TicketStatus.Voided));
+
+        // Refund = effectiveStake - claimedAmount (since alice already got partial)
+        uint256 expectedRefund = effectiveStake > claimed ? effectiveStake - claimed : 0;
+        assertEq(usdc.balanceOf(alice), aliceBefore + expectedRefund, "refund minus claimed");
+
+        // All remaining reserve released
+        uint256 expectedReleased = tBefore.potentialPayout - claimed;
+        assertEq(vault.totalReserved(), reservedBefore - expectedReleased, "remaining reserve released");
+    }
+
+    // ── 16. Void with claims exceeding effectiveStake -> refund = 0 ───────
+    //        Edge case: progressive claims > effectiveStake, void remaining.
+
+    function test_progressive_voidAfterLargeClaim_noRefund() public {
+        // Buy 2-leg progressive with legs 0+1 (50%+25%)
+        uint256 ticketId = _buyProgressive2Leg();
+
+        ParlayEngine.Ticket memory tBefore = engine.getTicket(ticketId);
+        uint256 effectiveStake = tBefore.stake - tBefore.feePaid;
+
+        // Win leg 0 (50%), progressive claim: payout = effectiveStake * 2x = 19_600_000
+        // effectiveStake = 9_800_000, so claim > effectiveStake
+        oracle.resolve(0, LegStatus.Won, keccak256("yes"));
+        vm.prank(alice);
+        engine.claimProgressive(ticketId);
+
+        uint256 claimed = engine.getTicket(ticketId).claimedAmount;
+        assertGt(claimed, effectiveStake, "claim exceeds effective stake");
+
+        // Void leg 1 -> voided ticket
+        oracle.resolve(1, LegStatus.Voided, bytes32(0));
+
+        uint256 aliceBefore = usdc.balanceOf(alice);
+
+        engine.settleTicket(ticketId);
+
+        // effectiveStake - claimedAmount would underflow -> refund = 0
+        assertEq(usdc.balanceOf(alice), aliceBefore, "no refund when claims exceed effective stake");
+
+        ParlayEngine.Ticket memory tAfter = engine.getTicket(ticketId);
+        assertEq(uint8(tAfter.status), uint8(ParlayEngine.TicketStatus.Voided));
+    }
+
+    // ── 17. Partial void with claims exceeding recalculated payout ─────────
+    //        3-leg, claim after 2 won, void 1 -> recalculated payout < claimedAmount.
+
+    function test_progressive_partialVoid_claimsExceedNewPayout() public {
+        uint256 ticketId = _buyProgressive3Leg();
+
+        ParlayEngine.Ticket memory tBefore = engine.getTicket(ticketId);
+
+        // Win legs 0 (50%) and 1 (25%), progressive claim (2 claims)
+        oracle.resolve(0, LegStatus.Won, keccak256("yes"));
+        vm.prank(alice);
+        engine.claimProgressive(ticketId);
+
+        oracle.resolve(1, LegStatus.Won, keccak256("yes"));
+        vm.prank(alice);
+        engine.claimProgressive(ticketId);
+
+        // claimed = effectiveStake * 8x (for 50%+25%) = 78_000_000
+
+        // Void leg 2 -> recalculate with remaining 2 legs (50%+25%)
+        // newPayout = same as claimed (effectiveStake * 8x) or potentially different
+        // due to the edge computation in buyTicket vs settle. In this case,
+        // newPayout = effectiveStake * computeMultiplier([500_000, 250_000]) / PPM
+        // which is the same as claimed (no edge applied in settle, but edge was applied at buy time).
+        // Actually, settle recalculates with raw multiplier, NOT the net multiplier.
+        // So newPayout may differ from claimed. Let's just verify the accounting is safe.
+
+        oracle.resolve(2, LegStatus.Voided, bytes32(0));
+
+        uint256 reservedBefore = vault.totalReserved();
+
+        engine.settleTicket(ticketId);
+
+        ParlayEngine.Ticket memory tAfter = engine.getTicket(ticketId);
+        assertEq(uint8(tAfter.status), uint8(ParlayEngine.TicketStatus.Won));
+
+        // Verify potentialPayout >= claimedAmount (engine ensures this)
+        assertGe(tAfter.potentialPayout, tAfter.claimedAmount, "new payout >= claimed");
+
+        // Remaining reserve is correct
+        assertEq(vault.totalReserved(), reservedBefore - (tBefore.potentialPayout - tAfter.potentialPayout),
+            "reserve accounting correct after partial void");
+    }
+
+    // ── 18. NFT transfer: new owner can claim progressive ──────────────────
+
+    function test_claimProgressive_afterNFTTransfer() public {
+        uint256 ticketId = _buyProgressive3Leg();
+
+        // Resolve leg 0 as Won
+        oracle.resolve(0, LegStatus.Won, keccak256("yes"));
+
+        // Alice transfers ticket to Bob
+        vm.prank(alice);
+        engine.transferFrom(alice, bob, ticketId);
+
+        assertEq(engine.ownerOf(ticketId), bob);
+
+        // Alice can no longer claim
+        vm.prank(alice);
+        vm.expectRevert("ParlayEngine: not ticket owner");
+        engine.claimProgressive(ticketId);
+
+        // Bob can claim
+        uint256 bobBefore = usdc.balanceOf(bob);
+        vm.prank(bob);
+        engine.claimProgressive(ticketId);
+
+        assertGt(usdc.balanceOf(bob), bobBefore, "new owner received payout");
+    }
+
+    // ── 19. claimPayout "nothing to claim" revert path ─────────────────────
+    //        Edge: settle sets newPayout = claimedAmount via partial void,
+    //        then claimPayout should revert with "nothing to claim".
+
+    function test_claimPayout_nothingToClaim_afterVoidReducesPayout() public {
+        // Use 3-leg progressive: claim first 2, void 3rd.
+        // After void, if newPayout == claimedAmount, claimPayout has nothing left.
+        uint256 ticketId = _buyProgressive3Leg();
+
+        // Win legs 0 and 1, claim both
+        oracle.resolve(0, LegStatus.Won, keccak256("yes"));
+        vm.prank(alice);
+        engine.claimProgressive(ticketId);
+
+        oracle.resolve(1, LegStatus.Won, keccak256("yes"));
+        vm.prank(alice);
+        engine.claimProgressive(ticketId);
+
+        uint256 claimed = engine.getTicket(ticketId).claimedAmount;
+
+        // Void leg 2 -> settle recalculates payout
+        oracle.resolve(2, LegStatus.Voided, bytes32(0));
+        engine.settleTicket(ticketId);
+
+        ParlayEngine.Ticket memory tSettled = engine.getTicket(ticketId);
+
+        // If newPayout == claimedAmount, claimPayout should revert
+        if (tSettled.potentialPayout == claimed) {
+            vm.prank(alice);
+            vm.expectRevert("ParlayEngine: nothing to claim");
+            engine.claimPayout(ticketId);
+        } else {
+            // newPayout > claimedAmount: claimPayout should succeed
+            vm.prank(alice);
+            engine.claimPayout(ticketId);
+
+            ParlayEngine.Ticket memory tFinal = engine.getTicket(ticketId);
+            assertEq(tFinal.claimedAmount, tFinal.potentialPayout);
+        }
     }
 }

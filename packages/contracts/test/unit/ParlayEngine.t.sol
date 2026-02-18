@@ -688,4 +688,204 @@ contract ParlayEngineTest is Test {
         vm.expectRevert("ParlayEngine: invalid ticketId");
         engine.claimPayout(9999);
     }
+
+    // ── Admin Setter Access Control ─────────────────────────────────────────
+
+    function test_setBaseFee_nonOwner_reverts() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        engine.setBaseFee(200);
+    }
+
+    function test_setPerLegFee_nonOwner_reverts() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        engine.setPerLegFee(100);
+    }
+
+    function test_setMinStake_nonOwner_reverts() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        engine.setMinStake(2e6);
+    }
+
+    function test_setMaxLegs_nonOwner_reverts() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        engine.setMaxLegs(3);
+    }
+
+    function test_setBaseCashoutPenalty_nonOwner_reverts() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        engine.setBaseCashoutPenalty(2000);
+    }
+
+    // ── Admin Setter Event Emissions ────────────────────────────────────────
+
+    function test_setBaseFee_emitsEvent() public {
+        vm.expectEmit(true, true, true, true);
+        emit ParlayEngine.BaseFeeUpdated(100, 200);
+        engine.setBaseFee(200);
+    }
+
+    function test_setPerLegFee_emitsEvent() public {
+        vm.expectEmit(true, true, true, true);
+        emit ParlayEngine.PerLegFeeUpdated(50, 100);
+        engine.setPerLegFee(100);
+    }
+
+    function test_setMinStake_emitsEvent() public {
+        vm.expectEmit(true, true, true, true);
+        emit ParlayEngine.MinStakeUpdated(1e6, 5e6);
+        engine.setMinStake(5e6);
+    }
+
+    function test_setMaxLegs_emitsEvent() public {
+        vm.expectEmit(true, true, true, true);
+        emit ParlayEngine.MaxLegsUpdated(5, 8);
+        engine.setMaxLegs(8);
+    }
+
+    function test_setBaseCashoutPenalty_emitsEvent() public {
+        vm.expectEmit(true, true, true, true);
+        emit ParlayEngine.BaseCashoutPenaltyUpdated(1500, 3000);
+        engine.setBaseCashoutPenalty(3000);
+    }
+
+    // ── Admin Setter Effects on Ticket Pricing ──────────────────────────────
+
+    function test_setBaseFee_affectsNextTicketFee() public {
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0;
+        legs[1] = 1;
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
+
+        // Buy with default baseFee=100, perLegFee=50 -> total edge = 100 + 50*2 = 200 bps
+        vm.prank(alice);
+        uint256 t1 = engine.buyTicket(legs, outcomes, 10e6);
+        uint256 fee1 = engine.getTicket(t1).feePaid;
+
+        // Double baseFee -> total edge = 200 + 50*2 = 300 bps
+        engine.setBaseFee(200);
+
+        vm.prank(alice);
+        uint256 t2 = engine.buyTicket(legs, outcomes, 10e6);
+        uint256 fee2 = engine.getTicket(t2).feePaid;
+
+        assertGt(fee2, fee1, "higher baseFee must increase fee");
+        // fee1 = 10e6 * 200 / 10_000 = 200_000
+        // fee2 = 10e6 * 300 / 10_000 = 300_000
+        assertEq(fee1, 200_000);
+        assertEq(fee2, 300_000);
+    }
+
+    function test_setPerLegFee_affectsNextTicketFee() public {
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0;
+        legs[1] = 1;
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
+
+        // Buy with default: 100 + 50*2 = 200 bps
+        vm.prank(alice);
+        uint256 t1 = engine.buyTicket(legs, outcomes, 10e6);
+        uint256 fee1 = engine.getTicket(t1).feePaid;
+
+        // Set perLegFee to 200 -> 100 + 200*2 = 500 bps
+        engine.setPerLegFee(200);
+
+        vm.prank(alice);
+        uint256 t2 = engine.buyTicket(legs, outcomes, 10e6);
+        uint256 fee2 = engine.getTicket(t2).feePaid;
+
+        assertGt(fee2, fee1, "higher perLegFee must increase fee");
+        assertEq(fee1, 200_000);
+        assertEq(fee2, 500_000);
+    }
+
+    function test_setMinStake_enforcedOnBuy() public {
+        engine.setMinStake(5e6);
+
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0;
+        legs[1] = 1;
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
+
+        // Below new minimum: reverts
+        vm.prank(alice);
+        vm.expectRevert("ParlayEngine: stake too low");
+        engine.buyTicket(legs, outcomes, 4e6);
+
+        // At new minimum: succeeds
+        vm.prank(alice);
+        engine.buyTicket(legs, outcomes, 5e6);
+    }
+
+    function test_setMaxLegs_enforcedOnBuy() public {
+        engine.setMaxLegs(3);
+
+        // 3 legs should work
+        uint256[] memory legs3 = new uint256[](3);
+        legs3[0] = 0; legs3[1] = 1; legs3[2] = 2;
+        bytes32[] memory out3 = new bytes32[](3);
+        out3[0] = keccak256("yes");
+        out3[1] = keccak256("yes");
+        out3[2] = keccak256("yes");
+
+        vm.prank(alice);
+        engine.buyTicket(legs3, out3, 10e6);
+
+        // 4 legs should revert
+        uint256 extra = _createLeg("EXTRA", 500_000);
+        uint256[] memory legs4 = new uint256[](4);
+        legs4[0] = 0; legs4[1] = 1; legs4[2] = 2; legs4[3] = extra;
+        bytes32[] memory out4 = new bytes32[](4);
+        for (uint256 i = 0; i < 4; i++) out4[i] = keccak256("yes");
+
+        vm.prank(alice);
+        vm.expectRevert("ParlayEngine: too many legs");
+        engine.buyTicket(legs4, out4, 10e6);
+    }
+
+    // ── Pause/Unpause ───────────────────────────────────────────────────────
+
+    function test_pause_blocksBuyAndSettle() public {
+        engine.pause();
+
+        uint256[] memory legs = new uint256[](2);
+        legs[0] = 0;
+        legs[1] = 1;
+        bytes32[] memory outcomes = new bytes32[](2);
+        outcomes[0] = keccak256("yes");
+        outcomes[1] = keccak256("yes");
+
+        vm.prank(alice);
+        vm.expectRevert();
+        engine.buyTicket(legs, outcomes, 10e6);
+
+        engine.unpause();
+
+        // After unpause, buy should succeed
+        vm.prank(alice);
+        engine.buyTicket(legs, outcomes, 10e6);
+    }
+
+    function test_pause_nonOwner_reverts() public {
+        vm.prank(alice);
+        vm.expectRevert();
+        engine.pause();
+    }
+
+    function test_unpause_nonOwner_reverts() public {
+        engine.pause();
+        vm.prank(alice);
+        vm.expectRevert();
+        engine.unpause();
+    }
 }
