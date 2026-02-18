@@ -17,15 +17,37 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 function getX402Recipient(): string {
   const raw = process.env.X402_RECIPIENT_WALLET;
   if (!raw) return ZERO_ADDRESS;
-  if (!isAddress(raw)) {
+  if (!isAddress(raw, { strict: false })) {
     throw new Error(`[x402] Invalid X402_RECIPIENT_WALLET "${raw}" — must be a valid Ethereum address`);
   }
   return raw.toLowerCase();
 }
 
 const X402_RECIPIENT = getX402Recipient();
-const X402_FACILITATOR_URL = process.env.X402_FACILITATOR_URL || "https://facilitator.x402.org";
-const X402_PRICE = process.env.X402_PRICE || "$0.01"; // Price per request
+function getX402FacilitatorUrl(): string {
+  const raw = process.env.X402_FACILITATOR_URL || "https://facilitator.x402.org";
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      throw new Error("unsupported protocol");
+    }
+  } catch {
+    throw new Error(`[x402] Invalid X402_FACILITATOR_URL "${raw}" — must be a valid HTTP(S) URL`);
+  }
+  return raw;
+}
+
+const X402_FACILITATOR_URL = getX402FacilitatorUrl();
+const X402_PRICE = process.env.X402_PRICE || "$0.01";
+
+// Exported for unit testing
+export const _testExports = {
+  getX402Recipient,
+  getX402Network,
+  getX402FacilitatorUrl,
+  KNOWN_NETWORKS,
+  ZERO_ADDRESS,
+};
 
 function getX402Network(): { network: Network; testnet: boolean } {
   const raw = process.env.X402_NETWORK || "eip155:84532";
