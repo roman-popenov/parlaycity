@@ -45,24 +45,21 @@
 - [ ] Write integration tests (valid payment, missing payment, invalid payment)
 - [ ] `make gate` passes
 
-### PR5 (partial): Base Sepolia Deployment
-- [ ] Add `deploy-sepolia` target to Makefile
-- [ ] Configure foundry for Base Sepolia RPC
-- [ ] Test deployment on Base Sepolia testnet
-- [ ] Document deployed contract addresses
-- [ ] Verify frontend connects to Sepolia deployment
-
 ---
 
 ## Web Agent
 
-### PR5: Sponsor UX (Paymaster + OnchainKit)
+### PR5: Sponsor UX (Paymaster + OnchainKit + Base Sepolia Deployment)
+- [ ] Add `deploy-sepolia` target to Makefile
+- [ ] Configure foundry for Base Sepolia RPC
+- [ ] Deploy and verify contracts on Base Sepolia
 - [ ] Research Base Paymaster integration (0xf5d253B62543C6Ef526309D497f619CeF95aD430)
 - [ ] Add paymaster config to wagmi.ts
 - [ ] Create gasless transaction wrapper for write hooks
 - [ ] Test gasless buyTicket on Base Sepolia
 - [ ] Test gasless deposit/lock on Base Sepolia
 - [ ] Integrate OnchainKit components where appropriate
+- [ ] Verify frontend connects to Sepolia deployment
 - [ ] `make gate` passes
 
 ### PR6: Crash UX & Rehab Mode

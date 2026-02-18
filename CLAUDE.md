@@ -127,7 +127,7 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 ## PR Strategy
 
 - Small PRs against `main`. Main stays green.
-- Sequence: PR0 (repo hygiene/CI) -> PR1 (docs/spec) -> PR2a-e (contracts: fee routing, SafetyModule, cashout) -> PR3 (services: real x402) -> PR4 (web: crash UX, rehab) -> PR5 (sponsor: paymaster, OnchainKit) -> PR6+ (stretch)
+- Sequence: PR0 (docs/narrative) -> PR1 (FeeRouter) -> PR2 (SafetyModule) -> PR3 (cashout) -> PR4 (x402 real verification) -> PR5 (paymaster + OnchainKit) -> PR6 (crash UX + rehab) -> PR7 (stretch)
 - Every PR must pass `make gate` before merge.
 - Contract PRs must include tests AND a security note.
 
