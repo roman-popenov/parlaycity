@@ -126,11 +126,53 @@ This requires coordinating with HouseVault changes (internal lock tracking, yiel
 
 ---
 
+## 7. Oracle Fault Recovery
+
+**Current state:** If an oracle adapter returns inconsistent or stale data (e.g., a leg stays `Unresolved` indefinitely, or an external oracle goes down), tickets referencing that leg become stuck — they can't settle, and progressive claims can't include that leg. The defensive `require(idx == wonCount)` assertion in `claimProgressive` guards against mid-transaction inconsistency, but there's no mechanism to recover from a persistently faulty oracle.
+
+**Problems:**
+1. **Stuck tickets.** If an oracle never resolves a leg, the ticket stays `Active` forever. The vault reserves remain locked, reducing free liquidity for new bets.
+2. **No admin override.** The `AdminOracleAdapter` can resolve legs manually, but if the production `OptimisticOracleAdapter` is the one configured for a leg, only its dispute/resolution flow can produce a result.
+3. **No timeout mechanism.** There's no deadline after which an unresolved leg auto-voids or triggers an emergency path.
+
+**Proposed improvements:**
+- **Leg resolution timeout:** Add a `maxResolutionTime` per leg. If `block.timestamp > leg.earliestResolve + maxResolutionTime` and the leg is still `Unresolved`, anyone can call `voidStaleLeg(legId)` to force-void it. This unblocks settlement for all tickets referencing that leg.
+- **Emergency oracle fallback:** Allow the protocol owner to set a fallback oracle adapter per leg that activates after the timeout. This could be the `AdminOracleAdapter` as a last resort.
+- **Batch void for stuck tickets:** An admin function to void all tickets older than a threshold that reference unresolved legs, releasing their reserves.
+- **Oracle health monitoring:** Off-chain service that tracks unresolved legs past their `earliestResolve` and alerts the team.
+
+**Implementation sketch:**
+```
+LegRegistry:
+- maxResolutionTime per leg (set at creation, e.g., 7 days)
+- voidStaleLeg(legId): permissionless, checks timeout, sets status to Voided
+- setFallbackOracle(legId, adapter): owner-only, activates after timeout
+
+ParlayEngine:
+- settleTicket already handles voided legs correctly
+- No engine changes needed if voidStaleLeg works at the registry/oracle level
+```
+
+---
+
+## 8. Bug: computeCashoutValue Parameter Order Divergence (Solidity vs TS)
+
+**Severity:** Low (parity tests catch mismatches, but silent footgun exists)
+
+**Current state:** `ParlayMath.computeCashoutValue` in Solidity uses param order `(…, basePenaltyBps, totalLegs, potentialPayout)` while the TS mirror in `shared/math.ts` uses `(…, totalLegs, potentialPayout, basePenaltyBps)`. The TS reorder was intentional — `basePenaltyBps` has a default value and TypeScript requires defaulted params to be last. Solidity has no default params so its order stayed as-is.
+
+**Risk:** Both `basePenaltyBps` and `totalLegs` are `number` in TS, so swapping them when cross-referencing the Solidity version compiles silently with wrong results. Existing parity tests catch this today, but a developer adding a new call site could get it wrong.
+
+**Fix:** Reorder the Solidity `internal pure` function params to match TS: `(…, totalLegs, potentialPayout, basePenaltyBps)`. No ABI impact since the function is internal. Update all Solidity callers (engine, tests, fuzz).
+
+---
+
 ## Priority Order
 
-1. **LockVault economic redesign** -- High priority, current model has structural issues
-2. **Admin dashboard** -- Low effort, high value for demo polish
-3. **Constructor params** -- Trivial change, improves deploy flexibility
-4. **Dynamic fee scaling** -- Medium effort, strong DeFi mechanic
-5. **Dynamic max payout** -- Medium effort, unlocks larger tickets
-6. **Jackpot pool** -- High effort, major feature expansion
+1. **Oracle fault recovery** -- High priority, stuck tickets lock vault reserves indefinitely
+2. **LockVault economic redesign** -- High priority, current model has structural issues
+3. **Admin dashboard** -- Low effort, high value for demo polish
+4. **Constructor params** -- Trivial change, improves deploy flexibility
+5. **Dynamic fee scaling** -- Medium effort, strong DeFi mechanic
+6. **Dynamic max payout** -- Medium effort, unlocks larger tickets
+7. **Jackpot pool** -- High effort, major feature expansion
