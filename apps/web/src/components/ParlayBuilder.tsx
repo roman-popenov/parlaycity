@@ -39,6 +39,9 @@ export function ParlayBuilder() {
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  // Clear stale risk advice when inputs change
+  useEffect(() => { setRiskAdvice(null); }, [selectedLegs, stake, payoutMode]);
+
   const stakeNum = parseFloat(stake) || 0;
   const effectiveMaxLegs = maxLegs ?? PARLAY_CONFIG.maxLegs;
   const effectiveMinStake = minStakeUSDC ?? PARLAY_CONFIG.minStakeUSDC;

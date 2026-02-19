@@ -196,9 +196,10 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
             <button
               onClick={(e) => {
                 e.preventDefault(); e.stopPropagation();
-                // Slippage protection: 95% of expected payout as minOut, floor at 1
-                const minOut = ticket.payout > 0n ? (ticket.payout * 95n) / 100n : 1n;
-                cashoutEarly(ticket.id, minOut);
+                // minOut=0: cashout value is computed on-chain from won probabilities
+                // and is always much less than potentialPayout, so we can't derive a
+                // meaningful floor client-side without duplicating the math.
+                cashoutEarly(ticket.id, 0n);
               }}
               disabled={isCashingOut}
               className="flex-1 rounded-xl border border-yellow-500/30 bg-yellow-500/10 py-2.5 text-sm font-semibold text-yellow-400 transition-all hover:bg-yellow-500/20 disabled:opacity-50"
