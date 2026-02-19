@@ -176,6 +176,10 @@ See `docs/solutions/` for detailed write-ups. Key patterns to avoid:
 17. **BigInt falsiness**: `BigInt(0)` is falsy in JavaScript. `if (bigintVar)` evaluates false for `0n`. Always use `bigintVar !== undefined` for existence checks on BigInt values. Using truthiness creates phantom defaults (e.g., `balance ? x : fallback` sends fallback when balance is legitimately zero). (014)
 18. **API type boundary mismatches**: When sending BigInt-sourced IDs to JSON APIs, `BigInt.toString()` produces a string, but Zod `z.number()` schemas reject strings. Use `Number(bigint)` for small IDs. The JSON serialization boundary (BigInt -> JSON -> Zod) is where type assumptions silently break. (014)
 19. **Silent fetch failures**: Never `catch {}` a user-facing API call. Always surface errors to the user, even if just "unavailable." Silent failures make features appear broken with no feedback. Validate response shape before use -- API contracts drift. (014)
+20. **Dead exports from refactoring**: When removing a function call, grep for the callee. If zero callers remain and it's not a public API, delete it. Exported dead code passes typecheck and builds, so it's invisible without explicit search. (015)
+21. **Zero BigInt at API boundaries**: `formatUnits(0n, 6)` produces `"0"` which Zod `> 0` rejects. Guard with `value !== undefined && value > 0n ? convert(value) : fallback`. This is the third variant of the zero-value problem (see #8, #12, #17). (015)
+22. **Type guard exhaustiveness**: A type guard asserting `data is T` MUST validate ALL fields of T, not just the ones currently consumed. Partial guards create unsound narrowing -- TypeScript trusts the assertion, so unchecked fields become runtime `undefined` behind a `string`/`number` type. (015)
+23. **Spec completeness**: Every interface, struct, or contract type referenced in a spec document MUST have an explicit definition in that document. Readers cannot infer method signatures from call sites alone. (015)
 
 After every non-trivial bug fix, document in `docs/solutions/` with: Problem, Root Cause, Solution, Prevention (category-level).
 
