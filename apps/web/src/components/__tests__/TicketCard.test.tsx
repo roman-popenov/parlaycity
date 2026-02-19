@@ -17,6 +17,14 @@ vi.mock("@/lib/hooks", () => ({
     claim: vi.fn(),
     isPending: false,
   })),
+  useClaimProgressive: vi.fn(() => ({
+    claimProgressive: vi.fn(),
+    isPending: false,
+  })),
+  useCashoutEarly: vi.fn(() => ({
+    cashoutEarly: vi.fn(),
+    isPending: false,
+  })),
 }));
 
 function makeTicket(overrides: Partial<TicketData> = {}): TicketData {
