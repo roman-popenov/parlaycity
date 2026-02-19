@@ -156,8 +156,12 @@ export function VaultDashboard() {
   const depositBelowMinimum = depositAmount !== "" && !isNaN(depositParsed) && depositParsed >= 0 && depositAmountBigInt < 1_000_000n;
   const depositNegative = depositAmount !== "" && !isNaN(depositParsed) && depositParsed < 0;
   const depositExceedsBalance = depositAmountBigInt > 0n && !depositBelowMinimum && depositAmountBigInt > (usdcBalance ?? 0n);
+  const withdrawParsed = withdrawAmount ? parseFloat(withdrawAmount) : NaN;
+  const withdrawBelowMinimum = withdrawAmount !== "" && !isNaN(withdrawParsed) && withdrawParsed > 0 && withdrawAmountBigInt === 0n;
   const withdrawExceedsShares = withdrawAmountBigInt > 0n && withdrawAmountBigInt > userSharesBigInt;
   const withdrawExceedsLiquidity = withdrawAmountBigInt > 0n && !withdrawExceedsShares && withdrawAmountBigInt > withdrawableShares;
+  const lockParsed = lockAmount ? parseFloat(lockAmount) : NaN;
+  const lockBelowMinimum = lockAmount !== "" && !isNaN(lockParsed) && lockParsed >= 0 && lockAmountBigInt < 1_000_000n;
   const lockExceedsShares = lockAmountBigInt > 0n && lockAmountBigInt > userSharesBigInt;
 
   // Post-withdrawal utilization warning (convert shares to assets for correct unit basis)
@@ -171,6 +175,44 @@ export function VaultDashboard() {
     return Number((totalReserved * 10000n) / remaining) / 100;
   })();
   const withdrawHighUtilWarning = withdrawAmountBigInt > 0n && !withdrawExceedsShares && !withdrawExceedsLiquidity && postWithdrawUtil > 80;
+
+  // Priority order: wallet > prerequisite > tx state > input validation > default
+  // Tx state comes before validation because once submitted, the user
+  // needs to see progress regardless of subsequent input changes.
+  function depositButtonLabel(): string {
+    if (!isConnected) return "Connect Wallet";
+    if (!hasUSDC) return "No USDC Balance";
+    if (depositHook.isPending) return "Signing...";
+    if (depositHook.isConfirming) return "Confirming...";
+    if (depositTxSuccess) return "Deposited!";
+    if (depositNegative) return "Invalid Amount";
+    if (depositBelowMinimum) return "Minimum 1 USDC";
+    if (depositExceedsBalance) return "Insufficient Balance";
+    return "Deposit";
+  }
+
+  function withdrawButtonLabel(): string {
+    if (!isConnected) return "Connect Wallet";
+    if (!hasShares) return "No Shares";
+    if (withdrawHook.isPending) return "Signing...";
+    if (withdrawHook.isConfirming) return "Confirming...";
+    if (withdrawTxSuccess) return "Withdrawn!";
+    if (withdrawBelowMinimum) return "Amount Too Small";
+    if (withdrawExceedsShares) return "Insufficient Shares";
+    if (withdrawExceedsLiquidity) return "Insufficient Liquidity";
+    return "Withdraw";
+  }
+
+  function lockButtonLabel(): string {
+    if (!isConnected) return "Connect Wallet";
+    if (!hasShares) return "Deposit USDC First";
+    if (lockHook.isPending) return "Signing...";
+    if (lockHook.isConfirming) return "Confirming...";
+    if (lockHook.isSuccess) return "Locked!";
+    if (lockBelowMinimum) return "Minimum 1 vUSDC";
+    if (lockExceedsShares) return "Insufficient Shares";
+    return "Lock Shares";
+  }
 
   return (
     <div className="space-y-8">
@@ -294,23 +336,7 @@ export function VaultDashboard() {
             disabled={!isConnected || !hasUSDC || !depositAmount || depositNegative || depositBelowMinimum || depositExceedsBalance || depositHook.isPending || depositHook.isConfirming}
             className="w-full rounded-xl bg-gradient-to-r from-accent-blue to-accent-purple py-3 text-sm font-bold uppercase tracking-wider text-white transition-all hover:shadow-lg hover:shadow-accent-purple/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {!isConnected
-              ? "Connect Wallet"
-              : !hasUSDC
-                ? "No USDC Balance"
-                : depositNegative
-                  ? "Invalid Amount"
-                  : depositBelowMinimum
-                    ? "Minimum 1 USDC"
-                    : depositExceedsBalance
-                      ? "Insufficient Balance"
-                      : depositHook.isPending
-                        ? "Signing..."
-                        : depositHook.isConfirming
-                          ? "Confirming..."
-                          : depositTxSuccess
-                            ? "Deposited!"
-                            : "Deposit"}
+            {depositButtonLabel()}
           </button>
           {depositHook.error && (
             <p className="mt-2 rounded-lg bg-neon-red/10 px-3 py-2 text-center text-xs text-neon-red">
@@ -354,6 +380,9 @@ export function VaultDashboard() {
               </button>
             )}
           </div>
+          {withdrawBelowMinimum && (
+            <p className="mb-2 text-center text-xs text-neon-red">Amount too small</p>
+          )}
           {withdrawExceedsShares && (
             <p className="mb-2 text-center text-xs text-neon-red">Exceeds your vault shares</p>
           )}
@@ -367,24 +396,10 @@ export function VaultDashboard() {
           )}
           <button
             onClick={handleWithdraw}
-            disabled={!isConnected || !hasShares || !withdrawAmount || withdrawExceedsShares || withdrawExceedsLiquidity || withdrawHook.isPending || withdrawHook.isConfirming}
+            disabled={!isConnected || !hasShares || !withdrawAmount || withdrawBelowMinimum || withdrawExceedsShares || withdrawExceedsLiquidity || withdrawHook.isPending || withdrawHook.isConfirming}
             className="w-full rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-bold uppercase tracking-wider text-white transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {!isConnected
-              ? "Connect Wallet"
-              : !hasShares
-                ? "No Shares"
-                : withdrawExceedsShares
-                  ? "Insufficient Shares"
-                  : withdrawExceedsLiquidity
-                    ? "Insufficient Liquidity"
-                    : withdrawHook.isPending
-                    ? "Signing..."
-                    : withdrawHook.isConfirming
-                      ? "Confirming..."
-                      : withdrawTxSuccess
-                        ? "Withdrawn!"
-                        : "Withdraw"}
+            {withdrawButtonLabel()}
           </button>
           {withdrawHook.error && (
             <p className="mt-2 rounded-lg bg-neon-red/10 px-3 py-2 text-center text-xs text-neon-red">
@@ -470,27 +485,18 @@ export function VaultDashboard() {
               )}
             </div>
 
+            {lockBelowMinimum && (
+              <p className="mb-2 text-center text-xs text-neon-red">Minimum lock is 1 vUSDC</p>
+            )}
             {lockExceedsShares && (
               <p className="mb-2 text-center text-xs text-neon-red">Exceeds your vault shares</p>
             )}
             <button
               onClick={handleLock}
-              disabled={!isConnected || !hasShares || !lockAmount || lockExceedsShares || lockHook.isPending || lockHook.isConfirming}
+              disabled={!isConnected || !hasShares || !lockAmount || lockBelowMinimum || lockExceedsShares || lockHook.isPending || lockHook.isConfirming}
               className="w-full rounded-xl bg-gradient-to-r from-accent-purple to-accent-blue py-3 text-sm font-bold uppercase tracking-wider text-white transition-all hover:shadow-lg hover:shadow-accent-purple/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {!isConnected
-                ? "Connect Wallet"
-                : !hasShares
-                  ? "Deposit USDC First"
-                  : lockExceedsShares
-                    ? "Insufficient Shares"
-                    : lockHook.isPending
-                      ? "Signing..."
-                      : lockHook.isConfirming
-                        ? "Confirming..."
-                        : lockHook.isSuccess
-                          ? "Locked!"
-                          : "Lock Shares"}
+              {lockButtonLabel()}
             </button>
             {lockHook.error && (
               <p className="mt-2 rounded-lg bg-neon-red/10 px-3 py-2 text-center text-xs text-neon-red">
