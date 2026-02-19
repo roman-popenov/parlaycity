@@ -192,6 +192,27 @@ IAMMRouter public ammRouter; // Separate from yieldAdapter so AMM capital
                              // is NOT counted in totalAssets()
 ```
 
+### IAMMRouter Interface
+
+```solidity
+/// @notice Routes losing-stake AMM capital to a Uniswap LP position.
+///         Separate from IYieldAdapter so that deployed capital is NOT
+///         counted in HouseVault.totalAssets() (preserving the 80/10/10 split).
+interface IAMMRouter {
+    /// @notice Deploy USDC into an AMM liquidity position.
+    /// @param amount USDC amount to deploy
+    function deployToLP(uint256 amount) external;
+
+    /// @notice Withdraw USDC from the AMM position.
+    /// @param amount USDC amount to withdraw (0 = all)
+    /// @return withdrawn Actual USDC withdrawn
+    function withdrawFromLP(uint256 amount) external returns (uint256 withdrawn);
+
+    /// @notice Current USDC value held in the AMM position.
+    function balance() external view returns (uint256);
+}
+```
+
 ## Frontend UX
 
 ### At Loss Moment (Crash Screen)
