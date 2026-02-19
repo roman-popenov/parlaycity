@@ -38,13 +38,13 @@ LP deposits USDC --> earns from: gambler losses + 90% of ALL fees
 
 | Component | Status |
 |-----------|--------|
-| HouseVault (ERC-4626, 80% utilization cap, 5% per-ticket cap) | Deployed, tested |
-| ParlayEngine (ERC-721 tickets, settlement, claim) | Deployed, tested |
+| HouseVault (ERC-4626, 80% utilization cap, 5% per-ticket cap, 90/5/5 fee routing) | Deployed, tested |
+| ParlayEngine (ERC-721 tickets, 3 payout modes, cashout with slippage protection) | Deployed, tested |
 | LockVault (30/60/90 day locks, Synthetix-style rewards) | Deployed, tested |
 | ParlayMath (Solidity + TypeScript mirror, exact parity) | Deployed, tested |
 | Oracle adapters (admin bootstrap + optimistic production) | Deployed, tested |
 | Frontend (builder, vault, tickets, MultiplierClimb viz) | Working |
-| API (quote, catalog, x402-gated premium analytics) | Working |
+| x402 risk assessment API (real USDC verification on Base) | Working |
 | Tests (unit, fuzz, invariant, integration) + CI | Passing |
 
 ## What Makes Us Different
@@ -60,13 +60,13 @@ No other protocol combines all four.
 
 | Bounty | Prize | Status |
 |--------|-------|--------|
-| Track prizes (France/Futurllama/Prosperia) | $6K | Ready |
-| Base deployment + OnchainKit | $10K | Deploy ready |
-| Kite AI x402 payment verification | $10K | Stub exists |
-| ADI Paymaster (gasless UX) | $3K | Integration ready |
-| ADI Payments (cosmetic purchases) | $3K | Not started |
+| Track prizes (New France / Futurllama / Prosperia) | $6K | Narratives ready |
+| Kite AI x402 payment verification | $10K | Real verification implemented |
+| Base Agents (settler bot + risk agent) | $10K | In progress |
+| Uniswap API (swap-to-USDC onramp) | $5K | Not started |
+| ADI Open Project | $19K | Narrative ready |
 
-**Realistic ceiling: $32K**
+**Realistic ceiling: $31K** | **Stretch: $50K+**
 
 ## Tech Stack
 

@@ -1,6 +1,6 @@
 # Judge Q&A -- ParlayCity
 
-Crisp answers to the 10 most likely judge questions. Each answer includes an on-chain reference and a key number.
+Crisp answers to the 12 most likely judge questions. Each answer includes an on-chain reference and a key number.
 
 ---
 
@@ -62,7 +62,7 @@ Polymarket uses per-market orderbooks -- liquidity fragments, thin markets have 
 
 The multiplier climbs as each leg resolves favorably, like Aviator's ascending plane. After each leg wins, the bettor can cash out at the current multiplier or ride for more. If a leg loses, the multiplier crashes to zero. This transforms parlays from passive lottery tickets into live instruments with real-time exit decisions. Aviator generates $14B/month in wagers with 42-77M MAU -- the mechanic is proven at massive scale. We apply it to real-event parlays (sports, politics, markets) instead of pure randomness.
 
-**On-chain:** `cashoutTicket(ticketId, minOut)` with slippage protection (shipping in PR3)
+**On-chain:** `ParlayEngine.cashoutEarly(ticketId, minOut)` with slippage protection. Supports Classic, Progressive, and EarlyCashout payout modes.
 **Number:** Aviator: $14B/month in wagers, 42-77M MAU.
 
 ---
@@ -91,3 +91,21 @@ Base offers the best combination of low gas costs, EVM compatibility (our entire
 
 **On-chain:** Base Paymaster at `0xf5d253B62543C6Ef526309D497f619CeF95aD430`
 **Number:** Base Sepolia gas: <$0.001 per transaction.
+
+---
+
+### 11. What's the social impact angle?
+
+10% of every losing stake is routed to gambling harm reduction via deterministic on-chain routing. When a bettor's multiplier crashes, the crash screen surfaces responsible gambling resources and a "Become the House" CTA that converts losing gamblers into LPs. This is not charity bolted on -- it is a structural economic flow. At $1M monthly volume (94% loss rate on 3-leg parlays), that is ~$9.4K/month flowing to harm reduction without any admin discretion. No other betting protocol -- centralized or on-chain -- has a built-in social impact mechanism.
+
+**On-chain:** Loss distribution target: 80% LP / 10% AMM / 10% social good (see `docs/REHAB_MODE.md`)
+**Number:** 10% of every loss, automatically, with zero team discretion.
+
+---
+
+### 12. How does the x402 agent payment work?
+
+AI agents pay USDC micropayments on Base to access premium risk analytics. The `/premium/risk-assess` endpoint uses `@x402/express` middleware with `ExactEvmScheme` for real on-chain USDC verification. An agent autonomously discovers markets via the public API, pays for a Kelly criterion risk assessment, and uses the result to make a bet/skip decision. This is the Kite AI x402 bounty implementation -- not a stub, but real payment verification against Base.
+
+**On-chain:** USDC payment verified via x402 facilitator on Base
+**Number:** Agent pays per-request, receives Kelly EV, confidence, and risk warnings.
