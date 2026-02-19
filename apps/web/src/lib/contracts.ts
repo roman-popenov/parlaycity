@@ -162,10 +162,10 @@ export const PARLAY_ENGINE_ABI = [
           { name: "multiplierX1e6", type: "uint256" },
           { name: "potentialPayout", type: "uint256" },
           { name: "feePaid", type: "uint256" },
-          { name: "mode", type: "uint8" },
+          { name: "mode", type: "uint8" },          // SettlementMode: 0=FAST, 1=OPTIMISTIC
           { name: "status", type: "uint8" },
           { name: "createdAt", type: "uint256" },
-          { name: "payoutMode", type: "uint8" },
+          { name: "payoutMode", type: "uint8" },      // PayoutMode: 0=CLASSIC, 1=PROGRESSIVE, 2=EARLY_CASHOUT
           { name: "claimedAmount", type: "uint256" },
         ],
       },

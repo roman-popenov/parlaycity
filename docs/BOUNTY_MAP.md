@@ -1,64 +1,80 @@
 # ETHDenver 2026 Bounty Targets
 
+## Corrected Bounty Strategy
+
+| Our Previous Doc Says | Actual Bounty | Action |
+|---|---|---|
+| "Base ($10K) -- deploy + OnchainKit" | "Base Self-Sustaining **Autonomous Agents**" | Reframe: settler bot + risk agent |
+| "ADI Paymaster ($3K) -- gasless UX" | "ERC-4337 Paymaster **Devtools**" | **DROP** -- wants devtools, not app |
+| "ADI Payments ($3K) -- cosmetics" | "Payments for **Merchants**" | **DROP** -- merchant-focused |
+| Missing | Uniswap Foundation ($5K) -- integrate API | **ADD** -- swap-to-USDC onramp |
+| Missing | 0g Labs DeFAI ($7K) | **ADD** -- risk advisor fits |
+
 ## Bounty Table
 
-| Bounty | Prize | Requirements | Our Position | Confidence | Work Needed |
-|--------|-------|-------------|--------------|------------|-------------|
-| New France Village | $2K | On-chain prediction + vault | Already qualifies | HIGH | Polish narrative |
-| Futurllama | $2K | Novel mechanic + agent quoting | Crash-parlay + /quote API | HIGH | Polish narrative |
-| Prosperia | $2K | Non-extractive, no owner sweep, social impact | 90/5/5 fee + rehab layer | HIGH | Ship FeeRouter |
-| Base | $10K | Base Sepolia deployment, Base-native UX, OnchainKit | Deploy script ready | HIGH | Deploy + OnchainKit |
-| Kite AI x402 | $10K | Real x402 payment verification, agent-consumable API | Stub exists | HIGH | @x402/express integration |
-| ADI Paymaster | $3K | Gasless UX via Base Paymaster (0xf5d2...0430) | Not started | MED | ERC-4337 integration |
-| ADI Payments | $3K | In-app cosmetic purchases (ticket skins, profile) | Not started | MED | Ticket skins / profile items |
-| ADI Open Project | $19K | Open-ended DeFi innovation on Base | Strong candidate | LOW | Application + narrative |
-| 0g Labs DeFAI | $7K | Risk explainer agent using 0g inference | Not started | LOW | Agent integration |
+| # | Bounty | Prize | Requirements | Our Position | Confidence | Hours | Owner |
+|---|--------|-------|-------------|--------------|------------|-------|-------|
+| 1 | Kite AI x402 | $10K | Real x402 payment, agent-consumable API | x402 real verification implemented | HIGH | 4-6h | Agent demo PR |
+| 2 | Track: New France | $2K | On-chain prediction + vault | Already qualifies | HIGH | 1h | Narrative |
+| 3 | Track: Futurllama | $2K | Novel mechanic + agent quoting | Crash-parlay + /quote API | HIGH | 1h | Narrative |
+| 4 | Track: Prosperia | $2K | Non-extractive, no owner sweep, social impact | 90/5/5 fee + rehab spec | MEDIUM | 1h | Narrative |
+| 5 | Uniswap API | $5K | Integrate Uniswap Trading API | Not started | MEDIUM | 6-8h | Swap-to-USDC |
+| 6 | Base Agents | $10K | Self-sustaining autonomous agents on Base | Settler bot + risk agent | MEDIUM | 6-8h | Agent + deploy |
+| 7 | ADI Open Project | $19K | Open-ended DeFi innovation on Base | Strong candidate | LOW | 2h | Narrative |
+| 8 | 0g Labs DeFAI | $7K | DeFi AI agent using 0g inference | Risk advisor fits | LOW-MED | 4-8h | Stretch |
 
-**Realistic ceiling: $32K** (all HIGH + ADI Paymaster)
-**Max theoretical: $58K** (all bounties)
+**Realistic: $31K** (1-6) | **Stretch: $57K** (add 7-8)
 
 ## NOT Targeting
 
 - **Hedera** ($25K) -- requires Daml/HTS, out of scope for Solidity stack
 - **Canton** ($15K) -- requires Daml
 - **QuickNode** ($2K) -- Monad/Hyperliquid specific
+- **ADI Paymaster** ($3K) -- wants devtools, not app integration (misread)
+- **ADI Payments** ($3K) -- wants merchant payment infra, not cosmetic purchases (misread)
 
 ## Priority Order
 
-1. **Track prizes ($6K)** -- already qualifying, polish narrative for each track
-2. **Base deployment ($10K)** -- deploy script works on Anvil, need Base Sepolia + OnchainKit
-3. **Kite AI x402 ($10K)** -- stub middleware exists, need @x402/express real verification
-4. **ADI Paymaster ($3K)** -- Base Paymaster available on Sepolia, needs wagmi integration
-5. **ADI Payments ($3K)** -- cosmetic purchase system, independent workstream
-6. **ADI Open Project ($19K)** -- high prize but low confidence, needs strong application
-7. **0g Labs DeFAI ($7K)** -- stretch goal, risk explainer agent
+1. **Kite AI x402 ($10K)** -- real verification done, ship agent demo + docs
+2. **Track prizes ($6K)** -- already qualifying, polish narratives
+3. **Uniswap API ($5K)** -- swap-to-USDC onramp, needs API key
+4. **Base Agents ($10K)** -- settler bot + risk agent, deploy to Sepolia
+5. **ADI Open Project ($19K)** -- high prize but low confidence, needs strong application
+6. **0g Labs DeFAI ($7K)** -- stretch goal, wrap risk advisor with 0g inference
 
 ## Bounty Deep Dives
 
 ### Kite AI x402 ($10K)
 **What they want:** Agent-native payment protocol. Endpoints that accept x402 payment headers with real on-chain USDC verification on Base.
 
-**What we have:** `packages/services/src/premium/x402.ts` -- stub middleware that checks for non-empty `X-402-Payment` header. Returns proper 402 responses with `"accepts": "USDC on Base"`.
+**What we have:** `packages/services/src/premium/x402.ts` -- real x402 verification using `@x402/express` `paymentMiddleware` with `ExactEvmScheme`. Production mode verifies USDC payments on Base via facilitator. Dev/test mode falls back to stub. Configurable via env vars (`X402_RECIPIENT_WALLET`, `X402_NETWORK`, `X402_FACILITATOR_URL`, `X402_PRICE`). Two x402-gated endpoints: `/premium/sim` and `/premium/risk-assess`.
 
-**What we need:** Install `@x402/express` package. Replace stub with real payment verification middleware. Configure USDC payment amount, recipient address, and Base network. The premium analytics endpoint (`POST /premium/sim`) is the natural x402-gated endpoint.
+**What we need:** Agent demo script showing autonomous market discovery -> x402 payment -> risk assessment -> buy/skip decision loop. Agent docs for submission.
 
-### ADI Paymaster ($3K)
-**What they want:** Gasless user experience using Base Paymaster for sponsored transactions.
+### Base Agents ($10K)
+**What they want:** Self-sustaining autonomous agents on Base. Not just "deploy on Base" -- they want agents that can operate autonomously.
 
-**What we have:** Full wagmi 2 + viem 2 setup with ConnectKit. All write hooks follow `isPending -> isConfirming -> isSuccess` pattern.
+**What we have:** ParlayEngine with permissionless `settleTicket()`. x402-gated risk advisor. Deploy script for Anvil.
 
-**What we need:** Configure Base Paymaster at `0xf5d253B62543C6Ef526309D497f619CeF95aD430` in wagmi config. Wrap write operations to use paymaster for gas sponsorship. Test on Base Sepolia.
+**What we need:** Settler bot (auto-settles resolved tickets). Risk advisor agent (pays x402, assesses, decides). Deploy to Base Sepolia. Frame as "self-sustaining" -- settler earns from x402 fees.
 
-### Base ($10K)
-**What they want:** Projects deployed on Base Sepolia with Base-native UX and OnchainKit integration.
+### Uniswap API ($5K)
+**What they want:** Projects integrating the Uniswap Trading API or Universal Router.
 
-**What we have:** Deploy script (`script/Deploy.s.sol`) works on local Anvil. wagmi config supports `baseSepolia` chain. Frontend auto-syncs contract addresses from deploy output.
+**What we have:** USDC-denominated vault and betting system. Users need USDC to participate.
 
-**What we need:** Add `deploy-sepolia` Makefile target with Base Sepolia RPC. Deploy and verify contracts. Add OnchainKit components (identity, wallet, potentially swap). Verify frontend connects to Sepolia deployment.
+**What we need:** `GET /swap/quote` service endpoint proxying to Uniswap API. `SwapToUSDC.tsx` component on ParlayBuilder and VaultDashboard. Permit2 signing. API key application.
 
 ### 0g Labs DeFAI ($7K)
 **What they want:** DeFi AI agent using 0g inference infrastructure.
 
-**What we have:** Agent-consumable `/quote` API. Math library that can compute risk metrics (Kelly criterion, EV, win probability).
+**What we have:** Agent-consumable risk advisor API (Kelly criterion, EV, confidence, warnings). Math library for risk computation.
 
-**What we need:** Build a risk explainer agent that uses 0g inference to analyze parlay bets, explain risk/reward, suggest optimal position sizes. Could integrate with premium `/sim` endpoint.
+**What we need:** Wrap risk advisor to use 0g inference endpoint for natural language risk explanation. If 0g SDK is lightweight, this could be a simple adapter.
+
+### ADI Open Project ($19K)
+**What they want:** Open-ended DeFi innovation on Base.
+
+**What we have:** Full crash-parlay AMM with non-extractive fee routing, live cashout, unified vault liquidity. Strong narrative.
+
+**What we need:** Polish submission narrative. Emphasize innovation (crash-parlay mechanic + x402 agent-native + rehab mode).

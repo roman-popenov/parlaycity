@@ -264,9 +264,11 @@ export interface OnChainTicket {
   multiplierX1e6: bigint;
   potentialPayout: bigint;
   feePaid: bigint;
+  /** Settlement mode: 0=FAST, 1=OPTIMISTIC (oracle dispute window) */
   mode: number;
   status: number;
   createdAt: bigint;
+  /** Payout mode: 0=CLASSIC, 1=PROGRESSIVE, 2=EARLY_CASHOUT */
   payoutMode: number;
   claimedAmount: bigint;
 }
@@ -687,6 +689,7 @@ export function useClaimPayout() {
 export function useClaimProgressive() {
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
+  const [hash, setHash] = useState<`0x${string}` | undefined>(undefined);
   const [isPending, setIsPending] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -699,6 +702,7 @@ export function useClaimProgressive() {
     setIsConfirming(false);
     setIsSuccess(false);
     setError(null);
+    setHash(undefined);
 
     try {
       const txHash = await writeContractAsync({
@@ -707,6 +711,7 @@ export function useClaimProgressive() {
         functionName: "claimProgressive",
         args: [ticketId],
       });
+      setHash(txHash);
 
       setIsPending(false);
       setIsConfirming(true);
@@ -728,12 +733,13 @@ export function useClaimProgressive() {
     }
   };
 
-  return { claimProgressive, isPending, isConfirming, isSuccess, error };
+  return { claimProgressive, hash, isPending, isConfirming, isSuccess, error };
 }
 
 export function useCashoutEarly() {
   const publicClient = usePublicClient();
   const { writeContractAsync } = useWriteContract();
+  const [hash, setHash] = useState<`0x${string}` | undefined>(undefined);
   const [isPending, setIsPending] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -746,6 +752,7 @@ export function useCashoutEarly() {
     setIsConfirming(false);
     setIsSuccess(false);
     setError(null);
+    setHash(undefined);
 
     try {
       const txHash = await writeContractAsync({
@@ -754,6 +761,7 @@ export function useCashoutEarly() {
         functionName: "cashoutEarly",
         args: [ticketId, minOut],
       });
+      setHash(txHash);
 
       setIsPending(false);
       setIsConfirming(true);
@@ -775,7 +783,7 @@ export function useCashoutEarly() {
     }
   };
 
-  return { cashoutEarly, isPending, isConfirming, isSuccess, error };
+  return { cashoutEarly, hash, isPending, isConfirming, isSuccess, error };
 }
 
 // ---- Lock Vault hooks ----

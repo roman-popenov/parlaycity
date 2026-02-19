@@ -70,7 +70,7 @@ Per-package: `pnpm --filter web dev`, `pnpm --filter web test`, `pnpm --filter s
 
 **Frontend:** Next.js 14 pages: `/` (builder), `/vault`, `/tickets`, `/ticket/[id]`. wagmi 2 + viem 2 + ConnectKit. Polling 5s/10s with stale-fetch guards.
 
-**Services:** Express port 3001. Routes: `/markets`, `/quote`, `/exposure`, `/premium/sim` (x402-gated stub), `/health`.
+**Services:** Express port 3001. Routes: `/markets`, `/quote`, `/exposure`, `/premium/sim` (x402-gated), `/premium/risk-assess` (x402-gated), `/vault/health`, `/vault/yield-report`, `/health`. x402 uses real verification in production, stub in dev/test.
 
 **Shared:** `math.ts` mirrors `ParlayMath.sol` exactly. PPM=1e6, BPS=1e4.
 
@@ -93,14 +93,14 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 
 ### EXISTS (working, tested, deployed)
 - HouseVault: deposit, withdraw, reserve/release/pay, yield adapter, 90/5/5 fee routing via `routeFees`
-- ParlayEngine: buyTicket, settleTicket, claimPayout, partial void, ERC721
+- ParlayEngine: buyTicket, buyTicketWithMode, settleTicket, claimPayout, claimProgressive, cashoutEarly (with slippage protection), partial void, ERC721, PayoutMode enum (Classic/Progressive/EarlyCashout)
 - LegRegistry: CRUD, validation, oracle adapter references
 - LockVault: lock/unlock/earlyWithdraw, Synthetix-style fee distribution via `notifyFees`, penalty
-- ParlayMath: multiplier, edge, payout (Solidity + TypeScript mirror)
+- ParlayMath: multiplier, edge, payout, progressive payout, cashout value -- supports Classic, Progressive, and EarlyCashout modes (Solidity + TypeScript mirror)
 - AdminOracleAdapter + OptimisticOracleAdapter
 - MockYieldAdapter + AaveYieldAdapter (not in default deploy)
 - Frontend: parlay builder, vault dashboard, tickets list, ticket detail, MultiplierClimb viz
-- Services: catalog, quote, exposure (mock), x402-gated premium/sim (real @x402/express verification)
+- Services: catalog, quote, exposure (mock), x402-gated premium/sim + risk-assess, vault/health, vault/yield-report
 - Tests: unit, fuzz, invariant, integration (contracts), vitest (services + web)
 - CI: GitHub Actions (3 jobs), Makefile quality gate
 - Deploy script + sync-env
@@ -108,7 +108,6 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 ### NEEDS BUILDING
 - SafetyModule contract (insurance buffer, yield deployment)
 - Loss distribution routing (80/10/10 split on losing stakes to LP/AMM/rehab)
-- Cashout mechanism (`cashoutTicket` on ParlayEngine or separate contract)
 - Automatic penalty distribution (replace sweepPenaltyShares manual sweep)
 - ERC-4337 paymaster integration (gasless buyTicket/cashout/lock via Base Paymaster)
 - Per-market exposure tracking and caps
@@ -173,6 +172,10 @@ See `docs/solutions/` for detailed write-ups. Key patterns to avoid:
 13. **Vacuous conditional assertions**: Never wrap `expect()` inside `if (condition)` — if the condition is false, zero assertions run and the test passes vacuously. Assert unconditionally. (009 updated)
 14. **BigInt division by zero**: `BigInt / 0n` throws `RangeError` (unlike Number which returns Infinity). Guard every BigInt divisor with `> 0n`. (012 updated)
 15. **Test selector ambiguity**: When tabs and action buttons share text content, `getAllByRole("button").find(text)` matches the wrong one. Use `data-testid` or CSS class filtering. (013)
+16. **In-flight fetch race conditions**: When async fetches can be invalidated (user changes input mid-flight), use a fetchId ref pattern: increment on trigger, check before applying results, and reset loading state in the cleanup effect -- not just in the fetch callback. Otherwise stale results overwrite fresh state or loading spinners get stuck. (014)
+17. **BigInt falsiness**: `BigInt(0)` is falsy in JavaScript. `if (bigintVar)` evaluates false for `0n`. Always use `bigintVar !== undefined` for existence checks on BigInt values. Using truthiness creates phantom defaults (e.g., `balance ? x : fallback` sends fallback when balance is legitimately zero). (014)
+18. **API type boundary mismatches**: When sending BigInt-sourced IDs to JSON APIs, `BigInt.toString()` produces a string, but Zod `z.number()` schemas reject strings. Use `Number(bigint)` for small IDs. The JSON serialization boundary (BigInt -> JSON -> Zod) is where type assumptions silently break. (014)
+19. **Silent fetch failures**: Never `catch {}` a user-facing API call. Always surface errors to the user, even if just "unavailable." Silent failures make features appear broken with no feedback. Validate response shape before use -- API contracts drift. (014)
 
 After every non-trivial bug fix, document in `docs/solutions/` with: Problem, Root Cause, Solution, Prevention (category-level).
 

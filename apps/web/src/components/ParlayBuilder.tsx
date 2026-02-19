@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAccount } from "wagmi";
 import { useModal } from "connectkit";
 import { PARLAY_CONFIG, SERVICES_API_URL } from "@/lib/config";
@@ -36,11 +36,18 @@ export function ParlayBuilder() {
     winProbability: number; reasoning: string; warnings: string[];
   } | null>(null);
   const [riskLoading, setRiskLoading] = useState(false);
+  const [riskError, setRiskError] = useState<string | null>(null);
+  const riskFetchIdRef = useRef(0);
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
-  // Clear stale risk advice when inputs change
-  useEffect(() => { setRiskAdvice(null); }, [selectedLegs, stake, payoutMode]);
+  // Clear stale risk advice, reset loading, and invalidate in-flight fetches when inputs change
+  useEffect(() => {
+    setRiskAdvice(null);
+    setRiskError(null);
+    setRiskLoading(false);
+    riskFetchIdRef.current++;
+  }, [selectedLegs, stake, payoutMode]);
 
   const stakeNum = parseFloat(stake) || 0;
   const effectiveMaxLegs = maxLegs ?? PARLAY_CONFIG.maxLegs;
@@ -323,13 +330,17 @@ export function ParlayBuilder() {
             <div className="space-y-2">
               <button
                 onClick={async () => {
+                  const localFetchId = ++riskFetchIdRef.current;
                   setRiskLoading(true);
                   setRiskAdvice(null);
+                  setRiskError(null);
                   try {
                     const probabilities = selectedLegs.map((s) => {
                       const prob = 1 / effectiveOdds(s.leg, s.outcomeChoice);
                       return Math.round(prob * 1_000_000);
                     });
+                    // x402 payment header is a proof-of-payment receipt, not a secret.
+                    // The protocol is designed for client-side usage.
                     const res = await fetch(`${SERVICES_API_URL}/premium/risk-assess`, {
                       method: "POST",
                       headers: {
@@ -337,23 +348,45 @@ export function ParlayBuilder() {
                         "x-402-payment": process.env.NEXT_PUBLIC_X402_PAYMENT ?? "demo-token",
                       },
                       body: JSON.stringify({
-                        legIds: selectedLegs.map((s) => s.leg.id.toString()),
+                        legIds: selectedLegs.map((s) => Number(s.leg.id)),
                         outcomes: selectedLegs.map((s) => s.outcomeChoice === 1 ? "Yes" : "No"),
                         stake: stake,
                         probabilities,
-                        bankroll: usdcBalance ? (Number(usdcBalance) / 1e6).toString() : "100",
+                        bankroll: usdcBalance !== undefined ? (Number(usdcBalance) / 1e6).toString() : "100",
                         riskTolerance: "moderate",
                       }),
                     });
-                    if (res.ok) setRiskAdvice(await res.json());
-                  } catch { /* silently fail */ }
-                  setRiskLoading(false);
+                    if (localFetchId !== riskFetchIdRef.current) return;
+                    if (!res.ok) {
+                      setRiskError(`Risk analysis unavailable (${res.status})`);
+                      setRiskLoading(false);
+                      return;
+                    }
+                    const data = await res.json();
+                    if (localFetchId !== riskFetchIdRef.current) return;
+                    if (!data || typeof data.action !== "string" || typeof data.kellyFraction !== "number") {
+                      setRiskError("Invalid response from risk advisor");
+                      setRiskLoading(false);
+                      return;
+                    }
+                    setRiskAdvice(data);
+                  } catch {
+                    if (localFetchId === riskFetchIdRef.current) {
+                      setRiskError("Failed to connect to risk advisor");
+                    }
+                  }
+                  if (localFetchId === riskFetchIdRef.current) setRiskLoading(false);
                 }}
                 disabled={riskLoading}
                 className="w-full rounded-lg border border-accent-purple/30 bg-accent-purple/10 py-2 text-xs font-semibold text-accent-purple transition-all hover:bg-accent-purple/20 disabled:opacity-50"
               >
                 {riskLoading ? "Analyzing..." : "AI Risk Analysis (x402)"}
               </button>
+              {riskError && (
+                <div className="rounded-lg border border-neon-red/20 bg-neon-red/5 px-3 py-2 text-xs text-neon-red animate-fade-in">
+                  {riskError}
+                </div>
+              )}
               {riskAdvice && (
                 <div className={`rounded-lg border px-3 py-2.5 text-xs animate-fade-in ${
                   riskAdvice.action === "BUY" ? "border-neon-green/20 bg-neon-green/5 text-neon-green" :
@@ -362,17 +395,17 @@ export function ParlayBuilder() {
                 }`}>
                   <div className="mb-1 flex items-center justify-between">
                     <span className="font-bold">{riskAdvice.action}</span>
-                    <span className="text-gray-400">Kelly: {(riskAdvice.kellyFraction * 100).toFixed(1)}%</span>
+                    <span className="text-gray-400">Kelly: {((riskAdvice.kellyFraction ?? 0) * 100).toFixed(1)}%</span>
                   </div>
-                  <p className="text-gray-300">{riskAdvice.reasoning}</p>
-                  {riskAdvice.warnings.length > 0 && (
+                  <p className="text-gray-300">{riskAdvice.reasoning ?? ""}</p>
+                  {Array.isArray(riskAdvice.warnings) && riskAdvice.warnings.length > 0 && (
                     <div className="mt-1.5 space-y-0.5">
-                      {riskAdvice.warnings.map((w, i) => (
+                      {riskAdvice.warnings.map((w: string, i: number) => (
                         <p key={i} className="text-yellow-400/80">! {w}</p>
                       ))}
                     </div>
                   )}
-                  {riskAdvice.suggestedStake !== stake && (
+                  {riskAdvice.suggestedStake && riskAdvice.suggestedStake !== stake && (
                     <button
                       onClick={() => setStake(riskAdvice!.suggestedStake)}
                       className="mt-1.5 rounded bg-accent-blue/20 px-2 py-0.5 text-accent-blue hover:bg-accent-blue/30"

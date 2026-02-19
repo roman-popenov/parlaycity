@@ -19,10 +19,12 @@ vi.mock("@/lib/hooks", () => ({
   })),
   useClaimProgressive: vi.fn(() => ({
     claimProgressive: vi.fn(),
+    hash: undefined,
     isPending: false,
   })),
   useCashoutEarly: vi.fn(() => ({
     cashoutEarly: vi.fn(),
+    hash: undefined,
     isPending: false,
   })),
 }));
