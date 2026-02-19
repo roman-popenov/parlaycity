@@ -167,6 +167,10 @@ See `docs/solutions/` for detailed write-ups. Key patterns to avoid:
 9. **Test coverage**: Invariant test handlers MUST assert they actually executed meaningful actions. 100% failure rate = broken test. (009)
 10. **Regex `\s` overmatch**: In character classes, `\s` matches tabs/newlines/carriage returns — not just spaces. Use a literal space when you mean space. (008 updated)
 11. **BigInt-to-Number overflow**: Every `Number(bigint)` conversion MUST be guarded by `> BigInt(Number.MAX_SAFE_INTEGER)`. Exponential BigInt growth (multiplied probabilities) will silently lose precision. (012)
+12. **NaN bypass on partial input**: `parseFloat(".")` returns NaN but `"."` is truthy. Every numeric input must add `isNaN(parsedValue)` to button disabled conditions. (008 updated)
+13. **Vacuous conditional assertions**: Never wrap `expect()` inside `if (condition)` — if the condition is false, zero assertions run and the test passes vacuously. Assert unconditionally. (009 updated)
+14. **BigInt division by zero**: `BigInt / 0n` throws `RangeError` (unlike Number which returns Infinity). Guard every BigInt divisor with `> 0n`. (012 updated)
+15. **Test selector ambiguity**: When tabs and action buttons share text content, `getAllByRole("button").find(text)` matches the wrong one. Use `data-testid` or CSS class filtering. (013)
 
 After every non-trivial bug fix, document in `docs/solutions/` with: Problem, Root Cause, Solution, Prevention (category-level).
 
