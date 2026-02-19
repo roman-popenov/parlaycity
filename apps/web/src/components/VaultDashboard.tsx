@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
 import { formatUnits, parseUnits } from "viem";
+import { sanitizeNumericInput, blockNonNumericKeys } from "@/lib/utils";
 import {
   useVaultStats,
   useDepositVault,
@@ -261,11 +262,13 @@ export function VaultDashboard() {
           </div>
           <div className="relative mb-4">
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               min="1"
               step="1"
               value={depositAmount}
-              onChange={(e) => setDepositAmountAndReset(e.target.value)}
+              onKeyDown={blockNonNumericKeys}
+              onChange={(e) => setDepositAmountAndReset(sanitizeNumericInput(e.target.value))}
               placeholder="Min 1 USDC"
               disabled={!hasUSDC}
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-16 text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-blue/50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -335,11 +338,13 @@ export function VaultDashboard() {
           </div>
           <div className="relative mb-4">
             <input
-              type="number"
+              type="text"
+              inputMode="decimal"
               min="1"
               step="1"
               value={withdrawAmount}
-              onChange={(e) => setWithdrawAmountAndReset(e.target.value)}
+              onKeyDown={blockNonNumericKeys}
+              onChange={(e) => setWithdrawAmountAndReset(sanitizeNumericInput(e.target.value))}
               placeholder="Shares (vUSDC)"
               disabled={!hasShares}
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-16 text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-blue/50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -450,11 +455,13 @@ export function VaultDashboard() {
 
             <div className="relative mb-4">
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 min="1"
                 step="1"
                 value={lockAmount}
-                onChange={(e) => setLockAmount(e.target.value)}
+                onKeyDown={blockNonNumericKeys}
+                onChange={(e) => setLockAmount(sanitizeNumericInput(e.target.value))}
                 placeholder="vUSDC shares to lock"
                 disabled={!hasShares}
                 className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-16 text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-purple/50 disabled:cursor-not-allowed disabled:opacity-50"

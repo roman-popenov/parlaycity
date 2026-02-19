@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useCallback } from "react";
 import { useAccount } from "wagmi";
 import { useModal } from "connectkit";
 import { PARLAY_CONFIG } from "@/lib/config";
+import { sanitizeNumericInput, blockNonNumericKeys } from "@/lib/utils";
 import { MOCK_LEGS, type MockLeg } from "@/lib/mock";
 import { useBuyTicket, useParlayConfig, useUSDCBalance, useVaultStats } from "@/lib/hooks";
 import { MultiplierClimb } from "./MultiplierClimb";
@@ -226,11 +227,13 @@ export function ParlayBuilder() {
             </div>
             <div className="relative">
               <input
-                type="number"
+                type="text"
+                inputMode="decimal"
                 min={effectiveMinStake}
                 step="1"
                 value={stake}
-                onChange={(e) => { resetSuccess(); setStake(e.target.value); }}
+                onKeyDown={blockNonNumericKeys}
+                onChange={(e) => { resetSuccess(); setStake(sanitizeNumericInput(e.target.value)); }}
                 placeholder={`Min ${effectiveMinStake} USDC`}
                 className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-24 text-lg font-semibold text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-blue/50"
               />
