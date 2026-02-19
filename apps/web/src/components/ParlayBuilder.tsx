@@ -4,21 +4,80 @@ import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAccount } from "wagmi";
 import { useModal } from "connectkit";
 import { PARLAY_CONFIG, SERVICES_API_URL } from "@/lib/config";
-import { sanitizeNumericInput, blockNonNumericKeys } from "@/lib/utils";
+import {
+  sanitizeNumericInput,
+  blockNonNumericKeys,
+  useSessionState,
+  clearSessionState,
+} from "@/lib/utils";
 import { MOCK_LEGS, type MockLeg } from "@/lib/mock";
 import { useBuyTicket, useParlayConfig, useUSDCBalance, useVaultStats } from "@/lib/hooks";
 import { MultiplierClimb } from "./MultiplierClimb";
+
+// ── Types ────────────────────────────────────────────────────────────────
 
 interface SelectedLeg {
   leg: MockLeg;
   outcomeChoice: number; // 1 = yes, 2 = no
 }
 
-/** Yes odds come from mock data. No odds = complement: yesOdds / (yesOdds - 1) */
+/** Serializable form for sessionStorage (bigint is not JSON-safe). */
+interface StoredSelection {
+  legId: string; // BigInt.toString()
+  outcomeChoice: number;
+}
+
+interface RiskAdviceData {
+  action: string;
+  suggestedStake: string;
+  kellyFraction: number;
+  winProbability: number;
+  reasoning: string;
+  warnings: string[];
+}
+
+// ── Session storage keys ─────────────────────────────────────────────────
+
+const SESSION_KEYS = {
+  legs: "parlay:selectedLegs",
+  stake: "parlay:stake",
+  payoutMode: "parlay:payoutMode",
+} as const;
+
+// ── Pure helpers ─────────────────────────────────────────────────────────
+
+/** Yes odds from mock data. No odds = complement: yesOdds / (yesOdds - 1). */
 function effectiveOdds(leg: MockLeg, outcome: number): number {
   if (outcome === 2) return leg.odds / (leg.odds - 1);
   return leg.odds;
 }
+
+/** Restore SelectedLeg[] from serialized form by matching against MOCK_LEGS. */
+function restoreSelections(stored: StoredSelection[]): SelectedLeg[] {
+  const legMap = new Map(MOCK_LEGS.map((l) => [l.id.toString(), l]));
+  const result: SelectedLeg[] = [];
+  for (const s of stored) {
+    const leg = legMap.get(s.legId);
+    if (leg && (s.outcomeChoice === 1 || s.outcomeChoice === 2)) {
+      result.push({ leg, outcomeChoice: s.outcomeChoice });
+    }
+  }
+  return result;
+}
+
+/** Validate that a parsed risk response has the required shape. */
+function isValidRiskResponse(data: unknown): data is RiskAdviceData {
+  if (!data || typeof data !== "object") return false;
+  const d = data as Record<string, unknown>;
+  return (
+    typeof d.action === "string" &&
+    typeof d.kellyFraction === "number" &&
+    typeof d.reasoning === "string" &&
+    Array.isArray(d.warnings)
+  );
+}
+
+// ── Component ────────────────────────────────────────────────────────────
 
 export function ParlayBuilder() {
   const { isConnected } = useAccount();
@@ -28,20 +87,51 @@ export function ParlayBuilder() {
   const { freeLiquidity, maxPayout } = useVaultStats();
   const { baseFeeBps, perLegFeeBps, maxLegs, minStakeUSDC } = useParlayConfig();
 
+  // ── Input state (persisted to sessionStorage) ──────────────────────────
+
   const [selectedLegs, setSelectedLegs] = useState<SelectedLeg[]>([]);
-  const [stake, setStake] = useState<string>("");
-  const [payoutMode, setPayoutMode] = useState<0 | 1 | 2>(0); // 0=Classic, 1=Progressive, 2=EarlyCashout
-  const [riskAdvice, setRiskAdvice] = useState<{
-    action: string; suggestedStake: string; kellyFraction: number;
-    winProbability: number; reasoning: string; warnings: string[];
-  } | null>(null);
+  const [stake, setStake] = useSessionState<string>(SESSION_KEYS.stake, "");
+  const [payoutMode, setPayoutMode] = useSessionState<0 | 1 | 2>(SESSION_KEYS.payoutMode, 0);
+
+  // Restore selectedLegs from sessionStorage on mount (needs special handling
+  // because MockLeg contains bigint which isn't JSON-serializable).
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+    try {
+      const raw = sessionStorage.getItem(SESSION_KEYS.legs);
+      if (raw) {
+        const stored: StoredSelection[] = JSON.parse(raw);
+        const restored = restoreSelections(stored);
+        if (restored.length > 0) setSelectedLegs(restored);
+      }
+    } catch {
+      // parse error or sessionStorage unavailable
+    }
+  }, []);
+
+  // Persist selectedLegs to sessionStorage on change
+  useEffect(() => {
+    if (!mounted) return;
+    try {
+      const serialized: StoredSelection[] = selectedLegs.map((s) => ({
+        legId: s.leg.id.toString(),
+        outcomeChoice: s.outcomeChoice,
+      }));
+      sessionStorage.setItem(SESSION_KEYS.legs, JSON.stringify(serialized));
+    } catch {
+      // storage full or unavailable
+    }
+  }, [mounted, selectedLegs]);
+
+  // ── Risk advisor state ─────────────────────────────────────────────────
+
+  const [riskAdvice, setRiskAdvice] = useState<RiskAdviceData | null>(null);
   const [riskLoading, setRiskLoading] = useState(false);
   const [riskError, setRiskError] = useState<string | null>(null);
   const riskFetchIdRef = useRef(0);
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
 
-  // Clear stale risk advice, reset loading, and invalidate in-flight fetches when inputs change
+  // Clear stale risk advice, reset loading, and invalidate in-flight fetches
   useEffect(() => {
     setRiskAdvice(null);
     setRiskError(null);
@@ -49,32 +139,13 @@ export function ParlayBuilder() {
     riskFetchIdRef.current++;
   }, [selectedLegs, stake, payoutMode]);
 
+  // ── Derived values ─────────────────────────────────────────────────────
+
   const stakeNum = parseFloat(stake) || 0;
   const effectiveMaxLegs = maxLegs ?? PARLAY_CONFIG.maxLegs;
   const effectiveMinStake = minStakeUSDC ?? PARLAY_CONFIG.minStakeUSDC;
   const effectiveBaseFee = baseFeeBps ?? PARLAY_CONFIG.baseFee;
   const effectivePerLegFee = perLegFeeBps ?? PARLAY_CONFIG.perLegFee;
-
-  const toggleLeg = useCallback(
-    (leg: MockLeg, outcome: number) => {
-      resetSuccess();
-      setSelectedLegs((prev) => {
-        const existing = prev.findIndex((s) => s.leg.id === leg.id);
-        if (existing >= 0) {
-          // If same outcome, deselect. If different, change it.
-          if (prev[existing].outcomeChoice === outcome) {
-            return prev.filter((_, i) => i !== existing);
-          }
-          const updated = [...prev];
-          updated[existing] = { leg, outcomeChoice: outcome };
-          return updated;
-        }
-        if (prev.length >= effectiveMaxLegs) return prev;
-        return [...prev, { leg, outcomeChoice: outcome }];
-      });
-    },
-    [resetSuccess, effectiveMaxLegs]
-  );
 
   const multiplier = useMemo(() => {
     return selectedLegs.reduce((acc, s) => acc * effectiveOdds(s.leg, s.outcomeChoice), 1);
@@ -101,6 +172,30 @@ export function ParlayBuilder() {
     !exceedsMaxPayout &&
     !insufficientBalance;
 
+  const vaultEmpty = mounted && freeLiquidity !== undefined && freeLiquidity === 0n;
+
+  // ── Handlers ───────────────────────────────────────────────────────────
+
+  const toggleLeg = useCallback(
+    (leg: MockLeg, outcome: number) => {
+      resetSuccess();
+      setSelectedLegs((prev) => {
+        const existing = prev.findIndex((s) => s.leg.id === leg.id);
+        if (existing >= 0) {
+          if (prev[existing].outcomeChoice === outcome) {
+            return prev.filter((_, i) => i !== existing);
+          }
+          const updated = [...prev];
+          updated[existing] = { leg, outcomeChoice: outcome };
+          return updated;
+        }
+        if (prev.length >= effectiveMaxLegs) return prev;
+        return [...prev, { leg, outcomeChoice: outcome }];
+      });
+    },
+    [resetSuccess, effectiveMaxLegs]
+  );
+
   const handleBuy = async () => {
     if (!canBuy) return;
     const legIds = selectedLegs.map((s) => s.leg.id);
@@ -111,8 +206,69 @@ export function ParlayBuilder() {
       setStake("");
       setPayoutMode(0);
       setRiskAdvice(null);
+      clearSessionState(SESSION_KEYS.legs, SESSION_KEYS.stake, SESSION_KEYS.payoutMode);
     }
   };
+
+  const fetchRiskAdvice = useCallback(async () => {
+    const localFetchId = ++riskFetchIdRef.current;
+    setRiskLoading(true);
+    setRiskAdvice(null);
+    setRiskError(null);
+
+    try {
+      const probabilities = selectedLegs.map((s) => {
+        const prob = 1 / effectiveOdds(s.leg, s.outcomeChoice);
+        return Math.round(prob * 1_000_000);
+      });
+
+      // x402 payment header is a proof-of-payment receipt, not a secret.
+      // The protocol is designed for client-side usage.
+      const res = await fetch(`${SERVICES_API_URL}/premium/risk-assess`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-402-payment": process.env.NEXT_PUBLIC_X402_PAYMENT ?? "demo-token",
+        },
+        body: JSON.stringify({
+          legIds: selectedLegs.map((s) => Number(s.leg.id)),
+          outcomes: selectedLegs.map((s) => (s.outcomeChoice === 1 ? "Yes" : "No")),
+          stake,
+          probabilities,
+          bankroll: usdcBalance !== undefined ? (Number(usdcBalance) / 1e6).toString() : "100",
+          riskTolerance: "moderate",
+        }),
+      });
+
+      // Stale check: if inputs changed while fetch was in-flight, discard result
+      if (localFetchId !== riskFetchIdRef.current) return;
+
+      if (!res.ok) {
+        setRiskError(`Risk analysis unavailable (${res.status})`);
+        setRiskLoading(false);
+        return;
+      }
+
+      const data: unknown = await res.json();
+      if (localFetchId !== riskFetchIdRef.current) return;
+
+      if (!isValidRiskResponse(data)) {
+        setRiskError("Invalid response from risk advisor");
+        setRiskLoading(false);
+        return;
+      }
+
+      setRiskAdvice(data);
+    } catch {
+      if (localFetchId === riskFetchIdRef.current) {
+        setRiskError("Failed to connect to risk advisor");
+      }
+    }
+
+    if (localFetchId === riskFetchIdRef.current) setRiskLoading(false);
+  }, [selectedLegs, stake, usdcBalance]);
+
+  // ── Derived display ────────────────────────────────────────────────────
 
   const txState = isPending
     ? "pending"
@@ -121,8 +277,6 @@ export function ParlayBuilder() {
       : isSuccess
         ? "confirmed"
         : null;
-
-  const vaultEmpty = mounted && freeLiquidity !== undefined && freeLiquidity === 0n;
 
   function buyButtonLabel(): string {
     if (!mounted || !isConnected) return "Connect Wallet";
@@ -137,8 +291,12 @@ export function ParlayBuilder() {
     return "Buy Ticket";
   }
 
+  // ── Render ─────────────────────────────────────────────────────────────
+
+  // SSR guard: render invisible (preserves layout) until client hydration.
+  // No transition class = instant switch, no flicker.
   return (
-    <div className={`grid gap-8 lg:grid-cols-5 transition-opacity duration-300 ${mounted ? "opacity-100" : "pointer-events-none opacity-50"}`}>
+    <div className={`grid gap-8 lg:grid-cols-5 ${mounted ? "" : "pointer-events-none opacity-0"}`}>
       {/* Leg selector */}
       <div className="space-y-4 lg:col-span-3">
         {vaultEmpty && (
@@ -329,54 +487,7 @@ export function ParlayBuilder() {
           {selectedLegs.length >= PARLAY_CONFIG.minLegs && stakeNum > 0 && (
             <div className="space-y-2">
               <button
-                onClick={async () => {
-                  const localFetchId = ++riskFetchIdRef.current;
-                  setRiskLoading(true);
-                  setRiskAdvice(null);
-                  setRiskError(null);
-                  try {
-                    const probabilities = selectedLegs.map((s) => {
-                      const prob = 1 / effectiveOdds(s.leg, s.outcomeChoice);
-                      return Math.round(prob * 1_000_000);
-                    });
-                    // x402 payment header is a proof-of-payment receipt, not a secret.
-                    // The protocol is designed for client-side usage.
-                    const res = await fetch(`${SERVICES_API_URL}/premium/risk-assess`, {
-                      method: "POST",
-                      headers: {
-                        "Content-Type": "application/json",
-                        "x-402-payment": process.env.NEXT_PUBLIC_X402_PAYMENT ?? "demo-token",
-                      },
-                      body: JSON.stringify({
-                        legIds: selectedLegs.map((s) => Number(s.leg.id)),
-                        outcomes: selectedLegs.map((s) => s.outcomeChoice === 1 ? "Yes" : "No"),
-                        stake: stake,
-                        probabilities,
-                        bankroll: usdcBalance !== undefined ? (Number(usdcBalance) / 1e6).toString() : "100",
-                        riskTolerance: "moderate",
-                      }),
-                    });
-                    if (localFetchId !== riskFetchIdRef.current) return;
-                    if (!res.ok) {
-                      setRiskError(`Risk analysis unavailable (${res.status})`);
-                      setRiskLoading(false);
-                      return;
-                    }
-                    const data = await res.json();
-                    if (localFetchId !== riskFetchIdRef.current) return;
-                    if (!data || typeof data.action !== "string" || typeof data.kellyFraction !== "number") {
-                      setRiskError("Invalid response from risk advisor");
-                      setRiskLoading(false);
-                      return;
-                    }
-                    setRiskAdvice(data);
-                  } catch {
-                    if (localFetchId === riskFetchIdRef.current) {
-                      setRiskError("Failed to connect to risk advisor");
-                    }
-                  }
-                  if (localFetchId === riskFetchIdRef.current) setRiskLoading(false);
-                }}
+                onClick={fetchRiskAdvice}
                 disabled={riskLoading}
                 className="w-full rounded-lg border border-accent-purple/30 bg-accent-purple/10 py-2 text-xs font-semibold text-accent-purple transition-all hover:bg-accent-purple/20 disabled:opacity-50"
               >
@@ -395,12 +506,12 @@ export function ParlayBuilder() {
                 }`}>
                   <div className="mb-1 flex items-center justify-between">
                     <span className="font-bold">{riskAdvice.action}</span>
-                    <span className="text-gray-400">Kelly: {((riskAdvice.kellyFraction ?? 0) * 100).toFixed(1)}%</span>
+                    <span className="text-gray-400">Kelly: {(riskAdvice.kellyFraction * 100).toFixed(1)}%</span>
                   </div>
-                  <p className="text-gray-300">{riskAdvice.reasoning ?? ""}</p>
-                  {Array.isArray(riskAdvice.warnings) && riskAdvice.warnings.length > 0 && (
+                  <p className="text-gray-300">{riskAdvice.reasoning}</p>
+                  {riskAdvice.warnings.length > 0 && (
                     <div className="mt-1.5 space-y-0.5">
-                      {riskAdvice.warnings.map((w: string, i: number) => (
+                      {riskAdvice.warnings.map((w, i) => (
                         <p key={i} className="text-yellow-400/80">! {w}</p>
                       ))}
                     </div>
