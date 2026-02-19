@@ -63,8 +63,12 @@ struct LockInfo {
     uint256 shares;
     uint256 unlockTime;
     uint256 weightedShares;
-    LockTier tier;           // NEW: track tier type
-    bool isRehab;            // NEW: flag for rehab-origin locks
+    LockTier tier;           // NEW: track tier type (REHAB/REHAB_PLUS derivable from this)
+}
+
+// Helper to check rehab-origin locks (replaces redundant isRehab bool)
+function _isRehabTier(LockTier tier) internal pure returns (bool) {
+    return tier == LockTier.REHAB || tier == LockTier.REHAB_PLUS;
 }
 ```
 
@@ -81,6 +85,12 @@ function rehabLock(address user, uint256 shares) external onlyVault {
     // Transfer shares from vault to this contract
     vUSDC.safeTransferFrom(msg.sender, address(this), shares);
 
+    // Checkpoint accrued rewards BEFORE modifying totalWeightedShares.
+    // Without this, the Synthetix-style accumulator would silently
+    // recalculate all existing lockers' pending rewards using the new
+    // denominator, causing incorrect payouts.
+    _settleRewards(user);
+
     uint256 weightedShares = shares * REHAB_WEIGHT / 10_000;
     totalWeightedShares += weightedShares;
 
@@ -88,8 +98,7 @@ function rehabLock(address user, uint256 shares) external onlyVault {
         shares: shares,
         unlockTime: block.timestamp + REHAB_DURATION,
         weightedShares: weightedShares,
-        tier: LockTier.REHAB,
-        isRehab: true
+        tier: LockTier.REHAB
     }));
 
     emit RehabLocked(user, shares, block.timestamp + REHAB_DURATION);
@@ -99,13 +108,14 @@ function rehabLock(address user, uint256 shares) external onlyVault {
 /// @param lockIndex Index of the rehab lock to re-lock
 function rehabRelock(uint256 lockIndex) external nonReentrant {
     LockInfo storage lock = locks[msg.sender][lockIndex];
-    require(lock.isRehab, "LockVault: not a rehab lock");
+    require(_isRehabTier(lock.tier), "LockVault: not a rehab lock");
     require(block.timestamp >= lock.unlockTime, "LockVault: still locked");
 
-    // Remove old weighted shares
-    totalWeightedShares -= lock.weightedShares;
+    // Checkpoint accrued rewards BEFORE modifying totalWeightedShares.
+    _settleRewards(msg.sender);
 
-    // Apply boosted weight
+    // Remove old weighted shares, apply boosted weight
+    totalWeightedShares -= lock.weightedShares;
     uint256 newWeightedShares = lock.shares * REHAB_PLUS_WEIGHT / 10_000;
     totalWeightedShares += newWeightedShares;
 
@@ -132,10 +142,13 @@ function distributeLoss(uint256 stake, address ticketOwner) external onlyEngine 
 
     // toLPs: stays in vault implicitly (already here from safeTransferFrom during buyTicket)
 
-    // toAMM: deploy to UniswapYieldAdapter
-    if (toAMM > 0 && address(yieldAdapter) != address(0)) {
-        asset.forceApprove(address(yieldAdapter), toAMM);
-        yieldAdapter.deploy(toAMM);
+    // toAMM: transfer to a SEPARATE AMMRouter contract (NOT the vault's yieldAdapter).
+    // Using yieldAdapter.deploy() would keep this capital in totalAssets() via
+    // yieldAdapter.balance(), making LPs effectively retain ~90% (80% + 10% via adapter)
+    // instead of the intended 80%. The AMMRouter is not counted in totalAssets().
+    if (toAMM > 0 && address(ammRouter) != address(0)) {
+        asset.safeTransfer(address(ammRouter), toAMM);
+        ammRouter.deployToLP(toAMM);
         emit LossToAMM(toAMM);
     }
 
@@ -174,7 +187,9 @@ uint256 public lossToLPBps = 8000;     // 80%
 uint256 public lossToAMMBps = 1000;    // 10%
 // lossToRehabBps is implicit: 10_000 - lossToLPBps - lossToAMMBps = 1000 (10%)
 
-address public lockVault;  // LockVault address for rehab locks
+address public lockVault;   // LockVault address for rehab locks
+IAMMRouter public ammRouter; // Separate from yieldAdapter so AMM capital
+                             // is NOT counted in totalAssets()
 ```
 
 ## Frontend UX
@@ -245,18 +260,18 @@ Options:
 
 ### Phase A: Contract Changes (Priority 1)
 
-1. **Add `LockTier` enum and `isRehab` flag to LockVault**
-   - Modify `LockInfo` struct
+1. **Add `LockTier` enum and `_isRehabTier()` helper to LockVault**
+   - Modify `LockInfo` struct (tier enum only, no redundant bool)
    - Add `REHAB_WEIGHT`, `REHAB_PLUS_WEIGHT`, `REHAB_DURATION` constants
-   - Add `rehabLock()` function (onlyVault modifier)
-   - Add `rehabRelock()` function (user-callable)
+   - Add `rehabLock()` function (onlyVault, with `_settleRewards` checkpoint)
+   - Add `rehabRelock()` function (user-callable, with `_settleRewards` checkpoint)
    - Update `unlock()` to handle rehab locks
    - Events: `RehabLocked`, `RehabRelocked`
 
 2. **Add `distributeLoss()` to HouseVault**
-   - New state: `lossToLPBps`, `lossToAMMBps`, `lockVault` address
+   - New state: `lossToLPBps`, `lossToAMMBps`, `lockVault` address, `ammRouter` address
    - New function: `distributeLoss(uint256 stake, address ticketOwner)`
-   - Owner setters: `setLossDistribution(uint256 lpBps, uint256 ammBps)`, `setLockVault(address)`
+   - Owner setters: `setLossDistribution(uint256 lpBps, uint256 ammBps)`, `setLockVault(address)`, `setAMMRouter(address)`
    - Events: `LossDistributed`, `LossToAMM`, `LossToRehab`
 
 3. **Modify ParlayEngine.settleTicket()**
