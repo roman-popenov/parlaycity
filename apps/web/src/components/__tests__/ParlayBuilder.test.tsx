@@ -388,10 +388,11 @@ describe("ParlayBuilder", () => {
         fireEvent.click(screen.getByText("Buy Ticket"));
       });
 
+      // After buy, state resets to defaults. Persist effects write defaults
+      // to sessionStorage (no explicit clearSessionState needed).
       await waitFor(() => {
-        expect(sessionStorage.removeItem).toHaveBeenCalledWith("parlay:selectedLegs");
-        expect(sessionStorage.removeItem).toHaveBeenCalledWith("parlay:stake");
-        expect(sessionStorage.removeItem).toHaveBeenCalledWith("parlay:payoutMode");
+        expect(sessionStore["parlay:stake"]).toBe('""');
+        expect(sessionStore["parlay:payoutMode"]).toBe("0");
       });
     });
 
@@ -501,6 +502,35 @@ describe("ParlayBuilder", () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({ invalid: "data" }),
+      });
+      vi.stubGlobal("fetch", mockFetch);
+
+      render(<ParlayBuilder />);
+      await waitFor(() => {
+        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
+      });
+      selectLegs(2);
+      setStakeInput("10");
+
+      await act(async () => {
+        fireEvent.click(screen.getByText("AI Risk Analysis (x402)"));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("Invalid response from risk advisor")).toBeInTheDocument();
+      });
+    });
+
+    it("rejects response missing suggestedStake or winProbability", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          action: "BUY",
+          kellyFraction: 0.05,
+          reasoning: "Favorable",
+          warnings: [],
+          // missing suggestedStake and winProbability
+        }),
       });
       vi.stubGlobal("fetch", mockFetch);
 

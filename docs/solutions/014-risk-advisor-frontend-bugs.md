@@ -17,7 +17,7 @@ The risk advisor integration in ParlayBuilder had multiple interacting bugs that
 Each bug has a different root:
 
 1. No fetchId invalidation pattern on the risk advisor (unlike the polling hooks which already had it).
-2. JavaScript BigInt quirk: `BigInt(0)` is falsy, unlike `Number(0)` which behaves as expected in truthiness checks.
+2. Misused truthiness check: `usdcBalance ? ...` treats both `0` and `0n` as falsy, so it can't distinguish `undefined` (no balance yet) from a valid zero balance.
 3. `BigInt.prototype.toString()` returns a string, but `JSON.stringify` doesn't know BigInt natively. The fix for the JSON.stringify crash (#4) used `.toString()` but should have used `Number()`.
 4. Developer-mode "it'll fail in dev anyway" thinking. In production, fetch failures are common (network, CORS, 500s).
 5. Trusting API contract stability. Response shapes can change; defensive validation is cheap insurance.

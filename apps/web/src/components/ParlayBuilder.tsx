@@ -2,13 +2,13 @@
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAccount } from "wagmi";
+import { formatUnits } from "viem";
 import { useModal } from "connectkit";
 import { PARLAY_CONFIG, SERVICES_API_URL } from "@/lib/config";
 import {
   sanitizeNumericInput,
   blockNonNumericKeys,
   useSessionState,
-  clearSessionState,
 } from "@/lib/utils";
 import { MOCK_LEGS, type MockLeg } from "@/lib/mock";
 import { useBuyTicket, useParlayConfig, useUSDCBalance, useVaultStats } from "@/lib/hooks";
@@ -71,9 +71,12 @@ function isValidRiskResponse(data: unknown): data is RiskAdviceData {
   const d = data as Record<string, unknown>;
   return (
     typeof d.action === "string" &&
+    typeof d.suggestedStake === "string" &&
     typeof d.kellyFraction === "number" &&
+    typeof d.winProbability === "number" &&
     typeof d.reasoning === "string" &&
-    Array.isArray(d.warnings)
+    Array.isArray(d.warnings) &&
+    d.warnings.every((w: unknown) => typeof w === "string")
   );
 }
 
@@ -206,7 +209,8 @@ export function ParlayBuilder() {
       setStake("");
       setPayoutMode(0);
       setRiskAdvice(null);
-      clearSessionState(SESSION_KEYS.legs, SESSION_KEYS.stake, SESSION_KEYS.payoutMode);
+      // No clearSessionState needed: the setters above reset to defaults,
+      // which the persist effects write to sessionStorage automatically.
     }
   };
 
@@ -235,7 +239,7 @@ export function ParlayBuilder() {
           outcomes: selectedLegs.map((s) => (s.outcomeChoice === 1 ? "Yes" : "No")),
           stake,
           probabilities,
-          bankroll: usdcBalance !== undefined ? (Number(usdcBalance) / 1e6).toString() : "100",
+          bankroll: usdcBalance !== undefined ? formatUnits(usdcBalance, 6) : "100",
           riskTolerance: "moderate",
         }),
       });
