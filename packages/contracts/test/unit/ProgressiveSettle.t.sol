@@ -662,6 +662,7 @@ contract ProgressiveSettleTest is FeeRouterSetup {
         oracle.resolve(0, LegStatus.Voided, bytes32(0));
 
         uint256 vaultBalBefore = usdc.balanceOf(address(vault));
+        uint256 reservedBefore = vault.totalReserved();
 
         engine.settleTicket(ticketId);
 
@@ -672,17 +673,16 @@ contract ProgressiveSettleTest is FeeRouterSetup {
         // The "house loss" = claimed - effectiveStake (the overpayment already disbursed)
         uint256 houseOverpayment = claimed - effectiveStake;
         assertGt(houseOverpayment, 0, "overpayment occurred");
+        assertGt(claimed, effectiveStake, "progressive claim exceeded effective stake");
 
         // Remaining reserve was released back to vault
         uint256 expectedRelease = tBefore.potentialPayout - claimed;
         assertEq(vault.totalReserved(), 0, "all reserves released after void");
+        assertEq(reservedBefore - vault.totalReserved(), expectedRelease, "released reserve matches remaining");
 
-        // The vault absorbed the overpayment: vault assets decreased by houseOverpayment
-        // relative to what it would have been with no progressive claims.
-        // Specifically: vault paid out `claimed` via payWinner, got back `effectiveStake` refund
-        // from the ticket purchase. Net vault loss = claimed - stakeInVault.
-        // This confirms the bounded risk noted in the code.
-        assertGt(claimed, effectiveStake, "progressive claim exceeded effective stake");
+        // Vault balance increased by the released reserve (minus any refund to alice, which is 0 here)
+        uint256 vaultBalAfter = usdc.balanceOf(address(vault));
+        assertGe(vaultBalAfter, vaultBalBefore, "vault balance did not decrease on settlement");
     }
 
     // ── 20. TicketPurchased event emits correct calldata values ──────────────

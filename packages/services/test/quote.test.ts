@@ -352,9 +352,9 @@ describe("computeCashoutValue", () => {
       stake,
       [500_000],     // 1 won leg at 50%
       2,             // 2 unresolved
-      1500,          // basePenaltyBps
       3,             // totalLegs
       potentialPayout,
+      1500,          // basePenaltyBps
     );
     // fairValue = stake * multiplier(500_000) = 10 * 2 = 20 USDC
     expect(fairValue).toBe(20_000_000n);
@@ -370,20 +370,20 @@ describe("computeCashoutValue", () => {
 
     // basePenaltyBps=1500, unresolvedCount=1, totalLegs=4 => 375
     const { penaltyBps: penalty1 } = computeCashoutValue(
-      stake, [500_000], 1, 1500, 4, 100_000_000n,
+      stake, [500_000], 1, 4, 100_000_000n, 1500,
     );
     expect(penalty1).toBe(375);
 
     // basePenaltyBps=1000, unresolvedCount=2, totalLegs=3 => 666
     const { penaltyBps: penalty2 } = computeCashoutValue(
-      stake, [500_000], 2, 1000, 3, 100_000_000n,
+      stake, [500_000], 2, 3, 100_000_000n, 1000,
     );
     expect(penalty2).toBe(666);
 
     // basePenaltyBps=1500, unresolvedCount=2, totalLegs=7 => 428
     // (matches test_computeCashoutValue_nonRound_penalty in ParlayMath.t.sol)
     const { penaltyBps: penalty3 } = computeCashoutValue(
-      stake, [500_000], 2, 1500, 7, 100_000_000n,
+      stake, [500_000], 2, 7, 100_000_000n, 1500,
     );
     expect(penalty3).toBe(428);
   });
@@ -392,44 +392,44 @@ describe("computeCashoutValue", () => {
     const stake = BigInt(100 * 10 ** USDC_DECIMALS);
     const potentialPayout = 5_000_000n;
     const { cashoutValue } = computeCashoutValue(
-      stake, [1_000], 1, 100, 3, potentialPayout,
+      stake, [1_000], 1, 3, potentialPayout, 100,
     );
     expect(cashoutValue).toBe(potentialPayout);
   });
 
   it("throws on empty won legs", () => {
     expect(() =>
-      computeCashoutValue(10_000_000n, [], 1, 1000, 3, 40_000_000n),
+      computeCashoutValue(10_000_000n, [], 1, 3, 40_000_000n, 1000),
     ).toThrow("no won legs");
   });
 
   it("throws on zero unresolved count", () => {
     expect(() =>
-      computeCashoutValue(10_000_000n, [500_000], 0, 1000, 3, 40_000_000n),
+      computeCashoutValue(10_000_000n, [500_000], 0, 3, 40_000_000n, 1000),
     ).toThrow("no unresolved legs");
   });
 
   it("throws on zero totalLegs", () => {
     expect(() =>
-      computeCashoutValue(10_000_000n, [500_000], 1, 1000, 0, 40_000_000n),
+      computeCashoutValue(10_000_000n, [500_000], 1, 0, 40_000_000n, 1000),
     ).toThrow("zero totalLegs");
   });
 
   it("throws on unresolvedCount > totalLegs", () => {
     expect(() =>
-      computeCashoutValue(10_000_000n, [500_000], 5, 1000, 3, 40_000_000n),
+      computeCashoutValue(10_000_000n, [500_000], 5, 3, 40_000_000n, 1000),
     ).toThrow("unresolved > total");
   });
 
   it("throws on basePenaltyBps > BPS", () => {
     expect(() =>
-      computeCashoutValue(10_000_000n, [500_000], 1, 10_001, 3, 40_000_000n),
+      computeCashoutValue(10_000_000n, [500_000], 1, 3, 40_000_000n, 10_001),
     ).toThrow("penalty out of range");
   });
 
   it("throws on negative basePenaltyBps", () => {
     expect(() =>
-      computeCashoutValue(10_000_000n, [500_000], 1, -1, 3, 40_000_000n),
+      computeCashoutValue(10_000_000n, [500_000], 1, 3, 40_000_000n, -1),
     ).toThrow("penalty out of range");
   });
 });
