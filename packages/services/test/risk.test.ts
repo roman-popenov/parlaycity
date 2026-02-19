@@ -909,24 +909,19 @@ describe("Action and reasoning are consistent", () => {
   it("REDUCE_STAKE reasoning mentions kelly or house edge", async () => {
     const res = await post(validBody);
     expect(res.status).toBe(200);
-    if (res.body.action === RiskAction.REDUCE_STAKE) {
-      const mentionsKellyOrEdge =
-        res.body.reasoning.includes("Kelly") || res.body.reasoning.includes("House edge");
-      expect(mentionsKellyOrEdge).toBe(true);
-    }
+    expect(res.body.action).toBe(RiskAction.REDUCE_STAKE);
+    const mentionsKellyOrEdge =
+      res.body.reasoning.includes("Kelly") || res.body.reasoning.includes("House edge");
+    expect(mentionsKellyOrEdge).toBe(true);
   });
 
-  it("BUY action only when kelly > 0 and within risk limits", async () => {
+  it("returns REDUCE_STAKE when kelly is 0 (house edge exceeds fair odds)", async () => {
     const res = await post({
       ...validBody,
       riskTolerance: "aggressive",
     });
     expect(res.status).toBe(200);
-    if (res.body.action === RiskAction.BUY) {
-      expect(res.body.kellyFraction).toBeGreaterThan(0);
-      expect(parseFloat(res.body.suggestedStake)).toBeGreaterThanOrEqual(
-        parseFloat(validBody.stake)
-      );
-    }
+    expect(res.body.kellyFraction).toBe(0);
+    expect(res.body.action).toBe(RiskAction.REDUCE_STAKE);
   });
 });

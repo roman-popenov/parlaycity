@@ -53,3 +53,6 @@ TASKS.md
 
 # Dev PID files
 .pids/
+
+# Reference articles (local-only, not redistributable)
+docs/learning/

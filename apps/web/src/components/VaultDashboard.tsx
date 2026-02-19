@@ -163,6 +163,10 @@ export function VaultDashboard() {
   const lockParsed = lockAmount ? parseFloat(lockAmount) : NaN;
   const lockBelowMinimum = lockAmount !== "" && !isNaN(lockParsed) && lockParsed >= 0 && lockAmountBigInt < 1_000_000n;
   const lockExceedsShares = lockAmountBigInt > 0n && lockAmountBigInt > userSharesBigInt;
+  // Guard: "." or other non-numeric strings parse to NaN — disable buttons
+  const depositNotANumber = depositAmount !== "" && isNaN(depositParsed);
+  const withdrawNotANumber = withdrawAmount !== "" && isNaN(withdrawParsed);
+  const lockNotANumber = lockAmount !== "" && isNaN(lockParsed);
 
   // Post-withdrawal utilization warning (convert shares to assets for correct unit basis)
   const withdrawAmountAssets = userSharesBigInt > 0n
@@ -333,7 +337,7 @@ export function VaultDashboard() {
           )}
           <button
             onClick={handleDeposit}
-            disabled={!isConnected || !hasUSDC || !depositAmount || depositNegative || depositBelowMinimum || depositExceedsBalance || depositHook.isPending || depositHook.isConfirming}
+            disabled={!isConnected || !hasUSDC || !depositAmount || depositNotANumber || depositNegative || depositBelowMinimum || depositExceedsBalance || depositHook.isPending || depositHook.isConfirming}
             className="w-full rounded-xl bg-gradient-to-r from-accent-blue to-accent-purple py-3 text-sm font-bold uppercase tracking-wider text-white transition-all hover:shadow-lg hover:shadow-accent-purple/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {depositButtonLabel()}
@@ -396,7 +400,7 @@ export function VaultDashboard() {
           )}
           <button
             onClick={handleWithdraw}
-            disabled={!isConnected || !hasShares || !withdrawAmount || withdrawBelowMinimum || withdrawExceedsShares || withdrawExceedsLiquidity || withdrawHook.isPending || withdrawHook.isConfirming}
+            disabled={!isConnected || !hasShares || !withdrawAmount || withdrawNotANumber || withdrawBelowMinimum || withdrawExceedsShares || withdrawExceedsLiquidity || withdrawHook.isPending || withdrawHook.isConfirming}
             className="w-full rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-bold uppercase tracking-wider text-white transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {withdrawButtonLabel()}
@@ -493,7 +497,7 @@ export function VaultDashboard() {
             )}
             <button
               onClick={handleLock}
-              disabled={!isConnected || !hasShares || !lockAmount || lockBelowMinimum || lockExceedsShares || lockHook.isPending || lockHook.isConfirming}
+              disabled={!isConnected || !hasShares || !lockAmount || lockNotANumber || lockBelowMinimum || lockExceedsShares || lockHook.isPending || lockHook.isConfirming}
               className="w-full rounded-xl bg-gradient-to-r from-accent-purple to-accent-blue py-3 text-sm font-bold uppercase tracking-wider text-white transition-all hover:shadow-lg hover:shadow-accent-purple/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
               {lockButtonLabel()}

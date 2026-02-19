@@ -55,7 +55,7 @@ router.get("/health", (_req, res) => {
   // Concentration risk: legs >3% of TVL are MEDIUM, >5% are HIGH (otherwise LOW)
   const concentrationRisk = Object.entries(MOCK_LEG_EXPOSURE)
     .map(([legId, data]) => {
-      const pctOfTVL = Number((data.exposure * 10_000n) / totalAssets) / 10_000;
+      const pctOfTVL = totalAssets > 0n ? Number((data.exposure * 10_000n) / totalAssets) / 10_000 : 0;
       return {
         legId: parseInt(legId),
         exposure: formatUSDC(data.exposure),

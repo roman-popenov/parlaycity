@@ -680,4 +680,48 @@ describe("VaultDashboard", () => {
       });
     });
   });
+
+  describe("NaN guard: dot-only and non-numeric input disables buttons", () => {
+    // Action buttons have w-full class; tab buttons do not
+    const findActionButton = (text: string) =>
+      screen.getAllByRole("button").find(
+        (b) => b.textContent === text && b.className.includes("w-full"),
+      );
+
+    it("disables deposit action button when input is '.'", () => {
+      vi.mocked(useAccount).mockReturnValue({
+        isConnected: true,
+        address: "0xAlice",
+      } as unknown as ReturnType<typeof useAccount>);
+      vi.mocked(useUSDCBalance).mockReturnValue({ balance: 1_000_000_000n } as any);
+      render(<VaultDashboard />);
+      const input = screen.getByPlaceholderText("Min 1 USDC") as HTMLInputElement;
+      fireEvent.change(input, { target: { value: "." } });
+      const btn = findActionButton("Deposit");
+      expect(btn).toBeDefined();
+      expect(btn).toBeDisabled();
+    });
+
+    it("disables withdraw action button when input is '.'", async () => {
+      mockConnectedWithShares(100_000_000n);
+      render(<VaultDashboard />);
+      fireEvent.click(screen.getByText("Withdraw"));
+      const input = await screen.findByPlaceholderText("Shares (vUSDC)");
+      fireEvent.change(input, { target: { value: "." } });
+      const btn = findActionButton("Withdraw");
+      expect(btn).toBeDefined();
+      expect(btn).toBeDisabled();
+    });
+
+    it("disables lock action button when input is '.'", async () => {
+      mockConnectedWithShares(100_000_000n);
+      render(<VaultDashboard />);
+      fireEvent.click(screen.getByText("Lock"));
+      const input = await screen.findByPlaceholderText("vUSDC shares to lock");
+      fireEvent.change(input, { target: { value: "." } });
+      const btn = findActionButton("Lock Shares");
+      expect(btn).toBeDefined();
+      expect(btn).toBeDisabled();
+    });
+  });
 });
