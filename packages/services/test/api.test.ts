@@ -11,6 +11,23 @@ describe("GET /health", () => {
   });
 });
 
+describe("Security hardening", () => {
+  it("includes security headers from helmet", async () => {
+    const res = await request(app).get("/health");
+    expect(res.headers["x-content-type-options"]).toBe("nosniff");
+    expect(res.headers["x-frame-options"]).toBe("SAMEORIGIN");
+    expect(res.headers["x-xss-protection"]).toBeDefined();
+  });
+
+  it("rejects payloads exceeding body size limit", async () => {
+    const largePayload = { data: "x".repeat(20_000) };
+    const res = await request(app)
+      .post("/quote")
+      .send(largePayload);
+    expect(res.status).toBe(413);
+  });
+});
+
 describe("GET /markets", () => {
   it("returns 200 with array of markets", async () => {
     const res = await request(app).get("/markets");

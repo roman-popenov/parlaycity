@@ -8,6 +8,9 @@ Express on port 3001. Rate-limited.
 - `POST /quote` -- off-chain parlay quote (must match on-chain execution)
 - `GET /exposure` -- mock hedger exposure tracking
 - `POST /premium/sim` -- x402-gated analytical simulation
+- `POST /premium/risk-assess` -- x402-gated Kelly criterion risk advisor
+- `GET /vault/health` -- vault health assessment (mock data, scaffold for on-chain reads)
+- `GET /vault/yield-report` -- yield optimization report (mock data)
 - `GET /health`
 
 ## Rules

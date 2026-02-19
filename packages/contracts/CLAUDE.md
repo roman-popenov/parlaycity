@@ -37,6 +37,52 @@ Deployment order: MockUSDC -> HouseVault -> LegRegistry -> Oracles -> ParlayEngi
 - Run `forge test -vvv --match-test <TestName>` for single test
 - Run `forge coverage --report summary` when touching core accounting
 
+## Security Checklist (Pre-Deploy)
+
+Every contract PR must verify:
+
+### Reentrancy
+- [ ] CEI pattern (Checks -> Effects -> Interactions) on all state-changing functions
+- [ ] `ReentrancyGuard` on functions that transfer tokens or call external contracts
+- [ ] Read-only reentrancy: `view` functions can return stale state mid-reentrant call (watch share price during deposits)
+
+### Token Operations
+- [ ] `SafeERC20` on ALL `.transfer()`, `.transferFrom()`, `.approve()` -- no exceptions (invariant #7)
+- [ ] USDC is 6 decimals, not 18. Verify `parseUnits("amount", 6)` everywhere.
+- [ ] Fee-on-transfer: compare `balanceBefore`/`balanceAfter` if integrating non-USDC tokens
+
+### Vault Safety
+- [ ] ERC4626 inflation attack mitigated (virtual shares or minimum first deposit)
+- [ ] Share price not manipulable via donation attack
+- [ ] `totalReserved <= totalAssets()` invariant holds after every operation (invariant #2)
+- [ ] `maxDeposit`/`maxWithdraw` account for utilization cap (80%)
+
+### Oracle Safety
+- [ ] Never read price from DEX pool (flash-loan manipulable)
+- [ ] Check `updatedAt` staleness on Chainlink feeds, verify `answer > 0`
+- [ ] Optimistic oracle has dispute window + bond requirement
+
+### Access Control
+- [ ] `onlyOwner` on parameter-changing functions only
+- [ ] No `selfdestruct` (deprecated since Cancun)
+- [ ] No proxy upgrades in MVP (invariant #5)
+- [ ] No discretionary drain paths (invariant #5)
+- [ ] Two-step ownership transfer preferred (`Ownable2Step`)
+
+### Integer Math
+- [ ] Multiply before dividing (prevent truncation)
+- [ ] BPS (1e4) vs PPM (1e6) never mixed (invariant #6)
+- [ ] Precision loss acceptable in share calculations
+
+### Events
+- [ ] Every state change emits an event
+- [ ] Indexed fields: addresses, ticketIds, amounts for filtering
+
+### MEV
+- [ ] Swap operations use `minAmountOut` with tight slippage
+- [ ] `buyTicket` accepts `maxStake` parameter (protects users)
+- [ ] Settlement is permissionless, no front-running advantage
+
 ## When Modifying
 
 ### Vault accounting / reserves

@@ -152,6 +152,31 @@ Package-specific rules are in subdirectory `CLAUDE.md` files (loaded on-demand w
 - `packages/services/CLAUDE.md` -- API conventions, x402 status
 - `apps/web/CLAUDE.md` -- wagmi conventions, demo readiness
 
+## Lessons Learned (from PR reviews)
+
+See `docs/solutions/` for detailed write-ups. Key patterns to avoid:
+
+1. **Stale async state**: Every polling hook MUST use fetchId + inFlight guards. Disconnect MUST invalidate in-flight work. (001)
+2. **Unit mismatches**: Never subtract shares from assets. TS math functions MUST match Solidity signatures exactly. (002)
+3. **Dead states**: Before setting a "claimable" status, verify there's something to claim. Every state must be reachable. (003)
+4. **Event accuracy**: Events MUST emit actual outcomes, not intended values. New struct fields need corresponding event fields. (004)
+5. **CEI always**: State changes before external calls. Before transferring to a contract, verify it can process the tokens. (005)
+6. **Button priority**: Transaction status (pending/confirming/success) ALWAYS takes priority over UI state conditions. (006)
+7. **Config validation**: Production env vars MUST throw on zero/empty defaults. Never hardcode env var names in multiple places. (007)
+8. **Boundary validation**: Validate at EVERY boundary. `parseDecimal` is the single entry point for user numeric input. (008)
+9. **Test coverage**: Invariant test handlers MUST assert they actually executed meaningful actions. 100% failure rate = broken test. (009)
+
+After every non-trivial bug fix, document in `docs/solutions/` with: Problem, Root Cause, Solution, Prevention (category-level).
+
+## Post-Review Protocol
+
+When `/review` produces findings and code fixes are implemented:
+1. **Write tests for every code change** before committing. No untested fix ships.
+2. Tests must cover the specific behavior the fix introduces (e.g., guard clause returns expected response, middleware produces expected headers, size limits reject oversized payloads).
+3. Run `make gate` to verify all tests pass.
+4. Update `todos/` files: mark implemented items as `complete`, rename file (`pending` -> `complete`).
+5. Only then commit and push.
+
 ## Compaction Guidance
 
 When compacting a long session, always preserve:

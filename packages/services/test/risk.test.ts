@@ -301,6 +301,23 @@ describe("NaN and Infinity protection", () => {
     expect(Number.isFinite(res.body.expectedValue)).toBe(true);
   });
 
+  it("5-leg extreme low probability returns AVOID (multiplier exceeds safe integer)", async () => {
+    const res = await post({
+      legIds: [1, 2, 3, 4, 5],
+      outcomes: ["Yes", "Yes", "Yes", "Yes", "Yes"],
+      stake: "10",
+      probabilities: [1, 1, 1, 1, 1],
+      bankroll: "1000",
+      riskTolerance: "aggressive",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.action).toBe(RiskAction.AVOID);
+    expect(res.body.warnings).toContain("Multiplier too large for risk assessment");
+    expect(res.body.suggestedStake).toBe("0.00");
+    expect(res.body.fairMultiplier).toBe(0);
+    expect(res.body.netMultiplier).toBe(0);
+  });
+
   it("extreme high probability (999_999 PPM) produces finite results", async () => {
     const res = await post({
       ...validBody,

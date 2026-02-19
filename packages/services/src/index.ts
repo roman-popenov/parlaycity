@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import catalogRouter from "./catalog/index.js";
 import quoteRouter from "./quote/index.js";
@@ -12,10 +13,11 @@ import { createX402Middleware } from "./premium/x402.js";
 const app = express();
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 
+app.use(helmet());
 app.use(cors({
   origin: process.env.CORS_ORIGIN || "http://localhost:3000",
 }));
-app.use(express.json());
+app.use(express.json({ limit: "10kb" }));
 
 // Rate limiting: 100 requests per minute per IP
 const limiter = rateLimit({

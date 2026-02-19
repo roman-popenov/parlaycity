@@ -38,6 +38,24 @@ router.post("/risk-assess", (req, res) => {
   const edgeBps = computeEdge(numLegs);
   const netMultiplierX1e6 = applyEdge(fairMultiplierX1e6, edgeBps);
 
+  // Guard: if multiplier exceeds safe integer range, the parlay is too extreme for advisory math
+  if (fairMultiplierX1e6 > BigInt(Number.MAX_SAFE_INTEGER)) {
+    return res.json({
+      action: RiskAction.AVOID,
+      suggestedStake: "0.00",
+      kellyFraction: 0,
+      winProbability: 0,
+      expectedValue: 0,
+      confidence: 0.5,
+      reasoning: "Combined multiplier exceeds safe computation range. This parlay is extremely unlikely to win.",
+      warnings: ["Multiplier too large for risk assessment"],
+      riskTolerance,
+      fairMultiplier: 0,
+      netMultiplier: 0,
+      edgeBps,
+    });
+  }
+
   // Win probability as float (derived from fair multiplier for display only)
   // fairMultiplier = PPM / combinedProb → combinedProb = PPM / fairMultiplier
   // winProbability = combinedProb / PPM = PPM / fairMultiplier / PPM = 1 / (fairMultiplier / PPM)
