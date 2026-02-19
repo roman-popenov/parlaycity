@@ -3,7 +3,8 @@ import { MAX_LEGS, MIN_LEGS, MIN_STAKE_USDC, USDC_DECIMALS } from "./constants.j
 
 // Strict plain-decimal matcher: digits with optional single dot.
 // Rejects scientific notation (1e2), sign prefixes (+10), whitespace,
-// hex/octal/binary — all of which Number() accepts but parseUSDC/BigInt cannot.
+// hex/octal/binary — all of which Number() accepts but parseUSDC/BigInt would
+// interpret non-decimally and are not intended to be accepted here.
 const DECIMAL_RE = /^\d+(?:\.\d*)?$/;
 
 /** Parse a strict decimal string. Only plain "123" or "12.34" accepted. */

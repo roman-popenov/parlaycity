@@ -116,7 +116,7 @@ router.post("/risk-assess", (req, res) => {
     reasoning = `${numLegs}-leg parlay at ${(winProbability * 100).toFixed(2)}% win probability. Kelly suggests ${(kellyFraction * 100).toFixed(2)}% of bankroll = ${suggestedStake.toFixed(2)} USDC.`;
   }
 
-  // Confidence based on number of legs and probability spread
+  // Confidence based solely on number of legs (more legs => lower confidence, floored at 0.5)
   const confidence = Math.max(0.5, 1 - (numLegs - 2) * 0.1);
 
   return res.json({

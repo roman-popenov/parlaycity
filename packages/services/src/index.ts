@@ -26,7 +26,7 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// x402 payment middleware (protects /premium/sim endpoint)
+// x402 payment middleware (protects all premium endpoints: /premium/sim, /premium/risk-assess)
 app.use(createX402Middleware());
 
 // Health check

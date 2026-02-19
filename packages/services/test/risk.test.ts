@@ -851,7 +851,7 @@ describe("Category regex sanitization", () => {
 
 // ── Empty categories array ───────────────────────────────────────────────
 describe("Empty categories edge cases", () => {
-  it("accepts empty categories array (treated as no categories)", async () => {
+  it("rejects empty categories array due to length mismatch", async () => {
     const res = await post({
       ...validBody,
       categories: [],

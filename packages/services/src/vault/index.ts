@@ -34,17 +34,25 @@ const MOCK_YIELDS = [
 router.get("/health", (_req, res) => {
   const totalAssets = MOCK_VAULT.totalAssets;
   const totalReserved = MOCK_VAULT.totalReserved;
-  const freeLiquidity = totalAssets - totalReserved;
-  const utilizationBps = Number((totalReserved * 10_000n) / totalAssets);
+  const rawFreeLiquidity = totalAssets - totalReserved;
+  const freeLiquidity = rawFreeLiquidity > 0n ? rawFreeLiquidity : 0n;
+  const utilizationBps =
+    totalAssets > 0n ? Number((totalReserved * 10_000n) / totalAssets) : 0;
   const utilization = utilizationBps / 10_000;
 
-  // Health status based on utilization
+  // Health status based on utilization and solvency
   let vaultHealth: VaultHealth;
-  if (utilizationBps <= 5000) vaultHealth = VaultHealth.HEALTHY;
-  else if (utilizationBps <= 7500) vaultHealth = VaultHealth.CAUTION;
-  else vaultHealth = VaultHealth.CRITICAL;
+  if (rawFreeLiquidity < 0n) {
+    vaultHealth = VaultHealth.CRITICAL;
+  } else if (utilizationBps <= 5000) {
+    vaultHealth = VaultHealth.HEALTHY;
+  } else if (utilizationBps <= 7500) {
+    vaultHealth = VaultHealth.CAUTION;
+  } else {
+    vaultHealth = VaultHealth.CRITICAL;
+  }
 
-  // Concentration risk: flag any leg > 5% of TVL
+  // Concentration risk: legs >3% of TVL are MEDIUM, >5% are HIGH (otherwise LOW)
   const concentrationRisk = Object.entries(MOCK_LEG_EXPOSURE)
     .map(([legId, data]) => {
       const pctOfTVL = Number((data.exposure * 10_000n) / totalAssets) / 10_000;
