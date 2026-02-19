@@ -1,19 +1,23 @@
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import catalogRouter from "./catalog/index.js";
 import quoteRouter from "./quote/index.js";
 import hedgerRouter from "./hedger/index.js";
 import premiumRouter from "./premium/index.js";
+import riskRouter from "./risk/index.js";
+import vaultRouter from "./vault/index.js";
 import { createX402Middleware } from "./premium/x402.js";
 
 const app = express();
 const PORT = parseInt(process.env.PORT ?? "3001", 10);
 
+app.use(helmet());
 app.use(cors({
   origin: process.env.CORS_ORIGIN || "http://localhost:3000",
 }));
-app.use(express.json());
+app.use(express.json({ limit: "10kb" }));
 
 // Rate limiting: 100 requests per minute per IP
 const limiter = rateLimit({
@@ -24,7 +28,7 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// x402 payment middleware (protects /premium/sim endpoint)
+// x402 payment middleware (protects all premium endpoints: /premium/sim, /premium/risk-assess)
 app.use(createX402Middleware());
 
 // Health check
@@ -37,6 +41,8 @@ app.use("/markets", catalogRouter);
 app.use("/quote", quoteRouter);
 app.use("/exposure", hedgerRouter);
 app.use("/premium", premiumRouter);
+app.use("/premium", riskRouter);
+app.use("/vault", vaultRouter);
 
 if (process.env.NODE_ENV !== "test") {
   app.listen(PORT, () => {

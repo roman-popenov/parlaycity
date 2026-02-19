@@ -41,7 +41,7 @@ router.post("/sim", (req, res) => {
   // Expected value: stake * (winProb * multiplier - 1)
   // With house edge applied, the net multiplier is lower, so EV is negative
   // We report the fair EV here (before edge)
-  const stakeNum = parseFloat(stake);
+  const stakeNum = Number(stake);
   const expectedValue = stakeNum * (winProbability * fairMultiplier - 1);
 
   // Kelly criterion: f* = (bp - q) / b

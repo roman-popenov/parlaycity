@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useAccount } from "wagmi";
 import { formatUnits, parseUnits } from "viem";
+import { sanitizeNumericInput, blockNonNumericKeys } from "@/lib/utils";
 import {
   useVaultStats,
   useDepositVault,
@@ -56,7 +57,7 @@ export function VaultDashboard() {
     abi: HOUSE_VAULT_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: { enabled: !!address && !!contractAddresses.houseVault, refetchInterval: 5000 },
+    query: { enabled: !!address && !!contractAddresses.houseVault, refetchInterval: 10_000 },
   });
 
   const { data: sharesValue } = useReadContract({
@@ -64,7 +65,7 @@ export function VaultDashboard() {
     abi: HOUSE_VAULT_ABI,
     functionName: "convertToAssets",
     args: userShares ? [userShares as bigint] : undefined,
-    query: { enabled: !!userShares && (userShares as bigint) > 0n, refetchInterval: 5000 },
+    query: { enabled: !!userShares && (userShares as bigint) > 0n, refetchInterval: 10_000 },
   });
 
   const userSharesBigInt = (userShares as bigint) ?? 0n;
@@ -76,7 +77,7 @@ export function VaultDashboard() {
     abi: HOUSE_VAULT_ABI,
     functionName: "convertToAssets",
     args: userTotalLocked ? [userTotalLocked] : undefined,
-    query: { enabled: !!userTotalLocked && userTotalLocked > 0n, refetchInterval: 5000 },
+    query: { enabled: !!userTotalLocked && userTotalLocked > 0n, refetchInterval: 10_000 },
   });
   const lockedValueBigInt = (lockedValue as bigint) ?? 0n;
   const totalPositionValue = userSharesValueBigInt + lockedValueBigInt;
@@ -155,9 +156,17 @@ export function VaultDashboard() {
   const depositBelowMinimum = depositAmount !== "" && !isNaN(depositParsed) && depositParsed >= 0 && depositAmountBigInt < 1_000_000n;
   const depositNegative = depositAmount !== "" && !isNaN(depositParsed) && depositParsed < 0;
   const depositExceedsBalance = depositAmountBigInt > 0n && !depositBelowMinimum && depositAmountBigInt > (usdcBalance ?? 0n);
+  const withdrawParsed = withdrawAmount ? parseFloat(withdrawAmount) : NaN;
+  const withdrawBelowMinimum = withdrawAmount !== "" && !isNaN(withdrawParsed) && withdrawParsed > 0 && withdrawAmountBigInt === 0n;
   const withdrawExceedsShares = withdrawAmountBigInt > 0n && withdrawAmountBigInt > userSharesBigInt;
   const withdrawExceedsLiquidity = withdrawAmountBigInt > 0n && !withdrawExceedsShares && withdrawAmountBigInt > withdrawableShares;
+  const lockParsed = lockAmount ? parseFloat(lockAmount) : NaN;
+  const lockBelowMinimum = lockAmount !== "" && !isNaN(lockParsed) && lockParsed >= 0 && lockAmountBigInt < 1_000_000n;
   const lockExceedsShares = lockAmountBigInt > 0n && lockAmountBigInt > userSharesBigInt;
+  // Guard: "." or other non-numeric strings parse to NaN — disable buttons
+  const depositNotANumber = depositAmount !== "" && isNaN(depositParsed);
+  const withdrawNotANumber = withdrawAmount !== "" && isNaN(withdrawParsed);
+  const lockNotANumber = lockAmount !== "" && isNaN(lockParsed);
 
   // Post-withdrawal utilization warning (convert shares to assets for correct unit basis)
   const withdrawAmountAssets = userSharesBigInt > 0n
@@ -170,6 +179,44 @@ export function VaultDashboard() {
     return Number((totalReserved * 10000n) / remaining) / 100;
   })();
   const withdrawHighUtilWarning = withdrawAmountBigInt > 0n && !withdrawExceedsShares && !withdrawExceedsLiquidity && postWithdrawUtil > 80;
+
+  // Priority order: wallet > prerequisite > tx state > input validation > default
+  // Tx state comes before validation because once submitted, the user
+  // needs to see progress regardless of subsequent input changes.
+  function depositButtonLabel(): string {
+    if (!isConnected) return "Connect Wallet";
+    if (!hasUSDC) return "No USDC Balance";
+    if (depositHook.isPending) return "Signing...";
+    if (depositHook.isConfirming) return "Confirming...";
+    if (depositTxSuccess) return "Deposited!";
+    if (depositNegative) return "Invalid Amount";
+    if (depositBelowMinimum) return "Minimum 1 USDC";
+    if (depositExceedsBalance) return "Insufficient Balance";
+    return "Deposit";
+  }
+
+  function withdrawButtonLabel(): string {
+    if (!isConnected) return "Connect Wallet";
+    if (!hasShares) return "No Shares";
+    if (withdrawHook.isPending) return "Signing...";
+    if (withdrawHook.isConfirming) return "Confirming...";
+    if (withdrawTxSuccess) return "Withdrawn!";
+    if (withdrawBelowMinimum) return "Amount Too Small";
+    if (withdrawExceedsShares) return "Insufficient Shares";
+    if (withdrawExceedsLiquidity) return "Insufficient Liquidity";
+    return "Withdraw";
+  }
+
+  function lockButtonLabel(): string {
+    if (!isConnected) return "Connect Wallet";
+    if (!hasShares) return "Deposit USDC First";
+    if (lockHook.isPending) return "Signing...";
+    if (lockHook.isConfirming) return "Confirming...";
+    if (lockHook.isSuccess) return "Locked!";
+    if (lockBelowMinimum) return "Minimum 1 vUSDC";
+    if (lockExceedsShares) return "Insufficient Shares";
+    return "Lock Shares";
+  }
 
   return (
     <div className="space-y-8">
@@ -261,11 +308,11 @@ export function VaultDashboard() {
           </div>
           <div className="relative mb-4">
             <input
-              type="number"
-              min="1"
-              step="1"
+              type="text"
+              inputMode="decimal"
               value={depositAmount}
-              onChange={(e) => setDepositAmountAndReset(e.target.value)}
+              onKeyDown={blockNonNumericKeys}
+              onChange={(e) => setDepositAmountAndReset(sanitizeNumericInput(e.target.value))}
               placeholder="Min 1 USDC"
               disabled={!hasUSDC}
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-16 text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-blue/50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -290,26 +337,10 @@ export function VaultDashboard() {
           )}
           <button
             onClick={handleDeposit}
-            disabled={!isConnected || !hasUSDC || !depositAmount || depositNegative || depositBelowMinimum || depositExceedsBalance || depositHook.isPending || depositHook.isConfirming}
+            disabled={!isConnected || !hasUSDC || !depositAmount || depositNotANumber || depositNegative || depositBelowMinimum || depositExceedsBalance || depositHook.isPending || depositHook.isConfirming}
             className="w-full rounded-xl bg-gradient-to-r from-accent-blue to-accent-purple py-3 text-sm font-bold uppercase tracking-wider text-white transition-all hover:shadow-lg hover:shadow-accent-purple/20 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {!isConnected
-              ? "Connect Wallet"
-              : !hasUSDC
-                ? "No USDC Balance"
-                : depositNegative
-                  ? "Invalid Amount"
-                  : depositBelowMinimum
-                    ? "Minimum 1 USDC"
-                    : depositExceedsBalance
-                      ? "Insufficient Balance"
-                      : depositHook.isPending
-                        ? "Signing..."
-                        : depositHook.isConfirming
-                          ? "Confirming..."
-                          : depositTxSuccess
-                            ? "Deposited!"
-                            : "Deposit"}
+            {depositButtonLabel()}
           </button>
           {depositHook.error && (
             <p className="mt-2 rounded-lg bg-neon-red/10 px-3 py-2 text-center text-xs text-neon-red">
@@ -335,11 +366,11 @@ export function VaultDashboard() {
           </div>
           <div className="relative mb-4">
             <input
-              type="number"
-              min="1"
-              step="1"
+              type="text"
+              inputMode="decimal"
               value={withdrawAmount}
-              onChange={(e) => setWithdrawAmountAndReset(e.target.value)}
+              onKeyDown={blockNonNumericKeys}
+              onChange={(e) => setWithdrawAmountAndReset(sanitizeNumericInput(e.target.value))}
               placeholder="Shares (vUSDC)"
               disabled={!hasShares}
               className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-16 text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-blue/50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -353,6 +384,9 @@ export function VaultDashboard() {
               </button>
             )}
           </div>
+          {withdrawBelowMinimum && (
+            <p className="mb-2 text-center text-xs text-neon-red">Amount too small</p>
+          )}
           {withdrawExceedsShares && (
             <p className="mb-2 text-center text-xs text-neon-red">Exceeds your vault shares</p>
           )}
@@ -366,24 +400,10 @@ export function VaultDashboard() {
           )}
           <button
             onClick={handleWithdraw}
-            disabled={!isConnected || !hasShares || !withdrawAmount || withdrawExceedsShares || withdrawExceedsLiquidity || withdrawHook.isPending || withdrawHook.isConfirming}
+            disabled={!isConnected || !hasShares || !withdrawAmount || withdrawNotANumber || withdrawBelowMinimum || withdrawExceedsShares || withdrawExceedsLiquidity || withdrawHook.isPending || withdrawHook.isConfirming}
             className="w-full rounded-xl border border-white/10 bg-white/5 py-3 text-sm font-bold uppercase tracking-wider text-white transition-all hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            {!isConnected
-              ? "Connect Wallet"
-              : !hasShares
-                ? "No Shares"
-                : withdrawExceedsShares
-                  ? "Insufficient Shares"
-                  : withdrawExceedsLiquidity
-                    ? "Insufficient Liquidity"
-                    : withdrawHook.isPending
-                    ? "Signing..."
-                    : withdrawHook.isConfirming
-                      ? "Confirming..."
-                      : withdrawTxSuccess
-                        ? "Withdrawn!"
-                        : "Withdraw"}
+            {withdrawButtonLabel()}
           </button>
           {withdrawHook.error && (
             <p className="mt-2 rounded-lg bg-neon-red/10 px-3 py-2 text-center text-xs text-neon-red">
@@ -450,11 +470,11 @@ export function VaultDashboard() {
 
             <div className="relative mb-4">
               <input
-                type="number"
-                min="1"
-                step="1"
+                type="text"
+                inputMode="decimal"
                 value={lockAmount}
-                onChange={(e) => setLockAmount(e.target.value)}
+                onKeyDown={blockNonNumericKeys}
+                onChange={(e) => setLockAmount(sanitizeNumericInput(e.target.value))}
                 placeholder="vUSDC shares to lock"
                 disabled={!hasShares}
                 className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-16 text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-purple/50 disabled:cursor-not-allowed disabled:opacity-50"
@@ -469,27 +489,18 @@ export function VaultDashboard() {
               )}
             </div>
 
+            {lockBelowMinimum && (
+              <p className="mb-2 text-center text-xs text-neon-red">Minimum lock is 1 vUSDC</p>
+            )}
             {lockExceedsShares && (
               <p className="mb-2 text-center text-xs text-neon-red">Exceeds your vault shares</p>
             )}
             <button
               onClick={handleLock}
-              disabled={!isConnected || !hasShares || !lockAmount || lockExceedsShares || lockHook.isPending || lockHook.isConfirming}
+              disabled={!isConnected || !hasShares || !lockAmount || lockNotANumber || lockBelowMinimum || lockExceedsShares || lockHook.isPending || lockHook.isConfirming}
               className="w-full rounded-xl bg-gradient-to-r from-accent-purple to-accent-blue py-3 text-sm font-bold uppercase tracking-wider text-white transition-all hover:shadow-lg hover:shadow-accent-purple/20 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {!isConnected
-                ? "Connect Wallet"
-                : !hasShares
-                  ? "Deposit USDC First"
-                  : lockExceedsShares
-                    ? "Insufficient Shares"
-                    : lockHook.isPending
-                      ? "Signing..."
-                      : lockHook.isConfirming
-                        ? "Confirming..."
-                        : lockHook.isSuccess
-                          ? "Locked!"
-                          : "Lock Shares"}
+              {lockButtonLabel()}
             </button>
             {lockHook.error && (
               <p className="mt-2 rounded-lg bg-neon-red/10 px-3 py-2 text-center text-xs text-neon-red">

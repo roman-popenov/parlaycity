@@ -1,7 +1,20 @@
 import { z } from "zod";
 import { MAX_LEGS, MIN_LEGS, MIN_STAKE_USDC, USDC_DECIMALS } from "./constants.js";
 
-export const QuoteRequestSchema = z.object({
+// Strict plain-decimal matcher: digits with optional single dot.
+// Rejects scientific notation (1e2), sign prefixes (+10), whitespace,
+// hex/octal/binary — all of which Number() accepts but parseUSDC/BigInt would
+// interpret non-decimally and are not intended to be accepted here.
+const DECIMAL_RE = /^\d+(?:\.\d*)?$/;
+
+/** Parse a strict decimal string. Only plain "123" or "12.34" accepted. */
+function parseDecimal(val: string): number {
+  if (!DECIMAL_RE.test(val)) return NaN;
+  return Number(val);
+}
+
+// Shared base: legIds + outcomes + stake (used by Quote, Sim, RiskAssess)
+const QuoteBaseSchema = z.object({
   legIds: z
     .array(z.number().int().positive())
     .min(MIN_LEGS, `Minimum ${MIN_LEGS} legs required`)
@@ -12,12 +25,14 @@ export const QuoteRequestSchema = z.object({
     .max(MAX_LEGS),
   stake: z.string().refine(
     (val) => {
-      const n = Number(val);
-      return !isNaN(n) && n >= MIN_STAKE_USDC;
+      const n = parseDecimal(val);
+      return Number.isFinite(n) && n >= MIN_STAKE_USDC;
     },
     { message: `Stake must be at least ${MIN_STAKE_USDC} USDC` }
   ),
-}).refine(
+});
+
+export const QuoteRequestSchema = QuoteBaseSchema.refine(
   (data) => data.legIds.length === data.outcomes.length,
   { message: "legIds and outcomes must have the same length" }
 );
@@ -35,26 +50,36 @@ export const QuoteResponseSchema = z.object({
   reason: z.string().optional(),
 });
 
-export const SimRequestSchema = z.object({
-  legIds: z
-    .array(z.number().int().positive())
-    .min(MIN_LEGS)
-    .max(MAX_LEGS),
-  outcomes: z.array(z.string().min(1)).min(MIN_LEGS).max(MAX_LEGS),
-  stake: z.string().refine(
-    (val) => {
-      const n = Number(val);
-      return !isNaN(n) && n >= MIN_STAKE_USDC;
-    },
-    { message: `Stake must be at least ${MIN_STAKE_USDC} USDC` }
-  ),
+// Extends shared base with probabilities for sim + risk-assess schemas
+const LegProbBaseSchema = QuoteBaseSchema.extend({
   probabilities: z
-    .array(z.number().min(0).max(1_000_000))
+    .array(z.number().int().min(1).max(999_999))
     .min(MIN_LEGS)
     .max(MAX_LEGS),
+});
+
+const legLengthsMatch = (data: z.infer<typeof LegProbBaseSchema>) =>
+  data.legIds.length === data.outcomes.length && data.legIds.length === data.probabilities.length;
+
+export const SimRequestSchema = LegProbBaseSchema.refine(legLengthsMatch, {
+  message: "legIds, outcomes, and probabilities must have the same length",
+});
+
+export const RiskAssessRequestSchema = LegProbBaseSchema.extend({
+  bankroll: z.string().refine(
+    (val) => {
+      const n = parseDecimal(val);
+      return Number.isFinite(n) && n > 0;
+    },
+    { message: "Bankroll must be a finite positive number" }
+  ),
+  riskTolerance: z.enum(["conservative", "moderate", "aggressive"]),
+  categories: z.array(z.string().regex(/^[\w \-./]+$/, "Category must contain only alphanumeric, underscore, space, hyphen, dot, or slash")).optional(),
+}).refine(legLengthsMatch, {
+  message: "legIds, outcomes, and probabilities must have the same length",
 }).refine(
-  (data) => data.legIds.length === data.outcomes.length && data.legIds.length === data.probabilities.length,
-  { message: "legIds, outcomes, and probabilities must have the same length" }
+  (data) => !data.categories || data.categories.length === data.legIds.length,
+  { message: "categories must have the same length as legIds when provided" },
 );
 
 export function parseQuoteRequest(data: unknown) {
@@ -63,6 +88,10 @@ export function parseQuoteRequest(data: unknown) {
 
 export function parseSimRequest(data: unknown) {
   return SimRequestSchema.safeParse(data);
+}
+
+export function parseRiskAssessRequest(data: unknown) {
+  return RiskAssessRequestSchema.safeParse(data);
 }
 
 // Re-export USDC parse helper

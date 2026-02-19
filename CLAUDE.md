@@ -152,6 +152,46 @@ Package-specific rules are in subdirectory `CLAUDE.md` files (loaded on-demand w
 - `packages/services/CLAUDE.md` -- API conventions, x402 status
 - `apps/web/CLAUDE.md` -- wagmi conventions, demo readiness
 
+## Lessons Learned (from PR reviews)
+
+See `docs/solutions/` for detailed write-ups. Key patterns to avoid:
+
+1. **Stale async state**: Every polling hook MUST use fetchId + inFlight guards. Disconnect MUST invalidate in-flight work. (001)
+2. **Unit mismatches**: Never subtract shares from assets. TS math functions MUST match Solidity signatures exactly. (002)
+3. **Dead states**: Before setting a "claimable" status, verify there's something to claim. Every state must be reachable. (003)
+4. **Event accuracy**: Events MUST emit actual outcomes, not intended values. New struct fields need corresponding event fields. (004)
+5. **CEI always**: State changes before external calls. Before transferring to a contract, verify it can process the tokens. (005)
+6. **Button priority**: Transaction status (pending/confirming/success) ALWAYS takes priority over UI state conditions. (006)
+7. **Config validation**: Production env vars MUST throw on zero/empty defaults. Never hardcode env var names in multiple places. (007)
+8. **Boundary validation**: Validate at EVERY boundary. `parseDecimal` is the single entry point for user numeric input. (008)
+9. **Test coverage**: Invariant test handlers MUST assert they actually executed meaningful actions. 100% failure rate = broken test. (009)
+10. **Regex `\s` overmatch**: In character classes, `\s` matches tabs/newlines/carriage returns — not just spaces. Use a literal space when you mean space. (008 updated)
+11. **BigInt-to-Number overflow**: Every `Number(bigint)` conversion MUST be guarded by `> BigInt(Number.MAX_SAFE_INTEGER)`. Exponential BigInt growth (multiplied probabilities) will silently lose precision. (012)
+12. **NaN bypass on partial input**: `parseFloat(".")` returns NaN but `"."` is truthy. Every numeric input must add `isNaN(parsedValue)` to button disabled conditions. (008 updated)
+13. **Vacuous conditional assertions**: Never wrap `expect()` inside `if (condition)` — if the condition is false, zero assertions run and the test passes vacuously. Assert unconditionally. (009 updated)
+14. **BigInt division by zero**: `BigInt / 0n` throws `RangeError` (unlike Number which returns Infinity). Guard every BigInt divisor with `> 0n`. (012 updated)
+15. **Test selector ambiguity**: When tabs and action buttons share text content, `getAllByRole("button").find(text)` matches the wrong one. Use `data-testid` or CSS class filtering. (013)
+
+After every non-trivial bug fix, document in `docs/solutions/` with: Problem, Root Cause, Solution, Prevention (category-level).
+
+## Post-Review Protocol
+
+When `/review` produces findings and code fixes are implemented:
+1. **Write tests for every code change** before committing. No untested fix ships.
+2. Tests must cover the specific behavior the fix introduces (e.g., guard clause returns expected response, middleware produces expected headers, size limits reject oversized payloads).
+3. Run `make gate` to verify all tests pass.
+4. Update `todos/` files: mark implemented items as `complete`, rename file (`pending` -> `complete`).
+5. Only then commit and push.
+6. **Reply to PR review comments** after pushing fixes. For each reviewer comment (Copilot, Cursor Bug Bot, humans):
+   - If fixed: reply with the commit SHA and a one-sentence explanation of the fix.
+   - If deferred: reply acknowledging the issue, link to the tracking todo, and explain why it's deferred.
+   - If no action needed (informational/already handled): reply briefly explaining the current state.
+   - Never leave review comments unanswered.
+7. **Compound the knowledge.** For each non-trivial fix:
+   - Update or create a `docs/solutions/` entry (Problem, Root Cause, Solution, Prevention).
+   - Add a one-liner to the "Lessons Learned" index in this file.
+   - If the fix reveals a new category-level rule, add it to the relevant `CLAUDE.md` (root or subdirectory).
+
 ## Compaction Guidance
 
 When compacting a long session, always preserve:

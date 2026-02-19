@@ -17,9 +17,10 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 /** Individual gated path constants — add new paths here, then include in X402_GATED_PATHS. */
 const PREMIUM_SIM_PATH = "/premium/sim";
+const RISK_ASSESS_PATH = "/premium/risk-assess";
 
 /** Paths that require x402 payment. Single source of truth for production + stub. */
-const X402_GATED_PATHS = [PREMIUM_SIM_PATH];
+const X402_GATED_PATHS = [PREMIUM_SIM_PATH, RISK_ASSESS_PATH];
 
 // ── Config getters (all defined before initialization) ───────────────────
 
@@ -126,13 +127,15 @@ export const _testExports = {
   KNOWN_NETWORKS,
   ZERO_ADDRESS,
   PREMIUM_SIM_PATH,
+  RISK_ASSESS_PATH,
   X402_GATED_PATHS,
 };
 
 // ── Middleware factory ───────────────────────────────────────────────────
 
 /**
- * Create the x402 payment middleware for the premium sim endpoint.
+ * Create the x402 payment middleware for all premium endpoints (sim + risk-assess).
+ * Gated paths are defined in X402_GATED_PATHS.
  * In production (NODE_ENV=production): verifies real USDC payment on Base via x402 facilitator.
  * Otherwise (dev, test, staging, or X402_STUB=true): falls back to stub that accepts any non-empty header.
  */
@@ -176,6 +179,18 @@ export function createX402Middleware() {
           },
         ],
         description: "ParlayCity premium analytics: win probability, expected value, Kelly criterion",
+      },
+      [`POST ${RISK_ASSESS_PATH}`]: {
+        accepts: [
+          {
+            scheme: "exact",
+            price: cfg.price,
+            network: cfg.network,
+            payTo: cfg.recipient,
+            maxTimeoutSeconds: 120,
+          },
+        ],
+        description: "ParlayCity risk advisor: Kelly criterion, correlation detection, position sizing",
       },
     },
     resourceServer,

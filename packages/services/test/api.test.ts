@@ -11,6 +11,23 @@ describe("GET /health", () => {
   });
 });
 
+describe("Security hardening", () => {
+  it("includes security headers from helmet", async () => {
+    const res = await request(app).get("/health");
+    expect(res.headers["x-content-type-options"]).toBe("nosniff");
+    expect(res.headers["x-frame-options"]).toBe("SAMEORIGIN");
+    expect(res.headers["x-xss-protection"]).toBeDefined();
+  });
+
+  it("rejects payloads exceeding body size limit", async () => {
+    const largePayload = { data: "x".repeat(20_000) };
+    const res = await request(app)
+      .post("/quote")
+      .send(largePayload);
+    expect(res.status).toBe(413);
+  });
+});
+
 describe("GET /markets", () => {
   it("returns 200 with array of markets", async () => {
     const res = await request(app).get("/markets");
@@ -88,6 +105,28 @@ describe("POST /quote", () => {
       .post("/quote")
       .send({ legIds: [1, 1], outcomes: ["Yes", "Yes"], stake: "10" });
 
+    expect(res.status).toBe(400);
+  });
+
+  // Schema/parseUSDC alignment: these formats pass Number() but crash BigInt()
+  it("returns 400 for scientific notation stake '1e2' (not 500)", async () => {
+    const res = await request(app)
+      .post("/quote")
+      .send({ legIds: [1, 2], outcomes: ["Yes", "Yes"], stake: "1e2" });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for '+' prefixed stake '+10' (not 500)", async () => {
+    const res = await request(app)
+      .post("/quote")
+      .send({ legIds: [1, 2], outcomes: ["Yes", "Yes"], stake: "+10" });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for hex stake '0x10' (not 500)", async () => {
+    const res = await request(app)
+      .post("/quote")
+      .send({ legIds: [1, 2], outcomes: ["Yes", "Yes"], stake: "0x10" });
     expect(res.status).toBe(400);
   });
 });
