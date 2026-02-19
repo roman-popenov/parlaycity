@@ -21,6 +21,8 @@ Multiple input validation gaps at user/contract boundaries:
 
 4. **Frontend numeric guards (8fecb25)**: Stake/amount input fields lacked `min`/`max` constraints, allowing negative numbers or values exceeding wallet balance to be submitted.
 
+5. **Regex `\s` overmatch (5dce8bb, PR #9)**: Categories schema used `\s` in a character class, which matches tabs, newlines, and carriage returns — not just spaces. The validation message documented "space" but the regex accepted far more. A category like `"NBA\tWest"` or `"NBA\nWest"` would pass validation.
+
 ## Root Cause
 Validation was trusted to happen "somewhere else" -- contracts trusted the frontend, frontend trusted the browser, both trusted the input format.
 
@@ -36,3 +38,4 @@ Validation was trusted to happen "somewhere else" -- contracts trusted the front
 - **Rule**: Frontend MUST reject any numeric string that isn't `[0-9.]+` (no scientific notation, no signs, no whitespace).
 - **Rule**: Every function that can close/finalize a position MUST verify the payout is > 0.
 - **Rule**: `parseDecimal` is the single entry point for all user numeric input. Never use `parseFloat` or `Number()` directly.
+- **Rule**: In regex character classes, never use `\s` when you mean literal space. `\s` matches `[\t\n\r\f\v ]` — always use ` ` (literal space) unless you explicitly want all whitespace.

@@ -165,6 +165,8 @@ See `docs/solutions/` for detailed write-ups. Key patterns to avoid:
 7. **Config validation**: Production env vars MUST throw on zero/empty defaults. Never hardcode env var names in multiple places. (007)
 8. **Boundary validation**: Validate at EVERY boundary. `parseDecimal` is the single entry point for user numeric input. (008)
 9. **Test coverage**: Invariant test handlers MUST assert they actually executed meaningful actions. 100% failure rate = broken test. (009)
+10. **Regex `\s` overmatch**: In character classes, `\s` matches tabs/newlines/carriage returns — not just spaces. Use a literal space when you mean space. (008 updated)
+11. **BigInt-to-Number overflow**: Every `Number(bigint)` conversion MUST be guarded by `> BigInt(Number.MAX_SAFE_INTEGER)`. Exponential BigInt growth (multiplied probabilities) will silently lose precision. (012)
 
 After every non-trivial bug fix, document in `docs/solutions/` with: Problem, Root Cause, Solution, Prevention (category-level).
 
@@ -181,6 +183,10 @@ When `/review` produces findings and code fixes are implemented:
    - If deferred: reply acknowledging the issue, link to the tracking todo, and explain why it's deferred.
    - If no action needed (informational/already handled): reply briefly explaining the current state.
    - Never leave review comments unanswered.
+7. **Compound the knowledge.** For each non-trivial fix:
+   - Update or create a `docs/solutions/` entry (Problem, Root Cause, Solution, Prevention).
+   - Add a one-liner to the "Lessons Learned" index in this file.
+   - If the fix reveals a new category-level rule, add it to the relevant `CLAUDE.md` (root or subdirectory).
 
 ## Compaction Guidance
 
