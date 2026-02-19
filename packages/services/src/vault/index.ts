@@ -62,7 +62,7 @@ router.get("/health", (_req, res) => {
   // Settlement cluster (mock: next 24h)
   const next24hSettlements = 12;
   const next24hExposure = 8_500_000_000n;
-  const liquiditySufficient = freeLiquidity > next24hExposure;
+  const liquiditySufficient = freeLiquidity >= next24hExposure;
 
   // Recommendations
   const recommendations: string[] = [];

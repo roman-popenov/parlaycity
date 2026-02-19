@@ -13,7 +13,7 @@ export const QuoteRequestSchema = z.object({
   stake: z.string().refine(
     (val) => {
       const n = Number(val);
-      return !isNaN(n) && n >= MIN_STAKE_USDC;
+      return Number.isFinite(n) && n >= MIN_STAKE_USDC;
     },
     { message: `Stake must be at least ${MIN_STAKE_USDC} USDC` }
   ),
@@ -45,7 +45,7 @@ const LegProbBaseSchema = z.object({
   stake: z.string().refine(
     (val) => {
       const n = Number(val);
-      return !isNaN(n) && n >= MIN_STAKE_USDC;
+      return Number.isFinite(n) && n >= MIN_STAKE_USDC;
     },
     { message: `Stake must be at least ${MIN_STAKE_USDC} USDC` }
   ),
@@ -71,7 +71,7 @@ export const RiskAssessRequestSchema = LegProbBaseSchema.extend({
     { message: "Bankroll must be a finite positive number" }
   ),
   riskTolerance: z.enum(["conservative", "moderate", "aggressive"]),
-  categories: z.array(z.string().regex(/^[\w\s\-./]+$/, "Category must contain only alphanumeric, space, hyphen, dot, or slash")).optional(),
+  categories: z.array(z.string().regex(/^[\w\s\-./]+$/, "Category must contain only alphanumeric, underscore, space, hyphen, dot, or slash")).optional(),
 }).refine(legLengthsMatch, {
   message: "legIds, outcomes, and probabilities must have the same length",
 }).refine(

@@ -486,6 +486,14 @@ describe("Schema validation edge cases", () => {
     expect(res.status).toBe(400);
   });
 
+  it("rejects Infinity stake (Number.isFinite guard)", async () => {
+    const res = await post({
+      ...validBody,
+      stake: "Infinity",
+    });
+    expect(res.status).toBe(400);
+  });
+
   it("rejects Infinity bankroll (Number.isFinite guard)", async () => {
     const res = await post({
       ...validBody,
