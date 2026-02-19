@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import request from "supertest";
 import app from "../src/index.js";
-import { RiskAction, PPM, computeMultiplier, computeEdge, applyEdge } from "@parlaycity/shared";
+import { RiskAction, PPM, computeMultiplier, computeEdge, applyEdge, parseSimRequest, parseRiskAssessRequest } from "@parlaycity/shared";
 
 const validBody = {
   legIds: [1, 2],
@@ -484,5 +484,134 @@ describe("Schema validation edge cases", () => {
       riskTolerance: "yolo",
     });
     expect(res.status).toBe(400);
+  });
+
+  it("rejects Infinity bankroll (Number.isFinite guard)", async () => {
+    const res = await post({
+      ...validBody,
+      bankroll: "Infinity",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects -Infinity bankroll", async () => {
+    const res = await post({
+      ...validBody,
+      bankroll: "-Infinity",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects NaN bankroll", async () => {
+    const res = await post({
+      ...validBody,
+      bankroll: "NaN",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects non-numeric bankroll", async () => {
+    const res = await post({
+      ...validBody,
+      bankroll: "abc",
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects categories with wrong length (mismatched with legIds)", async () => {
+    const res = await post({
+      ...validBody,
+      categories: ["NBA"],  // 1 category but 2 legs
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects categories with too many entries", async () => {
+    const res = await post({
+      ...validBody,
+      categories: ["NBA", "NFL", "Crypto"],  // 3 categories but 2 legs
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts categories with matching length", async () => {
+    const res = await post({
+      ...validBody,
+      categories: ["NBA", "NFL"],  // 2 categories, 2 legs
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("accepts request without categories (optional)", async () => {
+    const { categories: _, ...noCats } = validBody as Record<string, unknown>;
+    const res = await post(noCats);
+    expect(res.status).toBe(200);
+  });
+});
+
+// ── Schema dedup verification ───────────────────────────────────────────
+// SimRequestSchema and RiskAssessRequestSchema share the same LegProbBaseSchema.
+// These tests verify both schemas enforce identical validation on shared fields,
+// proving the deduplication works correctly.
+describe("Schema dedup: SimRequest and RiskAssessRequest share base validation", () => {
+  const simBase = {
+    legIds: [1, 2],
+    outcomes: ["Yes", "Yes"],
+    stake: "10",
+    probabilities: [600_000, 450_000],
+  };
+  const riskBase = {
+    ...simBase,
+    bankroll: "100",
+    riskTolerance: "moderate" as const,
+  };
+
+  it("both reject zero probability identically", () => {
+    const simResult = parseSimRequest({ ...simBase, probabilities: [0, 450_000] });
+    const riskResult = parseRiskAssessRequest({ ...riskBase, probabilities: [0, 450_000] });
+    expect(simResult.success).toBe(false);
+    expect(riskResult.success).toBe(false);
+  });
+
+  it("both reject probability > 999_999 identically", () => {
+    const simResult = parseSimRequest({ ...simBase, probabilities: [1_000_000, 450_000] });
+    const riskResult = parseRiskAssessRequest({ ...riskBase, probabilities: [1_000_000, 450_000] });
+    expect(simResult.success).toBe(false);
+    expect(riskResult.success).toBe(false);
+  });
+
+  it("both reject mismatched array lengths identically", () => {
+    const simResult = parseSimRequest({ ...simBase, probabilities: [600_000] });
+    const riskResult = parseRiskAssessRequest({ ...riskBase, probabilities: [600_000] });
+    expect(simResult.success).toBe(false);
+    expect(riskResult.success).toBe(false);
+  });
+
+  it("both reject stake below minimum identically", () => {
+    const simResult = parseSimRequest({ ...simBase, stake: "0.5" });
+    const riskResult = parseRiskAssessRequest({ ...riskBase, stake: "0.5" });
+    expect(simResult.success).toBe(false);
+    expect(riskResult.success).toBe(false);
+  });
+
+  it("both reject fewer than 2 legs identically", () => {
+    const simResult = parseSimRequest({ legIds: [1], outcomes: ["Yes"], stake: "10", probabilities: [500_000] });
+    const riskResult = parseRiskAssessRequest({ legIds: [1], outcomes: ["Yes"], stake: "10", probabilities: [500_000], bankroll: "100", riskTolerance: "moderate" });
+    expect(simResult.success).toBe(false);
+    expect(riskResult.success).toBe(false);
+  });
+
+  it("both accept valid 2-leg input", () => {
+    const simResult = parseSimRequest(simBase);
+    const riskResult = parseRiskAssessRequest(riskBase);
+    expect(simResult.success).toBe(true);
+    expect(riskResult.success).toBe(true);
+  });
+
+  it("both reject non-integer probabilities identically", () => {
+    const simResult = parseSimRequest({ ...simBase, probabilities: [600_000.5, 450_000] });
+    const riskResult = parseRiskAssessRequest({ ...riskBase, probabilities: [600_000.5, 450_000] });
+    expect(simResult.success).toBe(false);
+    expect(riskResult.success).toBe(false);
   });
 });

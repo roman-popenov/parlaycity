@@ -175,6 +175,54 @@ describe("x402 Payment Gate", () => {
     });
   });
 
+  describe("POST /premium/risk-assess without payment", () => {
+    it("returns 402 Payment Required", async () => {
+      const res = await request(app)
+        .post("/premium/risk-assess")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "10",
+          probabilities: [600_000, 450_000],
+          bankroll: "100",
+          riskTolerance: "moderate",
+        });
+      expect(res.status).toBe(402);
+      expect(res.body.protocol).toBe("x402");
+    });
+
+    it("returns 200 with valid payment header", async () => {
+      const res = await request(app)
+        .post("/premium/risk-assess")
+        .set("x-402-payment", "test-payment-proof")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "10",
+          probabilities: [600_000, 450_000],
+          bankroll: "100",
+          riskTolerance: "moderate",
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.action).toBeDefined();
+    });
+
+    it("rejects empty payment header", async () => {
+      const res = await request(app)
+        .post("/premium/risk-assess")
+        .set("x-402-payment", "")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "10",
+          probabilities: [600_000, 450_000],
+          bankroll: "100",
+          riskTolerance: "moderate",
+        });
+      expect(res.status).toBe(402);
+    });
+  });
+
   describe("Method filtering", () => {
     it("GET /premium/sim is not gated", async () => {
       const res = await request(app).get("/premium/sim");

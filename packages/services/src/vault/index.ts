@@ -7,7 +7,6 @@ const router = Router();
 const MOCK_VAULT = {
   totalAssets: 50_000_000_000n, // 50,000 USDC (6 decimals)
   totalReserved: 18_500_000_000n, // 18,500 USDC
-  totalShares: 48_000_000_000n,
   activeTickets: 42,
 };
 

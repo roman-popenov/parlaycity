@@ -183,9 +183,9 @@ export function createX402Middleware() {
         accepts: [
           {
             scheme: "exact",
-            price: X402_PRICE,
-            network: X402_NETWORK,
-            payTo: X402_RECIPIENT,
+            price: cfg.price,
+            network: cfg.network,
+            payTo: cfg.recipient,
             maxTimeoutSeconds: 120,
           },
         ],
