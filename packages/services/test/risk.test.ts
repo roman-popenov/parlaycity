@@ -645,6 +645,159 @@ describe("Schema dedup: SimRequest and RiskAssessRequest share base validation",
   });
 });
 
+// ── Direct schema-level tests (no HTTP, no x402) ─────────────────────────
+// These test parseRiskAssessRequest and parseSimRequest in isolation,
+// catching regressions faster than HTTP round-trips.
+describe("parseRiskAssessRequest direct schema tests", () => {
+  const valid = {
+    legIds: [1, 2],
+    outcomes: ["Yes", "Yes"],
+    stake: "10",
+    probabilities: [600_000, 450_000],
+    bankroll: "100",
+    riskTolerance: "moderate" as const,
+  };
+
+  it("accepts valid input", () => {
+    expect(parseRiskAssessRequest(valid).success).toBe(true);
+  });
+
+  it("rejects hex stake '0x10'", () => {
+    expect(parseRiskAssessRequest({ ...valid, stake: "0x10" }).success).toBe(false);
+  });
+
+  it("rejects octal stake '0o12'", () => {
+    expect(parseRiskAssessRequest({ ...valid, stake: "0o12" }).success).toBe(false);
+  });
+
+  it("rejects binary stake '0b1010'", () => {
+    expect(parseRiskAssessRequest({ ...valid, stake: "0b1010" }).success).toBe(false);
+  });
+
+  it("rejects hex bankroll '0x64'", () => {
+    expect(parseRiskAssessRequest({ ...valid, bankroll: "0x64" }).success).toBe(false);
+  });
+
+  it("rejects octal bankroll '0o144'", () => {
+    expect(parseRiskAssessRequest({ ...valid, bankroll: "0o144" }).success).toBe(false);
+  });
+
+  it("rejects Infinity bankroll", () => {
+    expect(parseRiskAssessRequest({ ...valid, bankroll: "Infinity" }).success).toBe(false);
+  });
+
+  it("rejects NaN bankroll", () => {
+    expect(parseRiskAssessRequest({ ...valid, bankroll: "NaN" }).success).toBe(false);
+  });
+
+  it("rejects zero bankroll", () => {
+    expect(parseRiskAssessRequest({ ...valid, bankroll: "0" }).success).toBe(false);
+  });
+
+  it("rejects negative bankroll", () => {
+    expect(parseRiskAssessRequest({ ...valid, bankroll: "-50" }).success).toBe(false);
+  });
+
+  it("rejects invalid riskTolerance", () => {
+    expect(parseRiskAssessRequest({ ...valid, riskTolerance: "yolo" }).success).toBe(false);
+  });
+
+  it("rejects categories with wrong length", () => {
+    expect(parseRiskAssessRequest({ ...valid, categories: ["NBA"] }).success).toBe(false);
+  });
+
+  it("rejects categories with XSS payload", () => {
+    expect(parseRiskAssessRequest({ ...valid, categories: ["<script>", "NBA"] }).success).toBe(false);
+  });
+
+  it("accepts categories with valid characters", () => {
+    const result = parseRiskAssessRequest({ ...valid, categories: ["NBA/West", "NFL-AFC"] });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects missing required fields", () => {
+    expect(parseRiskAssessRequest({}).success).toBe(false);
+    expect(parseRiskAssessRequest({ legIds: [1, 2] }).success).toBe(false);
+    expect(parseRiskAssessRequest({ ...valid, bankroll: undefined }).success).toBe(false);
+    expect(parseRiskAssessRequest({ ...valid, riskTolerance: undefined }).success).toBe(false);
+  });
+
+  it("accepts exactly 5 legs", () => {
+    const fiveLegs = {
+      legIds: [1, 2, 3, 4, 5],
+      outcomes: ["Yes", "Yes", "Yes", "Yes", "Yes"],
+      stake: "10",
+      probabilities: [500_000, 500_000, 500_000, 500_000, 500_000],
+      bankroll: "100",
+      riskTolerance: "aggressive" as const,
+    };
+    expect(parseRiskAssessRequest(fiveLegs).success).toBe(true);
+  });
+
+  it("rejects 6 legs", () => {
+    const sixLegs = {
+      legIds: [1, 2, 3, 4, 5, 6],
+      outcomes: ["Yes", "Yes", "Yes", "Yes", "Yes", "Yes"],
+      stake: "10",
+      probabilities: [500_000, 500_000, 500_000, 500_000, 500_000, 500_000],
+      bankroll: "100",
+      riskTolerance: "moderate" as const,
+    };
+    expect(parseRiskAssessRequest(sixLegs).success).toBe(false);
+  });
+});
+
+describe("parseSimRequest direct schema tests", () => {
+  const valid = {
+    legIds: [1, 2],
+    outcomes: ["Yes", "Yes"],
+    stake: "10",
+    probabilities: [600_000, 450_000],
+  };
+
+  it("rejects hex stake '0x10'", () => {
+    expect(parseSimRequest({ ...valid, stake: "0x10" }).success).toBe(false);
+  });
+
+  it("rejects octal stake '0o12'", () => {
+    expect(parseSimRequest({ ...valid, stake: "0o12" }).success).toBe(false);
+  });
+
+  it("rejects binary stake '0b1010'", () => {
+    expect(parseSimRequest({ ...valid, stake: "0b1010" }).success).toBe(false);
+  });
+
+  it("rejects empty string stake", () => {
+    expect(parseSimRequest({ ...valid, stake: "" }).success).toBe(false);
+  });
+
+  it("rejects negative stake", () => {
+    expect(parseSimRequest({ ...valid, stake: "-10" }).success).toBe(false);
+  });
+
+  it("accepts scientific notation stake '1e2'", () => {
+    expect(parseSimRequest({ ...valid, stake: "1e2" }).success).toBe(true);
+  });
+
+  it("rejects probability of 0", () => {
+    expect(parseSimRequest({ ...valid, probabilities: [0, 450_000] }).success).toBe(false);
+  });
+
+  it("rejects probability at PPM ceiling (1_000_000)", () => {
+    expect(parseSimRequest({ ...valid, probabilities: [1_000_000, 450_000] }).success).toBe(false);
+  });
+
+  it("accepts boundary probabilities (1 and 999_999)", () => {
+    expect(parseSimRequest({ ...valid, probabilities: [1, 999_999] }).success).toBe(true);
+  });
+
+  it("rejects when legIds/outcomes/probabilities lengths differ", () => {
+    expect(parseSimRequest({ ...valid, probabilities: [600_000] }).success).toBe(false);
+    expect(parseSimRequest({ ...valid, outcomes: ["Yes"] }).success).toBe(false);
+    expect(parseSimRequest({ ...valid, legIds: [1] }).success).toBe(false);
+  });
+});
+
 // ── Category input sanitization ──────────────────────────────────────────
 describe("Category regex sanitization", () => {
   it("rejects HTML/script injection in categories", async () => {
