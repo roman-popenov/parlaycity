@@ -65,7 +65,7 @@ export function parseOutcomeChoice(outcome: `0x${string}`): number {
 /**
  * useState that persists to sessionStorage. SSR-safe: uses defaultValue for
  * server render, restores from storage on first client effect (avoids hydration
- * mismatch). Writes are synchronous via useEffect on value change.
+ * mismatch). Writes are persisted in a post-render effect on value change.
  */
 export function useSessionState<T>(
   key: string,
@@ -100,16 +100,4 @@ export function useSessionState<T>(
   }, [key, value, hydrated, serialize]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return [value, setValue];
-}
-
-/**
- * Clears a sessionStorage key. Useful after successful actions (e.g., buy ticket)
- * to prevent restoring stale inputs on next visit.
- */
-export function clearSessionState(...keys: string[]): void {
-  try {
-    for (const key of keys) sessionStorage.removeItem(key);
-  } catch {
-    // ignore
-  }
 }

@@ -239,7 +239,10 @@ export function ParlayBuilder() {
           outcomes: selectedLegs.map((s) => (s.outcomeChoice === 1 ? "Yes" : "No")),
           stake,
           probabilities,
-          bankroll: usdcBalance !== undefined ? formatUnits(usdcBalance, 6) : "100",
+          bankroll:
+            usdcBalance !== undefined && usdcBalance > 0n
+              ? formatUnits(usdcBalance, 6)
+              : "100",
           riskTolerance: "moderate",
         }),
       });
