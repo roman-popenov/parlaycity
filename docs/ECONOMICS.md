@@ -42,9 +42,11 @@ Nothing moves. The vault unbooks the $1,521 reservation. The $100 stays in the v
 
 ```
 $80  (80%)  -> stays in vault (LP share price appreciation)
-$10  (10%)  -> AMM liquidity pools (swap fees fund SafetyModule)
-$10  (10%)  -> social good (gambling harm reduction, Gitcoin-style)
+$10  (10%)  -> AMM liquidity pools (Uniswap V3 USDC/USDS LP, swap fees fund SafetyModule)
+$10  (10%)  -> rehab lock (force-locked vUSDC for 120 days, gambler earns fees as LP)
 ```
+
+See `docs/UNISWAP_LP_STRATEGY.md` for AMM deployment details and `docs/REHAB_MODE.md` for the rehab lock mechanism.
 
 ### Step 2b: Gambler Wins (~6.4% probability)
 

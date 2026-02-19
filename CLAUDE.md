@@ -86,6 +86,8 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 - `docs/THREAT_MODEL.md` -- threat model + mitigations
 - `docs/ARCHITECTURE.md` -- system diagrams + contract architecture
 - `docs/FUTURE_IMPROVEMENTS.md` -- post-hackathon enhancements
+- `docs/UNISWAP_LP_STRATEGY.md` -- UniswapYieldAdapter design, stable-stable LP, pair selection
+- `docs/REHAB_MODE.md` -- loser-to-LP conversion, 120-day force-lock, re-lock tiers
 
 ## Gap Analysis
 
