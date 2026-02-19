@@ -12,7 +12,8 @@ function parseDecimal(val: string): number {
   return Number(val);
 }
 
-export const QuoteRequestSchema = z.object({
+// Shared base: legIds + outcomes + stake (used by Quote, Sim, RiskAssess)
+const QuoteBaseSchema = z.object({
   legIds: z
     .array(z.number().int().positive())
     .min(MIN_LEGS, `Minimum ${MIN_LEGS} legs required`)
@@ -28,7 +29,9 @@ export const QuoteRequestSchema = z.object({
     },
     { message: `Stake must be at least ${MIN_STAKE_USDC} USDC` }
   ),
-}).refine(
+});
+
+export const QuoteRequestSchema = QuoteBaseSchema.refine(
   (data) => data.legIds.length === data.outcomes.length,
   { message: "legIds and outcomes must have the same length" }
 );
@@ -46,20 +49,8 @@ export const QuoteResponseSchema = z.object({
   reason: z.string().optional(),
 });
 
-// Shared base schema for requests that include legs + probabilities
-const LegProbBaseSchema = z.object({
-  legIds: z
-    .array(z.number().int().positive())
-    .min(MIN_LEGS)
-    .max(MAX_LEGS),
-  outcomes: z.array(z.string().min(1)).min(MIN_LEGS).max(MAX_LEGS),
-  stake: z.string().refine(
-    (val) => {
-      const n = parseDecimal(val);
-      return Number.isFinite(n) && n >= MIN_STAKE_USDC;
-    },
-    { message: `Stake must be at least ${MIN_STAKE_USDC} USDC` }
-  ),
+// Extends shared base with probabilities for sim + risk-assess schemas
+const LegProbBaseSchema = QuoteBaseSchema.extend({
   probabilities: z
     .array(z.number().int().min(1).max(999_999))
     .min(MIN_LEGS)
