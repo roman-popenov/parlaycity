@@ -27,7 +27,7 @@ router.post("/risk-assess", (req, res) => {
     });
   }
 
-  const { legIds: _legIds, outcomes: _outcomes, stake, probabilities, bankroll, riskTolerance, categories } = parsed.data;
+  const { stake, probabilities, bankroll, riskTolerance, categories } = parsed.data;
   const caps = RISK_CAPS[riskTolerance];
   const warnings: string[] = [];
 
