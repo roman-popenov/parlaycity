@@ -181,9 +181,9 @@ When `/review` produces findings and code fixes are implemented:
 2. Tests must cover the specific behavior the fix introduces (e.g., guard clause returns expected response, middleware produces expected headers, size limits reject oversized payloads).
 3. Run `make gate` to verify all tests pass.
 4. Update `todos/` files: mark implemented items as `complete`, rename file (`pending` -> `complete`).
-5. Only then commit and push.
-6. **Reply to PR review comments** after pushing fixes. For each reviewer comment (Copilot, Cursor Bug Bot, humans):
-   - If fixed: reply with the commit SHA and a one-sentence explanation of the fix.
+5. **Commit and push BEFORE replying to comments.** Replies must reference the commit SHA that contains the fix. Without pushing first, there is no SHA to link.
+6. **Reply to PR review comments** after the push lands. For each reviewer comment (Copilot, Cursor Bug Bot, humans):
+   - If fixed: reply with the commit SHA (e.g., `Fixed in abc1234`) and a one-sentence explanation of the fix.
    - If deferred: reply acknowledging the issue, link to the tracking todo, and explain why it's deferred.
    - If no action needed (informational/already handled): reply briefly explaining the current state.
    - Never leave review comments unanswered.
