@@ -74,7 +74,7 @@ export const RiskAssessRequestSchema = LegProbBaseSchema.extend({
     { message: "Bankroll must be a finite positive number" }
   ),
   riskTolerance: z.enum(["conservative", "moderate", "aggressive"]),
-  categories: z.array(z.string().regex(/^[\w\s\-./]+$/, "Category must contain only alphanumeric, underscore, space, hyphen, dot, or slash")).optional(),
+  categories: z.array(z.string().regex(/^[\w \-./]+$/, "Category must contain only alphanumeric, underscore, space, hyphen, dot, or slash")).optional(),
 }).refine(legLengthsMatch, {
   message: "legIds, outcomes, and probabilities must have the same length",
 }).refine(
