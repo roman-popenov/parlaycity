@@ -90,6 +90,28 @@ describe("POST /quote", () => {
 
     expect(res.status).toBe(400);
   });
+
+  // Schema/parseUSDC alignment: these formats pass Number() but crash BigInt()
+  it("returns 400 for scientific notation stake '1e2' (not 500)", async () => {
+    const res = await request(app)
+      .post("/quote")
+      .send({ legIds: [1, 2], outcomes: ["Yes", "Yes"], stake: "1e2" });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for '+' prefixed stake '+10' (not 500)", async () => {
+    const res = await request(app)
+      .post("/quote")
+      .send({ legIds: [1, 2], outcomes: ["Yes", "Yes"], stake: "+10" });
+    expect(res.status).toBe(400);
+  });
+
+  it("returns 400 for hex stake '0x10' (not 500)", async () => {
+    const res = await request(app)
+      .post("/quote")
+      .send({ legIds: [1, 2], outcomes: ["Yes", "Yes"], stake: "0x10" });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("GET /exposure", () => {

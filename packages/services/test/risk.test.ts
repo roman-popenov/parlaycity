@@ -775,8 +775,8 @@ describe("parseSimRequest direct schema tests", () => {
     expect(parseSimRequest({ ...valid, stake: "-10" }).success).toBe(false);
   });
 
-  it("accepts scientific notation stake '1e2'", () => {
-    expect(parseSimRequest({ ...valid, stake: "1e2" }).success).toBe(true);
+  it("rejects scientific notation stake '1e2' (parseUSDC incompatible)", () => {
+    expect(parseSimRequest({ ...valid, stake: "1e2" }).success).toBe(false);
   });
 
   it("rejects probability of 0", () => {
@@ -996,9 +996,9 @@ describe("Hex/octal/binary string rejection", () => {
     expect(res.status).toBe(200);
   });
 
-  it("accepts scientific notation stake '1e2'", async () => {
+  it("rejects scientific notation stake '1e2' (parseUSDC incompatible)", async () => {
     const res = await post({ ...validBody, stake: "1e2" });
-    expect(res.status).toBe(200);
+    expect(res.status).toBe(400);
   });
 });
 

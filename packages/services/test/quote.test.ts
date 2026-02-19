@@ -466,6 +466,56 @@ describe("parseQuoteRequest", () => {
   });
 });
 
+// ── Schema/parseUSDC alignment (Copilot review 3827617507) ───────────────
+// parseDecimal accepts formats that parseUSDC can't handle (BigInt throws).
+// These must be rejected at schema level or produce 400, never 500.
+describe("parseQuoteRequest rejects parseUSDC-incompatible formats", () => {
+  it("rejects scientific notation stake '1e2'", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "1e2",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects '+' prefixed stake '+10'", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "+10",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects whitespace-padded stake ' 10 '", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: " 10 ",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts plain decimal '10'", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "10",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts decimal with fraction '10.5'", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "10.5",
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
 describe("parseSimRequest", () => {
   it("accepts valid request", () => {
     const result = parseSimRequest({

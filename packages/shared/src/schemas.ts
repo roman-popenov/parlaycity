@@ -1,14 +1,14 @@
 import { z } from "zod";
 import { MAX_LEGS, MIN_LEGS, MIN_STAKE_USDC, USDC_DECIMALS } from "./constants.js";
 
-// Reject hex (0x), octal (0o), binary (0b) prefixes.
-// Number() silently parses these but parseFloat() returns 0,
-// creating a mismatch between schema validation and handler computation.
-const NUMERIC_PREFIX_RE = /^[+-]?0[xXoObB]/;
+// Strict plain-decimal matcher: digits with optional single dot.
+// Rejects scientific notation (1e2), sign prefixes (+10), whitespace,
+// hex/octal/binary — all of which Number() accepts but parseUSDC/BigInt cannot.
+const DECIMAL_RE = /^\d+(?:\.\d*)?$/;
 
-/** Parse a decimal numeric string safely. Rejects hex/octal/binary. */
+/** Parse a strict decimal string. Only plain "123" or "12.34" accepted. */
 function parseDecimal(val: string): number {
-  if (NUMERIC_PREFIX_RE.test(val.trim())) return NaN;
+  if (!DECIMAL_RE.test(val)) return NaN;
   return Number(val);
 }
 
