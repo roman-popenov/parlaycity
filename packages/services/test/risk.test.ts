@@ -864,6 +864,22 @@ describe("Category regex sanitization", () => {
     });
     expect(res.status).toBe(400);
   });
+
+  it("rejects categories containing tabs", async () => {
+    const res = await post({
+      ...validBody,
+      categories: ["NBA\tWest", "NFL"],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects categories containing newlines", async () => {
+    const res = await post({
+      ...validBody,
+      categories: ["NBA\nWest", "NFL"],
+    });
+    expect(res.status).toBe(400);
+  });
 });
 
 // ── Empty categories array ───────────────────────────────────────────────
