@@ -264,8 +264,6 @@ export function VaultDashboard() {
             <input
               type="text"
               inputMode="decimal"
-              min="1"
-              step="1"
               value={depositAmount}
               onKeyDown={blockNonNumericKeys}
               onChange={(e) => setDepositAmountAndReset(sanitizeNumericInput(e.target.value))}
@@ -340,8 +338,6 @@ export function VaultDashboard() {
             <input
               type="text"
               inputMode="decimal"
-              min="1"
-              step="1"
               value={withdrawAmount}
               onKeyDown={blockNonNumericKeys}
               onChange={(e) => setWithdrawAmountAndReset(sanitizeNumericInput(e.target.value))}
@@ -457,8 +453,6 @@ export function VaultDashboard() {
               <input
                 type="text"
                 inputMode="decimal"
-                min="1"
-                step="1"
                 value={lockAmount}
                 onKeyDown={blockNonNumericKeys}
                 onChange={(e) => setLockAmount(sanitizeNumericInput(e.target.value))}

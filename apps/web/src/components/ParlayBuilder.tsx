@@ -229,8 +229,6 @@ export function ParlayBuilder() {
               <input
                 type="text"
                 inputMode="decimal"
-                min={effectiveMinStake}
-                step="1"
                 value={stake}
                 onKeyDown={blockNonNumericKeys}
                 onChange={(e) => { resetSuccess(); setStake(sanitizeNumericInput(e.target.value)); }}
