@@ -57,7 +57,7 @@ export function VaultDashboard() {
     abi: HOUSE_VAULT_ABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: { enabled: !!address && !!contractAddresses.houseVault, refetchInterval: 5000 },
+    query: { enabled: !!address && !!contractAddresses.houseVault, refetchInterval: 10_000 },
   });
 
   const { data: sharesValue } = useReadContract({
@@ -65,7 +65,7 @@ export function VaultDashboard() {
     abi: HOUSE_VAULT_ABI,
     functionName: "convertToAssets",
     args: userShares ? [userShares as bigint] : undefined,
-    query: { enabled: !!userShares && (userShares as bigint) > 0n, refetchInterval: 5000 },
+    query: { enabled: !!userShares && (userShares as bigint) > 0n, refetchInterval: 10_000 },
   });
 
   const userSharesBigInt = (userShares as bigint) ?? 0n;
@@ -77,7 +77,7 @@ export function VaultDashboard() {
     abi: HOUSE_VAULT_ABI,
     functionName: "convertToAssets",
     args: userTotalLocked ? [userTotalLocked] : undefined,
-    query: { enabled: !!userTotalLocked && userTotalLocked > 0n, refetchInterval: 5000 },
+    query: { enabled: !!userTotalLocked && userTotalLocked > 0n, refetchInterval: 10_000 },
   });
   const lockedValueBigInt = (lockedValue as bigint) ?? 0n;
   const totalPositionValue = userSharesValueBigInt + lockedValueBigInt;

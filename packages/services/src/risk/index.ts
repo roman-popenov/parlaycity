@@ -7,7 +7,7 @@ import {
   applyEdge,
   RiskAction,
 } from "@parlaycity/shared";
-import type { RiskProfile } from "@parlaycity/shared";
+import type { RiskProfile, RiskAssessResponse } from "@parlaycity/shared";
 
 const router = Router();
 
@@ -53,7 +53,7 @@ router.post("/risk-assess", (req, res) => {
       fairMultiplier: 0,
       netMultiplier: 0,
       edgeBps,
-    });
+    } satisfies RiskAssessResponse);
   }
 
   // Win probability as float (derived from fair multiplier for display only)
@@ -150,7 +150,7 @@ router.post("/risk-assess", (req, res) => {
     fairMultiplier: Math.round(fairMultFloat * 100) / 100,
     netMultiplier: Math.round(netMultFloat * 100) / 100,
     edgeBps,
-  });
+  } satisfies RiskAssessResponse);
 });
 
 export default router;

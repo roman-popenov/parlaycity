@@ -23,7 +23,7 @@ Next.js 14 (App Router), React 18, TypeScript, Tailwind 3. Wallet: wagmi 2, viem
 - Never hardcode contract addresses. Use env + `lib/config.ts`.
 - Keep wagmi hook patterns consistent (`isPending -> isConfirming -> isSuccess`).
 - Protocol behavior changes must be reflected in UI labels (fees, cashout, risks).
-- Polling: 5s for tickets/balances, 10s for vault stats. Stale-fetch guard via `fetchIdRef` + `inFlightRef`.
+- Polling: 5s for tickets/balances, 10s for vault stats and share values. Stale-fetch guard via `fetchIdRef` + `inFlightRef`.
 
 ## Testing
 
