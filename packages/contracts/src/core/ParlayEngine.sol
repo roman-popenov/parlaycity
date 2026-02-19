@@ -504,6 +504,8 @@ contract ParlayEngine is ERC721, Ownable, Pausable, ReentrancyGuard {
             }
         }
 
+        require(idx == wonCount, "ParlayEngine: inconsistent leg state");
+
         // Compute partial payout from won legs
         uint256 partialMultiplier = ParlayMath.computeMultiplier(wonProbs);
         uint256 effectiveStake = ticket.stake - ticket.feePaid;
