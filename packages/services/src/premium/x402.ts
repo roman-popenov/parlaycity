@@ -136,7 +136,7 @@ export const _testExports = {
 // ── Middleware factory ───────────────────────────────────────────────────
 
 /**
- * Create the x402 payment middleware for all premium endpoints (sim + risk-assess).
+ * Create the x402 payment middleware for all premium endpoints (sim, risk-assess, agent-quote).
  * Gated paths are defined in X402_GATED_PATHS.
  * In production (NODE_ENV=production): verifies real USDC payment on Base via x402 facilitator.
  * Otherwise (dev, test, staging, or X402_STUB=true): falls back to stub that accepts any non-empty header.
