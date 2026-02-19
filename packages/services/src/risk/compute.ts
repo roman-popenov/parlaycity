@@ -39,7 +39,7 @@ export function computeRiskAssessment(
   const numLegs = probabilities.length;
   const edgeBps = computeEdge(numLegs);
 
-  // computeMultiplier throws on invalid probabilities (<= 0 or >= PPM)
+  // computeMultiplier throws on invalid probabilities (<= 0 or > PPM)
   let fairMultiplierX1e6: bigint;
   try {
     fairMultiplierX1e6 = computeMultiplier(probabilities);
