@@ -223,6 +223,208 @@ describe("x402 Payment Gate", () => {
     });
   });
 
+  describe("POST /premium/sim input validation through x402", () => {
+    it("rejects Infinity stake even with valid payment", async () => {
+      const res = await request(app)
+        .post("/premium/sim")
+        .set("x-402-payment", "test-payment-proof")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "Infinity",
+          probabilities: [600_000, 450_000],
+        });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects NaN stake even with valid payment", async () => {
+      const res = await request(app)
+        .post("/premium/sim")
+        .set("x-402-payment", "test-payment-proof")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "NaN",
+          probabilities: [600_000, 450_000],
+        });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects -Infinity stake even with valid payment", async () => {
+      const res = await request(app)
+        .post("/premium/sim")
+        .set("x-402-payment", "test-payment-proof")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "-Infinity",
+          probabilities: [600_000, 450_000],
+        });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects negative stake even with valid payment", async () => {
+      const res = await request(app)
+        .post("/premium/sim")
+        .set("x-402-payment", "test-payment-proof")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "-10",
+          probabilities: [600_000, 450_000],
+        });
+      expect(res.status).toBe(400);
+    });
+  });
+
+  describe("POST /premium/sim response shape", () => {
+    it("includes all expected fields in sim response", async () => {
+      const res = await request(app)
+        .post("/premium/sim")
+        .set("x-402-payment", "test-payment-proof")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "10",
+          probabilities: [600_000, 450_000],
+        });
+      expect(res.status).toBe(200);
+      const expected = [
+        "legIds", "outcomes", "stake", "winProbability",
+        "fairMultiplier", "expectedValue", "kellyFraction",
+        "kellySuggestedStakePct", "note",
+      ];
+      for (const key of expected) {
+        expect(res.body).toHaveProperty(key);
+      }
+    });
+
+    it("no NaN or Infinity in numeric response fields", async () => {
+      const res = await request(app)
+        .post("/premium/sim")
+        .set("x-402-payment", "test-payment-proof")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "10",
+          probabilities: [600_000, 450_000],
+        });
+      expect(res.status).toBe(200);
+      expect(Number.isFinite(res.body.winProbability)).toBe(true);
+      expect(Number.isFinite(res.body.fairMultiplier)).toBe(true);
+      expect(Number.isFinite(res.body.expectedValue)).toBe(true);
+      expect(Number.isFinite(res.body.kellyFraction)).toBe(true);
+      expect(Number.isFinite(res.body.kellySuggestedStakePct)).toBe(true);
+    });
+
+    it("echoes back legIds and outcomes", async () => {
+      const res = await request(app)
+        .post("/premium/sim")
+        .set("x-402-payment", "test-payment-proof")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "No"],
+          stake: "10",
+          probabilities: [600_000, 450_000],
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.legIds).toEqual([1, 2]);
+      expect(res.body.outcomes).toEqual(["Yes", "No"]);
+      expect(res.body.stake).toBe("10");
+    });
+
+    it("extreme low probability produces finite sim results", async () => {
+      const res = await request(app)
+        .post("/premium/sim")
+        .set("x-402-payment", "test-payment-proof")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "10",
+          probabilities: [1, 1],
+        });
+      expect(res.status).toBe(200);
+      expect(Number.isFinite(res.body.winProbability)).toBe(true);
+      expect(Number.isFinite(res.body.fairMultiplier)).toBe(true);
+    });
+  });
+
+  describe("POST /premium/risk-assess path normalization", () => {
+    it("case-insensitive risk-assess path requires payment", async () => {
+      const paths = ["/premium/risk-assess", "/Premium/Risk-Assess", "/PREMIUM/RISK-ASSESS"];
+      for (const path of paths) {
+        const res = await request(app)
+          .post(path)
+          .send({
+            legIds: [1, 2],
+            outcomes: ["Yes", "Yes"],
+            stake: "10",
+            probabilities: [600_000, 450_000],
+            bankroll: "100",
+            riskTolerance: "moderate",
+          });
+        expect(res.status).toBe(402);
+      }
+    });
+
+    it("risk-assess with trailing slash requires payment", async () => {
+      const res = await request(app)
+        .post("/premium/risk-assess/")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "10",
+          probabilities: [600_000, 450_000],
+          bankroll: "100",
+          riskTolerance: "moderate",
+        });
+      expect(res.status).toBe(402);
+    });
+  });
+
+  // Schema now rejects hex/octal/binary via parseDecimal() guard.
+  // Handler also uses Number() instead of parseFloat() for defense-in-depth.
+  describe("POST /premium/sim hex/octal/binary rejection", () => {
+    it("rejects hex stake '0x10'", async () => {
+      const res = await request(app)
+        .post("/premium/sim")
+        .set("x-402-payment", "test-payment-proof")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "0x10",
+          probabilities: [600_000, 450_000],
+        });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects octal stake '0o12'", async () => {
+      const res = await request(app)
+        .post("/premium/sim")
+        .set("x-402-payment", "test-payment-proof")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "0o12",
+          probabilities: [600_000, 450_000],
+        });
+      expect(res.status).toBe(400);
+    });
+
+    it("rejects binary stake '0b1010'", async () => {
+      const res = await request(app)
+        .post("/premium/sim")
+        .set("x-402-payment", "test-payment-proof")
+        .send({
+          legIds: [1, 2],
+          outcomes: ["Yes", "Yes"],
+          stake: "0b1010",
+          probabilities: [600_000, 450_000],
+        });
+      expect(res.status).toBe(400);
+    });
+  });
+
   describe("Method filtering", () => {
     it("GET /premium/sim is not gated", async () => {
       const res = await request(app).get("/premium/sim");

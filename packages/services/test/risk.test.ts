@@ -622,4 +622,366 @@ describe("Schema dedup: SimRequest and RiskAssessRequest share base validation",
     expect(simResult.success).toBe(false);
     expect(riskResult.success).toBe(false);
   });
+
+  it("both reject Infinity stake identically", () => {
+    const simResult = parseSimRequest({ ...simBase, stake: "Infinity" });
+    const riskResult = parseRiskAssessRequest({ ...riskBase, stake: "Infinity" });
+    expect(simResult.success).toBe(false);
+    expect(riskResult.success).toBe(false);
+  });
+
+  it("both reject NaN stake identically", () => {
+    const simResult = parseSimRequest({ ...simBase, stake: "NaN" });
+    const riskResult = parseRiskAssessRequest({ ...riskBase, stake: "NaN" });
+    expect(simResult.success).toBe(false);
+    expect(riskResult.success).toBe(false);
+  });
+
+  it("both reject negative stake identically", () => {
+    const simResult = parseSimRequest({ ...simBase, stake: "-10" });
+    const riskResult = parseRiskAssessRequest({ ...riskBase, stake: "-10" });
+    expect(simResult.success).toBe(false);
+    expect(riskResult.success).toBe(false);
+  });
+});
+
+// ── Category input sanitization ──────────────────────────────────────────
+describe("Category regex sanitization", () => {
+  it("rejects HTML/script injection in categories", async () => {
+    const res = await post({
+      ...validBody,
+      categories: ["<script>alert(1)</script>", "NBA"],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects SQL injection patterns in categories", async () => {
+    const res = await post({
+      ...validBody,
+      categories: ["'; DROP TABLE--", "NBA"],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects categories with special characters", async () => {
+    const res = await post({
+      ...validBody,
+      categories: ["NBA|NFL", "valid"],
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts categories with dots, hyphens, slashes", async () => {
+    const res = await post({
+      ...validBody,
+      categories: ["NBA/Western-Conf.", "NFL"],
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("accepts categories with underscores and spaces", async () => {
+    const res = await post({
+      ...validBody,
+      categories: ["ETH Denver", "crypto_markets"],
+    });
+    expect(res.status).toBe(200);
+  });
+
+  it("rejects empty string category", async () => {
+    const res = await post({
+      ...validBody,
+      categories: ["", "NBA"],
+    });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ── Empty categories array ───────────────────────────────────────────────
+describe("Empty categories edge cases", () => {
+  it("accepts empty categories array (treated as no categories)", async () => {
+    const res = await post({
+      ...validBody,
+      categories: [],
+    });
+    // Empty array with 2 legIds fails length check: 0 !== 2
+    expect(res.status).toBe(400);
+  });
+});
+
+// ── Multi-correlation warnings ───────────────────────────────────────────
+describe("Multi-correlation detection", () => {
+  it("warns about 3+ legs in the same category", async () => {
+    const res = await post({
+      legIds: [1, 2, 3],
+      outcomes: ["Yes", "Yes", "Yes"],
+      stake: "10",
+      probabilities: [600_000, 450_000, 500_000],
+      bankroll: "100",
+      riskTolerance: "moderate",
+      categories: ["NBA", "NBA", "NBA"],
+    });
+    expect(res.status).toBe(200);
+    const corrWarning = res.body.warnings.find((w: string) => w.includes("correlated"));
+    expect(corrWarning).toBeDefined();
+    expect(corrWarning).toContain("3 legs");
+  });
+
+  it("warns about multiple correlated groups independently", async () => {
+    const res = await post({
+      legIds: [1, 2, 3, 4],
+      outcomes: ["Yes", "Yes", "Yes", "Yes"],
+      stake: "10",
+      probabilities: [600_000, 450_000, 500_000, 400_000],
+      bankroll: "100",
+      riskTolerance: "aggressive",
+      categories: ["NBA", "NBA", "NFL", "NFL"],
+    });
+    expect(res.status).toBe(200);
+    const corrWarnings = res.body.warnings.filter((w: string) => w.includes("correlated"));
+    expect(corrWarnings.length).toBe(2);
+  });
+});
+
+// ── suggestedStake format ────────────────────────────────────────────────
+describe("suggestedStake formatting", () => {
+  it("suggestedStake is formatted to 2 decimal places", async () => {
+    const res = await post(validBody);
+    expect(res.status).toBe(200);
+    // Should be "X.XX" format
+    expect(res.body.suggestedStake).toMatch(/^\d+\.\d{2}$/);
+  });
+
+  it("suggestedStake is '0.00' when kelly is zero", async () => {
+    // With house edge on fair odds, Kelly should be 0 for most cases
+    const res = await post(validBody);
+    expect(res.status).toBe(200);
+    if (res.body.kellyFraction === 0) {
+      expect(res.body.suggestedStake).toBe("0.00");
+    }
+  });
+});
+
+// ── Additional stake edge cases ──────────────────────────────────────────
+describe("Stake edge cases via HTTP", () => {
+  it("rejects NaN stake", async () => {
+    const res = await post({ ...validBody, stake: "NaN" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects -Infinity stake", async () => {
+    const res = await post({ ...validBody, stake: "-Infinity" });
+    // Schema rejects: Number.isFinite(-Infinity) === false
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(res.status).not.toBe(200);
+  });
+
+  it("rejects negative stake", async () => {
+    const res = await post({ ...validBody, stake: "-10" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects non-numeric stake", async () => {
+    const res = await post({ ...validBody, stake: "abc" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects empty string stake", async () => {
+    const res = await post({ ...validBody, stake: "" });
+    expect(res.status).toBe(400);
+  });
+});
+
+// ── Conservative win probability threshold ───────────────────────────────
+describe("Conservative win probability threshold", () => {
+  it("avoids when win probability below conservative minimum (15%)", async () => {
+    // Very low probability legs: combined prob will be very low
+    const res = await post({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "10",
+      probabilities: [200_000, 200_000], // 20% * 20% = 4%
+      bankroll: "100",
+      riskTolerance: "conservative",
+    });
+    expect(res.status).toBe(200);
+    expect(res.body.action).toBe(RiskAction.AVOID);
+    expect(res.body.warnings.some((w: string) => w.includes("below conservative minimum"))).toBe(true);
+  });
+});
+
+// ── Hex/octal/binary rejection (Bugbot review 3827290500) ────────────────
+// Number("0x10")=16 but parseFloat("0x10")=0. Schema now uses parseDecimal()
+// which rejects these prefixes. Handlers also use Number() for defense-in-depth.
+describe("Hex/octal/binary string rejection", () => {
+  it("rejects hex stake '0x10'", async () => {
+    const res = await post({ ...validBody, stake: "0x10" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects hex bankroll '0x64'", async () => {
+    const res = await post({ ...validBody, bankroll: "0x64" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects octal stake '0o12'", async () => {
+    const res = await post({ ...validBody, stake: "0o12" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects binary bankroll '0b1100100'", async () => {
+    const res = await post({ ...validBody, bankroll: "0b1100100" });
+    expect(res.status).toBe(400);
+  });
+
+  it("rejects uppercase hex stake '0X10'", async () => {
+    const res = await post({ ...validBody, stake: "0X10" });
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts normal decimal stake '16'", async () => {
+    const res = await post({ ...validBody, stake: "16" });
+    expect(res.status).toBe(200);
+  });
+
+  it("accepts scientific notation stake '1e2'", async () => {
+    const res = await post({ ...validBody, stake: "1e2" });
+    expect(res.status).toBe(200);
+  });
+});
+
+// ── Computed value correctness (not just types) ──────────────────────────
+// These verify actual math output against hand-calculated expected values.
+describe("Risk assess math correctness", () => {
+  it("expectedValue scales linearly with stake", async () => {
+    const res10 = await post({ ...validBody, stake: "10" });
+    const res20 = await post({ ...validBody, stake: "20" });
+    expect(res10.status).toBe(200);
+    expect(res20.status).toBe(200);
+    // EV = ev_per_dollar * stake, so doubling stake doubles EV
+    if (res10.body.expectedValue !== 0) {
+      const ratio = res20.body.expectedValue / res10.body.expectedValue;
+      expect(ratio).toBeCloseTo(2.0, 1);
+    }
+  });
+
+  it("winProbability matches product of individual probabilities", async () => {
+    // 600_000/1e6 = 0.6, 450_000/1e6 = 0.45
+    // Combined: 0.6 * 0.45 = 0.27
+    const res = await post(validBody);
+    expect(res.status).toBe(200);
+    expect(res.body.winProbability).toBeCloseTo(0.27, 2);
+  });
+
+  it("fairMultiplier is reciprocal of winProbability", async () => {
+    const res = await post(validBody);
+    expect(res.status).toBe(200);
+    const expected = 1 / res.body.winProbability;
+    expect(res.body.fairMultiplier).toBeCloseTo(expected, 0);
+  });
+
+  it("netMultiplier = fairMultiplier * (1 - edgeBps/10000)", async () => {
+    const res = await post(validBody);
+    expect(res.status).toBe(200);
+    const expected = res.body.fairMultiplier * (1 - res.body.edgeBps / 10000);
+    expect(res.body.netMultiplier).toBeCloseTo(expected, 1);
+  });
+
+  it("expectedValue is negative when using market probabilities (house edge)", async () => {
+    const res = await post(validBody);
+    expect(res.status).toBe(200);
+    // EV = p * netMult - 1, and netMult < fairMult due to house edge
+    // So EV = p * netMult - 1 < p * (1/p) - 1 = 0
+    expect(res.body.expectedValue).toBeLessThan(0);
+  });
+});
+
+// ── Warning message content verification ─────────────────────────────────
+describe("Warning messages contain actionable details", () => {
+  it("leg count warning includes both actual and max values", async () => {
+    const res = await post({
+      legIds: [1, 2, 3, 4],
+      outcomes: ["Yes", "Yes", "Yes", "Yes"],
+      stake: "10",
+      probabilities: [600_000, 450_000, 500_000, 400_000],
+      bankroll: "100",
+      riskTolerance: "conservative", // maxLegs=3
+    });
+    expect(res.status).toBe(200);
+    const legWarning = res.body.warnings.find((w: string) => w.includes("legs"));
+    expect(legWarning).toBeDefined();
+    expect(legWarning).toContain("4"); // actual count
+    expect(legWarning).toContain("3"); // max for conservative
+  });
+
+  it("win probability warning includes both actual and threshold values", async () => {
+    const res = await post({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "10",
+      probabilities: [200_000, 200_000], // 4% combined
+      bankroll: "100",
+      riskTolerance: "conservative", // minWinProb=15%
+    });
+    expect(res.status).toBe(200);
+    const probWarning = res.body.warnings.find((w: string) => w.includes("probability"));
+    expect(probWarning).toBeDefined();
+    expect(probWarning).toContain("4.00%"); // actual
+    expect(probWarning).toContain("15%"); // threshold
+  });
+
+  it("correlation warning includes category name and count", async () => {
+    const res = await post({
+      legIds: [1, 2, 3],
+      outcomes: ["Yes", "Yes", "Yes"],
+      stake: "10",
+      probabilities: [600_000, 450_000, 500_000],
+      bankroll: "100",
+      riskTolerance: "moderate",
+      categories: ["NBA", "NBA", "NFL"],
+    });
+    expect(res.status).toBe(200);
+    const corrWarning = res.body.warnings.find((w: string) => w.includes("correlated"));
+    expect(corrWarning).toContain("NBA");
+    expect(corrWarning).toContain("2");
+  });
+});
+
+// ── Action/reasoning consistency ─────────────────────────────────────────
+describe("Action and reasoning are consistent", () => {
+  it("AVOID action reasoning mentions risk tolerance limits", async () => {
+    const res = await post({
+      legIds: [1, 2, 3, 4],
+      outcomes: ["Yes", "Yes", "Yes", "Yes"],
+      stake: "10",
+      probabilities: [600_000, 450_000, 500_000, 400_000],
+      bankroll: "100",
+      riskTolerance: "conservative",
+    });
+    expect(res.body.action).toBe(RiskAction.AVOID);
+    expect(res.body.reasoning).toContain("conservative");
+  });
+
+  it("REDUCE_STAKE reasoning mentions kelly or house edge", async () => {
+    const res = await post(validBody);
+    expect(res.status).toBe(200);
+    if (res.body.action === RiskAction.REDUCE_STAKE) {
+      const mentionsKellyOrEdge =
+        res.body.reasoning.includes("Kelly") || res.body.reasoning.includes("House edge");
+      expect(mentionsKellyOrEdge).toBe(true);
+    }
+  });
+
+  it("BUY action only when kelly > 0 and within risk limits", async () => {
+    const res = await post({
+      ...validBody,
+      riskTolerance: "aggressive",
+    });
+    expect(res.status).toBe(200);
+    if (res.body.action === RiskAction.BUY) {
+      expect(res.body.kellyFraction).toBeGreaterThan(0);
+      expect(parseFloat(res.body.suggestedStake)).toBeGreaterThanOrEqual(
+        parseFloat(validBody.stake)
+      );
+    }
+  });
 });

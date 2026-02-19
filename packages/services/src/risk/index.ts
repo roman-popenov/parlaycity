@@ -54,7 +54,7 @@ router.post("/risk-assess", (req, res) => {
   // But if the bettor believes the true probability is higher than the market probability,
   // EV can be positive. We use the market probability here as a baseline.
   const ev = winProbability * netMultFloat - 1;
-  const stakeNum = parseFloat(stake);
+  const stakeNum = Number(stake);
   const expectedValue = Math.round(ev * stakeNum * 100) / 100;
 
   // Kelly criterion: f* = (b*p - q) / b
@@ -73,7 +73,7 @@ router.post("/risk-assess", (req, res) => {
   kellyFraction = Math.min(kellyFraction, caps.maxKelly);
 
   // Suggested stake from Kelly
-  const bankrollNum = parseFloat(bankroll);
+  const bankrollNum = Number(bankroll);
   let suggestedStake = Math.round(kellyFraction * bankrollNum * 100) / 100;
 
   // Leg count warning

@@ -1,6 +1,17 @@
 import { z } from "zod";
 import { MAX_LEGS, MIN_LEGS, MIN_STAKE_USDC, USDC_DECIMALS } from "./constants.js";
 
+// Reject hex (0x), octal (0o), binary (0b) prefixes.
+// Number() silently parses these but parseFloat() returns 0,
+// creating a mismatch between schema validation and handler computation.
+const NUMERIC_PREFIX_RE = /^[+-]?0[xXoObB]/;
+
+/** Parse a decimal numeric string safely. Rejects hex/octal/binary. */
+function parseDecimal(val: string): number {
+  if (NUMERIC_PREFIX_RE.test(val.trim())) return NaN;
+  return Number(val);
+}
+
 export const QuoteRequestSchema = z.object({
   legIds: z
     .array(z.number().int().positive())
@@ -12,7 +23,7 @@ export const QuoteRequestSchema = z.object({
     .max(MAX_LEGS),
   stake: z.string().refine(
     (val) => {
-      const n = Number(val);
+      const n = parseDecimal(val);
       return Number.isFinite(n) && n >= MIN_STAKE_USDC;
     },
     { message: `Stake must be at least ${MIN_STAKE_USDC} USDC` }
@@ -44,7 +55,7 @@ const LegProbBaseSchema = z.object({
   outcomes: z.array(z.string().min(1)).min(MIN_LEGS).max(MAX_LEGS),
   stake: z.string().refine(
     (val) => {
-      const n = Number(val);
+      const n = parseDecimal(val);
       return Number.isFinite(n) && n >= MIN_STAKE_USDC;
     },
     { message: `Stake must be at least ${MIN_STAKE_USDC} USDC` }
@@ -65,7 +76,7 @@ export const SimRequestSchema = LegProbBaseSchema.refine(legLengthsMatch, {
 export const RiskAssessRequestSchema = LegProbBaseSchema.extend({
   bankroll: z.string().refine(
     (val) => {
-      const n = Number(val);
+      const n = parseDecimal(val);
       return Number.isFinite(n) && n > 0;
     },
     { message: "Bankroll must be a finite positive number" }

@@ -201,6 +201,51 @@ describe("computeQuote edge cases", () => {
   });
 });
 
+describe("computeQuote response completeness", () => {
+  it("valid quote contains all expected fields", () => {
+    const stake = BigInt(10 * 10 ** USDC_DECIMALS);
+    const quote = computeQuote([500_000, 500_000], stake, [1, 2], ["Yes", "Yes"]);
+    expect(quote.valid).toBe(true);
+    expect(quote.legIds).toEqual([1, 2]);
+    expect(quote.outcomes).toEqual(["Yes", "Yes"]);
+    expect(quote.stake).toBeTypeOf("string");
+    expect(quote.multiplierX1e6).toBeTypeOf("string");
+    expect(quote.potentialPayout).toBeTypeOf("string");
+    expect(quote.feePaid).toBeTypeOf("string");
+    expect(quote.edgeBps).toBeTypeOf("number");
+    expect(quote.probabilities).toEqual([500_000, 500_000]);
+  });
+
+  it("invalid quote still has valid/reason fields", () => {
+    const quote = computeQuote([500_000], 10_000_000n, [1], ["Yes"]);
+    expect(quote.valid).toBe(false);
+    expect(quote.reason).toBeTypeOf("string");
+    expect(quote.reason!.length).toBeGreaterThan(0);
+  });
+
+  it("feePaid is nonzero for valid quote", () => {
+    const stake = BigInt(10 * 10 ** USDC_DECIMALS);
+    const quote = computeQuote([500_000, 500_000], stake, [1, 2], ["Yes", "Yes"]);
+    expect(BigInt(quote.feePaid)).toBeGreaterThan(0n);
+  });
+
+  it("potentialPayout > stake for valid quote with multiplier > 1", () => {
+    const stake = BigInt(10 * 10 ** USDC_DECIMALS);
+    const quote = computeQuote([500_000, 500_000], stake, [1, 2], ["Yes", "Yes"]);
+    expect(BigInt(quote.potentialPayout)).toBeGreaterThan(stake);
+  });
+
+  it("exactly 5 legs produces valid quote", () => {
+    const stake = BigInt(10 * 10 ** USDC_DECIMALS);
+    const probs = [500_000, 500_000, 500_000, 500_000, 500_000];
+    const ids = [1, 2, 3, 4, 5];
+    const outcomes = ["Yes", "Yes", "Yes", "Yes", "Yes"];
+    const quote = computeQuote(probs, stake, ids, outcomes);
+    expect(quote.valid).toBe(true);
+    expect(quote.edgeBps).toBe(BASE_FEE_BPS + 5 * PER_LEG_FEE_BPS);
+  });
+});
+
 describe("parseUSDC / formatUSDC", () => {
   it("round-trips whole numbers", () => {
     const raw = parseUSDC("100");
@@ -228,6 +273,25 @@ describe("parseUSDC / formatUSDC", () => {
   it("pads short decimals", () => {
     const raw = parseUSDC("5.1");
     expect(raw).toBe(5_100_000n);
+  });
+
+  it("handles large amounts", () => {
+    const raw = parseUSDC("1000000");
+    expect(raw).toBe(1_000_000_000_000n);
+    expect(formatUSDC(raw)).toBe("1000000");
+  });
+
+  it("handles amount with only fractional part", () => {
+    const raw = parseUSDC("0.000001");
+    expect(raw).toBe(1n);
+    expect(formatUSDC(raw)).toBe("0.000001");
+  });
+
+  it("formats trailing zeros correctly", () => {
+    const raw = parseUSDC("10.5");
+    expect(formatUSDC(raw)).toBe("10.5");
+    // Should NOT have trailing zeros like "10.500000"
+    expect(formatUSDC(raw)).not.toContain("00");
   });
 });
 
@@ -263,6 +327,143 @@ describe("parseQuoteRequest", () => {
     expect(parseQuoteRequest({}).success).toBe(false);
     expect(parseQuoteRequest({ legIds: [1, 2] }).success).toBe(false);
   });
+
+  it("rejects Infinity stake", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "Infinity",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects -Infinity stake", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "-Infinity",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects NaN stake", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "NaN",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects negative stake", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "-10",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects empty string stake", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects non-numeric stake", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "abc",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects stake below minimum (1 USDC)", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "0.5",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts exactly MAX_LEGS (5) legs", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2, 3, 4, 5],
+      outcomes: ["Yes", "Yes", "Yes", "Yes", "Yes"],
+      stake: "10",
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects MAX_LEGS + 1 (6) legs", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2, 3, 4, 5, 6],
+      outcomes: ["Yes", "Yes", "Yes", "Yes", "Yes", "Yes"],
+      stake: "10",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects whitespace-only outcomes", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", ""],
+      stake: "10",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects non-positive legIds", () => {
+    const result = parseQuoteRequest({
+      legIds: [0, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "10",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects fractional legIds", () => {
+    const result = parseQuoteRequest({
+      legIds: [1.5, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "10",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  // Number("0x10")=16 passes schema but parseFloat("0x10")=0 in handlers.
+  // Schema should reject hex/octal/binary to prevent mismatch.
+  it("rejects hex stake '0x10'", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "0x10",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects octal stake '0o12'", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "0o12",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects binary stake '0b1010'", () => {
+    const result = parseQuoteRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "0b1010",
+    });
+    expect(result.success).toBe(false);
+  });
 });
 
 describe("parseSimRequest", () => {
@@ -291,6 +492,46 @@ describe("parseSimRequest", () => {
       outcomes: ["Yes", "Yes"],
       stake: "10",
       probabilities: [500_000],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects Infinity stake", () => {
+    const result = parseSimRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "Infinity",
+      probabilities: [500_000, 500_000],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects NaN stake", () => {
+    const result = parseSimRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "NaN",
+      probabilities: [500_000, 500_000],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects probability of 0", () => {
+    const result = parseSimRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "10",
+      probabilities: [0, 500_000],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects probability at PPM boundary (1_000_000)", () => {
+    const result = parseSimRequest({
+      legIds: [1, 2],
+      outcomes: ["Yes", "Yes"],
+      stake: "10",
+      probabilities: [1_000_000, 500_000],
     });
     expect(result.success).toBe(false);
   });
