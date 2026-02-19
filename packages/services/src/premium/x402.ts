@@ -18,9 +18,10 @@ const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000";
 /** Individual gated path constants — add new paths here, then include in X402_GATED_PATHS. */
 const PREMIUM_SIM_PATH = "/premium/sim";
 const RISK_ASSESS_PATH = "/premium/risk-assess";
+const AGENT_QUOTE_PATH = "/premium/agent-quote";
 
 /** Paths that require x402 payment. Single source of truth for production + stub. */
-const X402_GATED_PATHS = [PREMIUM_SIM_PATH, RISK_ASSESS_PATH];
+const X402_GATED_PATHS = [PREMIUM_SIM_PATH, RISK_ASSESS_PATH, AGENT_QUOTE_PATH];
 
 // ── Config getters (all defined before initialization) ───────────────────
 
@@ -128,6 +129,7 @@ export const _testExports = {
   ZERO_ADDRESS,
   PREMIUM_SIM_PATH,
   RISK_ASSESS_PATH,
+  AGENT_QUOTE_PATH,
   X402_GATED_PATHS,
 };
 
@@ -191,6 +193,18 @@ export function createX402Middleware() {
           },
         ],
         description: "ParlayCity risk advisor: Kelly criterion, correlation detection, position sizing",
+      },
+      [`POST ${AGENT_QUOTE_PATH}`]: {
+        accepts: [
+          {
+            scheme: "exact",
+            price: cfg.price,
+            network: cfg.network,
+            payTo: cfg.recipient,
+            maxTimeoutSeconds: 120,
+          },
+        ],
+        description: "ParlayCity agent endpoint: combined quote + risk assessment for autonomous agents",
       },
     },
     resourceServer,

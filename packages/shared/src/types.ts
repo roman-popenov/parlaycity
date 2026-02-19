@@ -151,3 +151,16 @@ export interface RiskAssessResponse {
   netMultiplier: number;
   edgeBps: number;
 }
+
+export interface AgentQuoteRequest {
+  legIds: number[];
+  outcomes: string[];
+  stake: string;
+  bankroll: string;
+  riskTolerance: RiskProfile;
+}
+
+export interface AgentQuoteResponse {
+  quote: QuoteResponse;
+  risk: RiskAssessResponse;
+}

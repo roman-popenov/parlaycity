@@ -94,6 +94,27 @@ export function parseRiskAssessRequest(data: unknown) {
   return RiskAssessRequestSchema.safeParse(data);
 }
 
+// Agent quote: combines quote + risk in one call. Leg probabilities are resolved
+// server-side from the catalog, so agents only send legIds, outcomes, stake, bankroll,
+// and riskTolerance.
+export const AgentQuoteRequestSchema = QuoteBaseSchema.extend({
+  bankroll: z.string().refine(
+    (val) => {
+      const n = parseDecimal(val);
+      return Number.isFinite(n) && n > 0;
+    },
+    { message: "Bankroll must be a finite positive number" }
+  ),
+  riskTolerance: z.enum(["conservative", "moderate", "aggressive"]),
+}).refine(
+  (data) => data.legIds.length === data.outcomes.length,
+  { message: "legIds and outcomes must have the same length" },
+);
+
+export function parseAgentQuoteRequest(data: unknown) {
+  return AgentQuoteRequestSchema.safeParse(data);
+}
+
 // Re-export USDC parse helper
 export function parseUSDC(amount: string): bigint {
   const parts = amount.split(".");

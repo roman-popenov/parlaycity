@@ -9,6 +9,7 @@ Express on port 3001. Rate-limited.
 - `GET /exposure` -- mock hedger exposure tracking
 - `POST /premium/sim` -- x402-gated analytical simulation
 - `POST /premium/risk-assess` -- x402-gated Kelly criterion risk advisor
+- `POST /premium/agent-quote` -- x402-gated combined quote + risk for autonomous agents (resolves probabilities from catalog)
 - `GET /vault/health` -- vault health assessment (mock data, scaffold for on-chain reads)
 - `GET /vault/yield-report` -- yield optimization report (mock data)
 - `GET /health`

@@ -7,6 +7,7 @@ import quoteRouter from "./quote/index.js";
 import hedgerRouter from "./hedger/index.js";
 import premiumRouter from "./premium/index.js";
 import riskRouter from "./risk/index.js";
+import agentQuoteRouter from "./premium/agent-quote.js";
 import vaultRouter from "./vault/index.js";
 import { createX402Middleware } from "./premium/x402.js";
 
@@ -28,7 +29,7 @@ const limiter = rateLimit({
 });
 app.use(limiter);
 
-// x402 payment middleware (protects all premium endpoints: /premium/sim, /premium/risk-assess)
+// x402 payment middleware (protects all premium endpoints: /premium/sim, /premium/risk-assess, /premium/agent-quote)
 app.use(createX402Middleware());
 
 // Health check
@@ -42,6 +43,7 @@ app.use("/quote", quoteRouter);
 app.use("/exposure", hedgerRouter);
 app.use("/premium", premiumRouter);
 app.use("/premium", riskRouter);
+app.use("/premium", agentQuoteRouter);
 app.use("/vault", vaultRouter);
 
 if (process.env.NODE_ENV !== "test") {
