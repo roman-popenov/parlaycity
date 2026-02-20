@@ -57,8 +57,19 @@ make test-all          # Both
 make gate              # test-all + typecheck + build-web (CI quality gate)
 make typecheck         # tsc --noEmit (apps/web)
 make build-web         # next build
+make build-contracts   # forge build only
 make coverage          # forge coverage --report summary
+make snapshot          # forge snapshot (gas benchmarks)
+make clean             # forge clean + .next
+
+make sync-env          # re-run sync-env.sh without redeploying
+make ci                # run full CI locally via act
+make ci-contracts      # run contracts CI job via act
+make ci-services       # run services CI job via act
+make ci-web            # run web CI job via act
 ```
+
+Dev logs written to `.pids/*.log` (anvil.log, deploy.log, services.log, web.log).
 
 Single contract test: `cd packages/contracts && forge test -vvv --match-test <TestName>`
 
@@ -70,7 +81,7 @@ Per-package: `pnpm --filter web dev`, `pnpm --filter web test`, `pnpm --filter s
 
 **Frontend:** Next.js 14 pages: `/` (builder), `/vault`, `/tickets`, `/ticket/[id]`. wagmi 2 + viem 2 + ConnectKit. Polling 5s/10s with stale-fetch guards.
 
-**Services:** Express port 3001. Routes: `/markets`, `/quote`, `/exposure`, `/premium/sim` (x402-gated), `/premium/risk-assess` (x402-gated), `/vault/health`, `/vault/yield-report`, `/health`. x402 uses real verification in production, stub in dev/test.
+**Services:** Express port 3001. Routes: `/markets`, `/quote`, `/exposure`, `/premium/sim` (x402-gated), `/premium/risk-assess` (x402-gated), `/premium/agent-quote` (x402-gated, combined quote + risk for autonomous agents), `/vault/health`, `/vault/yield-report`, `/health`. x402 uses real verification in production, stub in dev/test.
 
 **Shared:** `math.ts` mirrors `ParlayMath.sol` exactly. PPM=1e6, BPS=1e4.
 
@@ -88,6 +99,8 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 - `docs/FUTURE_IMPROVEMENTS.md` -- post-hackathon enhancements
 - `docs/UNISWAP_LP_STRATEGY.md` -- UniswapYieldAdapter design, stable-stable LP, pair selection
 - `docs/REHAB_MODE.md` -- loser-to-LP conversion, 120-day force-lock, re-lock tiers
+- `docs/RUNBOOK.md` -- operational runbook (local dev, testnet deploy, incident response)
+- `docs/DEMO.md` -- demo script and hackathon judge talking points
 
 ## Gap Analysis
 
@@ -123,6 +136,7 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 
 ## PR Strategy
 
+- This repo is a fork of `roman-popenov/parlaycity`. Push branches to `origin` (stragitech), open PRs against the upstream with `gh pr create --repo roman-popenov/parlaycity`.
 - Small PRs against `main`. Main stays green.
 - Sequence: PR0 (docs/narrative) -> PR1 (FeeRouter) -> PR2 (SafetyModule) -> PR3 (cashout) -> PR4 (x402 real verification) -> PR5 (paymaster + OnchainKit) -> PR6 (crash UX + rehab) -> PR7 (stretch)
 - Every PR must pass `make gate` before merge.
@@ -189,7 +203,7 @@ When `/review` produces findings and code fixes are implemented:
 1. **Write tests for every code change** before committing. No untested fix ships.
 2. Tests must cover the specific behavior the fix introduces (e.g., guard clause returns expected response, middleware produces expected headers, size limits reject oversized payloads).
 3. Run `make gate` to verify all tests pass.
-4. Update `todos/` files: mark implemented items as `complete`, rename file (`pending` -> `complete`).
+4. Update `todos/` files: mark implemented items as `complete`, rename file (`pending` -> `complete`). Naming convention: `NNN-{pending|complete}-p{1|2|3}-short-description.md` where p1=critical, p2=important, p3=minor.
 5. **Commit and push BEFORE replying to comments.** Replies must reference the commit SHA that contains the fix. Without pushing first, there is no SHA to link.
 6. **Reply to PR review comments** after the push lands. For each reviewer comment (Copilot, Cursor Bug Bot, humans):
    - If fixed: reply with the commit SHA (e.g., `Fixed in abc1234`) and a one-sentence explanation of the fix.
