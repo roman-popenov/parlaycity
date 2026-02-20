@@ -81,7 +81,7 @@ Per-package: `pnpm --filter web dev`, `pnpm --filter web test`, `pnpm --filter s
 
 **Frontend:** Next.js 14 pages: `/` (builder), `/vault`, `/tickets`, `/ticket/[id]`. wagmi 2 + viem 2 + ConnectKit. Polling 5s/10s with stale-fetch guards.
 
-**Services:** Express port 3001. Routes: `/markets`, `/quote`, `/exposure`, `/premium/sim` (x402-gated), `/premium/risk-assess` (x402-gated), `/premium/agent-quote` (x402-gated, combined quote + risk for autonomous agents), `/vault/health`, `/vault/yield-report`, `/health`. x402 uses real verification in production, stub in dev/test.
+**Services:** Express port 3001. Routes: `/markets` (category filter via `?category=`), `/markets/categories`, `/quote`, `/exposure`, `/premium/sim` (x402-gated), `/premium/risk-assess` (x402-gated), `/premium/agent-quote` (x402-gated, combined quote + risk for autonomous agents), `/vault/health`, `/vault/yield-report`, `/health`. BDL integration for NBA markets (`BDL_API_KEY` env var). x402 uses real verification in production, stub in dev/test.
 
 **Shared:** `math.ts` mirrors `ParlayMath.sol` exactly. PPM=1e6, BPS=1e4.
 
@@ -112,8 +112,8 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 - ParlayMath: multiplier, edge, payout, progressive payout, cashout value -- supports Classic, Progressive, and EarlyCashout modes (Solidity + TypeScript mirror)
 - AdminOracleAdapter + OptimisticOracleAdapter
 - MockYieldAdapter + AaveYieldAdapter (not in default deploy)
-- Frontend: parlay builder, vault dashboard, tickets list, ticket detail, MultiplierClimb viz (animated rocket + crash), RehabCTA, RehabLocks (mock)
-- Services: catalog, quote, exposure (mock), x402-gated premium/sim + risk-assess + agent-quote (with optional 0G AI insight), vault/health, vault/yield-report
+- Frontend: parlay builder (multi-category tabs, API-driven legs, on-chain/off-chain indicators), vault dashboard, tickets list, ticket detail, MultiplierClimb viz (animated rocket + crash), RehabCTA, RehabLocks (mock)
+- Services: multi-category market catalog (7 seeded categories + BDL NBA), category filtering, unified market registry, quote, exposure (mock), x402-gated premium/sim + risk-assess + agent-quote (with optional 0G AI insight), vault/health, vault/yield-report
 - Scripts: risk-agent (autonomous agent loop with 0G inference, Kelly sizing, multi-candidate selection), demo-autopilot (leg resolution + crash simulation), demo-seed
 - Tests: unit, fuzz, invariant, integration (contracts), vitest (services + web)
 - CI: GitHub Actions (3 jobs), Makefile quality gate
@@ -137,7 +137,7 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 
 - This repo is a fork of `roman-popenov/parlaycity`. Push branches to `origin` (stragitech), open PRs against the upstream with `gh pr create --repo roman-popenov/parlaycity`.
 - Small PRs against `main`. Main stays green.
-- Merged: PR #24 (cashout math parity), PR #25 (crash UX + rehab flow + demo scripts). In review: PR #26 (0G risk agent + AI insight). Remaining: SafetyModule, loss distribution, paymaster, dynamic pricing.
+- Merged: PR #24 (cashout math parity), PR #25 (crash UX + rehab flow + demo scripts), PR #26 (0G risk agent + AI insight), PR #27 (README). In progress: multi-category markets + BDL. Remaining: Uniswap LP, SafetyModule, loss distribution, paymaster, dynamic pricing.
 - Every PR must pass `make gate` before merge.
 - Contract PRs must include tests AND a security note.
 
@@ -199,6 +199,13 @@ See `docs/solutions/` for detailed write-ups. Key patterns to avoid:
 27. **SVG stroke reveal needs Euclidean distances**: `strokeDashoffset` based on `segmentIndex / totalSegments * pathLength` assumes uniform segments. Real SVG paths have variable segment lengths. Compute cumulative `Math.sqrt(dx*dx + dy*dy)` per segment. (016)
 28. **Test hermeticity for feature toggles**: Tests that depend on the ABSENCE of an env var must `delete process.env.KEY` in `beforeAll` and restore in `afterAll`. Dev environment leaks into CI otherwise. (016)
 29. **Unused dependencies from removed features**: `pnpm install` adds to package.json but removing consuming code doesn't remove the declaration. Grep for imports before shipping any PR that deletes or replaces functionality. (016)
+30. **ID namespace collisions across data sources**: When multiple systems produce numeric IDs (contract deploy order vs. catalog sequence vs. API), ranges WILL collide. Use non-overlapping offsets (e.g., NBA legs start at 1000) or tag IDs with source. Never assume different ID spaces won't overlap. (017)
+31. **Stale object refs after async state replacement**: When `selectedItems` holds references from `allItems`, replacing `allItems` leaves `selectedItems` pointing at stale objects with outdated fields (e.g., `onChain: true` from mock data). Add a reconciliation `useEffect` keyed on the primary collection. (017)
+32. **Persisted UI state referencing unavailable options**: Session-stored category/filter values may reference options that no longer exist (API failure, feature flag off). Always validate restored values against current available options and reset to a safe default on mismatch. (017)
+33. **Cross-environment config trust**: Static config files (JSON mappings, deploy artifacts) must include and validate environment metadata (chain ID, network). Never apply a config without checking it matches the current runtime. A stale mapping from the wrong chain silently corrupts on-chain operations. (017)
+34. **Race-unsafe sequential ID derivation**: Never derive on-chain IDs from local counters (`legCount + created`). Concurrent writers invalidate the assumption. Re-read authoritative state after tx receipt or parse the creation event. (017)
+35. **Snapshot tests silently capturing error shapes**: Snapshot tests auto-pass on first run by writing whatever they receive. If the request is malformed and returns an error, the snapshot baseline becomes the error shape. Always assert `status === 200` before `toMatchSnapshot()`. (017)
+36. **Completed-event data leaking into active pipelines**: Data pipeline filters must be consistent across all paths (primary, fallback, cache). A safety-critical filter (e.g., excluding finalized games) applied only on the primary path but not the fallback creates an exploit window. Extract shared filter functions. (017)
 
 After every non-trivial bug fix, document in `docs/solutions/` with: Problem, Root Cause, Solution, Prevention (category-level).
 

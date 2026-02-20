@@ -11,14 +11,46 @@ import {
   blockNonNumericKeys,
   useSessionState,
 } from "@/lib/utils";
-import { MOCK_LEGS, type MockLeg } from "@/lib/mock";
+import { MOCK_LEGS } from "@/lib/mock";
 import { useBuyTicket, useParlayConfig, useUSDCBalance, useVaultStats } from "@/lib/hooks";
 import { MultiplierClimb } from "./MultiplierClimb";
 
 // ── Types ────────────────────────────────────────────────────────────────
 
+interface APILeg {
+  id: number;
+  question: string;
+  sourceRef: string;
+  cutoffTime: number;
+  earliestResolve: number;
+  probabilityPPM: number;
+  active: boolean;
+}
+
+interface APIMarket {
+  id: string;
+  title: string;
+  description: string;
+  legs: APILeg[];
+  category: string;
+}
+
+/** Display-ready leg combining API data with UI state. */
+interface DisplayLeg {
+  id: bigint;
+  description: string;
+  odds: number; // decimal multiplier
+  resolved: boolean;
+  outcome: number;
+  expiresAt: number;
+  category: string;
+  marketTitle: string;
+  /** Whether this leg has an on-chain counterpart (can be bought). */
+  onChain: boolean;
+}
+
 interface SelectedLeg {
-  leg: MockLeg;
+  leg: DisplayLeg;
   outcomeChoice: number; // 1 = yes, 2 = no
 }
 
@@ -37,28 +69,86 @@ interface RiskAdviceData {
   warnings: string[];
 }
 
+// ── Constants ─────────────────────────────────────────────────────────────
+
+const CATEGORY_LABELS: Record<string, string> = {
+  all: "All",
+  crypto: "Crypto",
+  defi: "DeFi",
+  nft: "NFT",
+  policy: "Policy",
+  economics: "Economics",
+  trivia: "Trivia",
+  ethdenver: "ETHDenver",
+  nba: "NBA",
+};
+
 // ── Session storage keys ─────────────────────────────────────────────────
 
 const SESSION_KEYS = {
   legs: "parlay:selectedLegs",
   stake: "parlay:stake",
   payoutMode: "parlay:payoutMode",
+  category: "parlay:category",
 } as const;
 
 // ── Pure helpers ─────────────────────────────────────────────────────────
 
-/** Yes odds from mock data. No odds = complement: yesOdds / (yesOdds - 1). Odds must be > 1. */
-function effectiveOdds(leg: MockLeg, outcome: number): number {
+/** PPM to decimal odds. */
+function ppmToOdds(ppm: number): number {
+  if (ppm <= 0) return 1;
+  return 1_000_000 / ppm;
+}
+
+/** Yes odds from display data. No odds = complement: yesOdds / (yesOdds - 1). */
+function effectiveOdds(leg: DisplayLeg, outcome: number): number {
   if (outcome === 2) {
-    if (leg.odds <= 1) return leg.odds; // guard: avoid division by zero
+    if (leg.odds <= 1) return leg.odds;
     return leg.odds / (leg.odds - 1);
   }
   return leg.odds;
 }
 
-/** Restore SelectedLeg[] from serialized form by matching against MOCK_LEGS. */
-function restoreSelections(stored: StoredSelection[]): SelectedLeg[] {
-  const legMap = new Map(MOCK_LEGS.map((l) => [l.id.toString(), l]));
+/** Transform API markets into DisplayLeg array. All API legs start as off-chain;
+ *  the live onChainLegIds set (from leg-mapping.json) determines on-chain status reactively. */
+function apiMarketsToLegs(markets: APIMarket[]): DisplayLeg[] {
+  const legs: DisplayLeg[] = [];
+  for (const market of markets) {
+    for (const leg of market.legs) {
+      legs.push({
+        id: BigInt(leg.id),
+        description: leg.question,
+        odds: ppmToOdds(leg.probabilityPPM),
+        resolved: false,
+        outcome: 0,
+        expiresAt: leg.cutoffTime,
+        category: market.category,
+        marketTitle: market.title,
+        onChain: false,
+      });
+    }
+  }
+  return legs;
+}
+
+/** Convert MOCK_LEGS to DisplayLeg format as fallback. */
+function mockToDisplayLegs(): DisplayLeg[] {
+  return MOCK_LEGS.map((leg) => ({
+    id: leg.id,
+    description: leg.description,
+    odds: leg.odds,
+    resolved: leg.resolved,
+    outcome: leg.outcome,
+    expiresAt: leg.expiresAt,
+    category: "crypto",
+    marketTitle: "Crypto Predictions",
+    onChain: true,
+  }));
+}
+
+/** Restore SelectedLeg[] from serialized form. */
+function restoreSelections(stored: StoredSelection[], allLegs: DisplayLeg[]): SelectedLeg[] {
+  const legMap = new Map(allLegs.map((l) => [l.id.toString(), l]));
   const result: SelectedLeg[] = [];
   for (const s of stored) {
     const leg = legMap.get(s.legId);
@@ -95,28 +185,128 @@ export function ParlayBuilder() {
   const { freeLiquidity, maxPayout } = useVaultStats();
   const { baseFeeBps, perLegFeeBps, maxLegs, minStakeUSDC } = useParlayConfig();
 
+  // ── Market data state ───────────────────────────────────────────────────
+  // Initialize with MOCK_LEGS as default -- tests and first render always
+  // see these immediately. API fetch upgrades to full catalog if available.
+
+  const [allLegs, setAllLegs] = useState<DisplayLeg[]>(mockToDisplayLegs);
+  const [availableCategories, setAvailableCategories] = useState<string[]>(["crypto"]);
+  const [activeCategory, setActiveCategory] = useSessionState<string>(SESSION_KEYS.category, "all");
+
+  // Dynamic on-chain leg mapping (from register-legs script output)
+  // legMapping: catalog leg ID (string) -> on-chain contract leg ID (number)
+  // onChainLegIds: set of CATALOG IDs that have on-chain mappings
+  const [legMapping, setLegMapping] = useState<Record<string, number>>({});
+  const [onChainLegIds, setOnChainLegIds] = useState<Set<bigint>>(new Set());
+
   // ── Input state (persisted to sessionStorage) ──────────────────────────
 
   const [selectedLegs, setSelectedLegs] = useState<SelectedLeg[]>([]);
   const [stake, setStake] = useSessionState<string>(SESSION_KEYS.stake, "");
   const [payoutMode, setPayoutMode] = useSessionState<0 | 1 | 2>(SESSION_KEYS.payoutMode, 0);
 
-  // Restore selectedLegs from sessionStorage on mount (needs special handling
-  // because MockLeg contains bigint which isn't JSON-serializable).
   const [mounted, setMounted] = useState(false);
+
+  // Fetch leg-mapping.json (from register-legs script) to know which catalog legs are on-chain
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await fetch("/leg-mapping.json");
+        if (!r?.ok) return;
+        const data = await r.json();
+        if (data?.legs && typeof data.legs === "object") {
+          // Validate chainId matches current app chain to prevent stale mapping
+          const expectedChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? "31337");
+          if (data.chainId && data.chainId !== expectedChainId) {
+            console.warn(`[leg-mapping] Chain mismatch: mapping=${data.chainId}, app=${expectedChainId}. Ignoring.`);
+            return;
+          }
+          setLegMapping(data.legs);
+          // Keys are catalog leg IDs; values are on-chain contract IDs
+          const catalogIds = new Set<bigint>(
+            Object.keys(data.legs as Record<string, number>).map((k) => BigInt(k)),
+          );
+          setOnChainLegIds(catalogIds);
+        }
+      } catch {
+        /* leg-mapping.json not available -- all API legs remain off-chain */
+      }
+    })();
+  }, []);
+
+  // Fetch markets from API (upgrades from MOCK_LEGS to full catalog)
   useEffect(() => {
     setMounted(true);
+    let cancelled = false;
+
+    // Parse stored selections early so we can re-restore after API legs load
+    let storedSelections: StoredSelection[] | null = null;
     try {
       const raw = sessionStorage.getItem(SESSION_KEYS.legs);
       if (raw) {
-        const stored: StoredSelection[] = JSON.parse(raw);
-        const restored = restoreSelections(stored);
+        storedSelections = JSON.parse(raw);
+        // Immediate restore against MOCK_LEGS (IDs 0, 1, 2)
+        const restored = restoreSelections(storedSelections!, mockToDisplayLegs());
         if (restored.length > 0) setSelectedLegs(restored);
       }
     } catch {
       // parse error or sessionStorage unavailable
     }
+
+    async function fetchMarkets() {
+      try {
+        const res = await fetch(`${SERVICES_API_URL}/markets`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const markets: APIMarket[] = await res.json();
+        if (cancelled || !Array.isArray(markets)) return;
+
+        const legs = apiMarketsToLegs(markets);
+        if (legs.length > 0) {
+          setAllLegs(legs);
+          const cats = [...new Set(markets.map((m) => m.category))].sort();
+          setAvailableCategories(cats);
+
+          // Re-restore selections against full catalog to recover picks from new categories
+          if (storedSelections && storedSelections.length > 0) {
+            const restored = restoreSelections(storedSelections, legs);
+            if (restored.length > 0) setSelectedLegs(restored);
+          }
+        }
+      } catch {
+        // Keep initial MOCK_LEGS data -- no change needed
+      }
+    }
+
+    fetchMarkets();
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Reconcile selectedLegs when allLegs changes (e.g., API fetch replaces mock data)
+  // so stale mock leg references (with wrong onChain flag) are replaced with current objects.
+  useEffect(() => {
+    setSelectedLegs((prev) => {
+      if (prev.length === 0) return prev;
+      const legMap = new Map(allLegs.map((l) => [l.id.toString(), l]));
+      let changed = false;
+      const reconciled: SelectedLeg[] = [];
+      for (const s of prev) {
+        const freshLeg = legMap.get(s.leg.id.toString());
+        if (freshLeg) {
+          if (freshLeg !== s.leg) {
+            reconciled.push({ ...s, leg: freshLeg });
+            changed = true;
+          } else {
+            reconciled.push(s);
+          }
+        } else {
+          changed = true; // leg no longer in catalog, drop it
+        }
+      }
+      return changed ? reconciled : prev;
+    });
+  }, [allLegs]);
 
   // Persist selectedLegs to sessionStorage on change
   useEffect(() => {
@@ -155,6 +345,34 @@ export function ParlayBuilder() {
   const effectiveBaseFee = baseFeeBps ?? PARLAY_CONFIG.baseFee;
   const effectivePerLegFee = perLegFeeBps ?? PARLAY_CONFIG.perLegFee;
 
+  /** Legs filtered by active category. */
+  const filteredLegs = useMemo(() => {
+    if (activeCategory === "all") return allLegs;
+    return allLegs.filter((l) => l.category === activeCategory);
+  }, [allLegs, activeCategory]);
+
+  // Reset activeCategory if persisted value no longer matches any legs
+  useEffect(() => {
+    if (
+      activeCategory !== "all" &&
+      allLegs.length > 0 &&
+      filteredLegs.length === 0
+    ) {
+      setActiveCategory("all");
+    }
+  }, [activeCategory, allLegs.length, filteredLegs.length, setActiveCategory]);
+
+  /** Group filtered legs by market title for display. */
+  const groupedByMarket = useMemo(() => {
+    const groups = new Map<string, DisplayLeg[]>();
+    for (const leg of filteredLegs) {
+      const existing = groups.get(leg.marketTitle) ?? [];
+      existing.push(leg);
+      groups.set(leg.marketTitle, existing);
+    }
+    return groups;
+  }, [filteredLegs]);
+
   const multiplier = useMemo(() => {
     return selectedLegs.reduce((acc, s) => acc * effectiveOdds(s.leg, s.outcomeChoice), 1);
   }, [selectedLegs]);
@@ -170,9 +388,16 @@ export function ParlayBuilder() {
   const usdcBalanceNum = usdcBalance !== undefined ? parseFloat(formatUnits(usdcBalance, 6)) : 0;
   const insufficientBalance = stakeNum > 0 && usdcBalance !== undefined && stakeNum > usdcBalanceNum;
 
+  /** All selected legs must be on-chain to enable buying.
+   *  MOCK_LEGS have onChain=true (Deploy.s.sol). API legs use live onChainLegIds (from leg-mapping). */
+  const allSelectedOnChain = selectedLegs.every(
+    (s) => s.leg.onChain || onChainLegIds.has(s.leg.id),
+  );
+
   const canBuy =
     mounted &&
     isConnected &&
+    allSelectedOnChain &&
     selectedLegs.length >= PARLAY_CONFIG.minLegs &&
     selectedLegs.length <= effectiveMaxLegs &&
     stakeNum >= effectiveMinStake &&
@@ -185,7 +410,7 @@ export function ParlayBuilder() {
   // ── Handlers ───────────────────────────────────────────────────────────
 
   const toggleLeg = useCallback(
-    (leg: MockLeg, outcome: number) => {
+    (leg: DisplayLeg, outcome: number) => {
       resetSuccess();
       setSelectedLegs((prev) => {
         const existing = prev.findIndex((s) => s.leg.id === leg.id);
@@ -206,7 +431,15 @@ export function ParlayBuilder() {
 
   const handleBuy = async () => {
     if (!canBuy) return;
-    const legIds = selectedLegs.map((s) => s.leg.id);
+    // Translate catalog leg IDs to on-chain IDs via leg mapping.
+    // Mock/Deploy.s.sol legs (onChain=true) already have correct IDs — skip mapping
+    // to avoid collision with catalog IDs that share the same numeric range.
+    const legIds = selectedLegs.map((s) => {
+      if (s.leg.onChain) return s.leg.id;
+      const catalogId = s.leg.id.toString();
+      if (Object.hasOwn(legMapping, catalogId)) return BigInt(legMapping[catalogId]);
+      return s.leg.id;
+    });
     const outcomes = selectedLegs.map((s) => s.outcomeChoice);
     const success = await buyTicket(legIds, outcomes, stakeNum, payoutMode);
     if (success) {
@@ -214,8 +447,6 @@ export function ParlayBuilder() {
       setStake("");
       setPayoutMode(0);
       setRiskAdvice(null);
-      // No clearSessionState needed: the setters above reset to defaults,
-      // which the persist effects write to sessionStorage automatically.
     }
   };
 
@@ -232,8 +463,6 @@ export function ParlayBuilder() {
         return Math.min(999_999, Math.max(1, scaled));
       });
 
-      // x402 payment header is a proof-of-payment receipt, not a secret.
-      // The protocol is designed for client-side usage.
       const res = await fetch(`${SERVICES_API_URL}/premium/risk-assess`, {
         method: "POST",
         headers: {
@@ -253,7 +482,6 @@ export function ParlayBuilder() {
         }),
       });
 
-      // Stale check: if inputs changed while fetch was in-flight, discard result
       if (localFetchId !== riskFetchIdRef.current) return;
 
       if (!res.ok) {
@@ -298,6 +526,7 @@ export function ParlayBuilder() {
     if (isSuccess) return "Ticket Bought!";
     if (vaultEmpty) return "No Vault Liquidity";
     if (selectedLegs.length < PARLAY_CONFIG.minLegs) return `Select at least ${PARLAY_CONFIG.minLegs} legs`;
+    if (!allSelectedOnChain) return "Some legs not yet on-chain";
     if (insufficientBalance) return "Insufficient USDC Balance";
     if (exceedsMaxPayout) return `Max Payout $${maxPayoutNum.toFixed(0)}`;
     if (insufficientLiquidity) return "Insufficient Vault Liquidity";
@@ -306,8 +535,6 @@ export function ParlayBuilder() {
 
   // ── Render ─────────────────────────────────────────────────────────────
 
-  // SSR guard: render invisible (preserves layout) until client hydration.
-  // No transition class = instant switch, no flicker.
   return (
     <div className={`grid gap-8 lg:grid-cols-5 ${mounted ? "" : "pointer-events-none opacity-0"}`}>
       {/* Leg selector */}
@@ -317,56 +544,112 @@ export function ParlayBuilder() {
             No liquidity in the vault. Deposit USDC in the Vault tab to enable betting.
           </div>
         )}
+
+        {/* Category filter pills */}
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => setActiveCategory("all")}
+            className={`rounded-full px-3 py-1 text-xs font-semibold transition-all ${
+              activeCategory === "all"
+                ? "bg-accent-blue/20 text-accent-blue ring-1 ring-accent-blue/30"
+                : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200"
+            }`}
+          >
+            All
+          </button>
+          {availableCategories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setActiveCategory(cat)}
+              className={`rounded-full px-3 py-1 text-xs font-semibold transition-all ${
+                activeCategory === cat
+                  ? "bg-accent-blue/20 text-accent-blue ring-1 ring-accent-blue/30"
+                  : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200"
+              }`}
+            >
+              {CATEGORY_LABELS[cat] ?? cat}
+              {cat === "nba" && <span className="ml-1 text-[10px] opacity-60">LIVE</span>}
+            </button>
+          ))}
+        </div>
+
         <h2 className="text-lg font-semibold text-gray-300">
           Pick Your Legs{" "}
           <span className="text-sm text-gray-500">
             ({selectedLegs.length}/{effectiveMaxLegs})
           </span>
         </h2>
-        <div className={`grid gap-3 sm:grid-cols-2 ${vaultEmpty ? "pointer-events-none opacity-40" : ""}`}>
-          {MOCK_LEGS.map((leg) => {
-            const selected = selectedLegs.find((s) => s.leg.id === leg.id);
-            return (
-              <div
-                key={leg.id.toString()}
-                className={`group rounded-xl border p-4 transition-all duration-200 ${
-                  selected
-                    ? "border-accent-blue/50 bg-accent-blue/5"
-                    : "border-white/5 bg-gray-900/50 hover:border-white/10"
-                }`}
-              >
-                <p className="mb-3 text-sm font-medium text-gray-200">
-                  {leg.description}
-                </p>
-                <div className="flex items-center gap-2">
-                  <button
-                    disabled={vaultEmpty}
-                    onClick={() => toggleLeg(leg, 1)}
-                    className={`flex flex-1 items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
-                      selected?.outcomeChoice === 1
-                        ? "bg-neon-green/20 text-neon-green ring-1 ring-neon-green/30"
-                        : "bg-neon-green/5 text-neon-green/60 hover:bg-neon-green/10 hover:text-neon-green"
-                    }`}
-                  >
-                    <span>Yes</span>
-                    <span className="ml-1 tabular-nums opacity-70">{effectiveOdds(leg, 1).toFixed(2)}x</span>
-                  </button>
-                  <button
-                    disabled={vaultEmpty}
-                    onClick={() => toggleLeg(leg, 2)}
-                    className={`flex flex-1 items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
-                      selected?.outcomeChoice === 2
-                        ? "bg-neon-red/20 text-neon-red ring-1 ring-neon-red/30"
-                        : "bg-neon-red/5 text-neon-red/60 hover:bg-neon-red/10 hover:text-neon-red"
-                    }`}
-                  >
-                    <span>No</span>
-                    <span className="ml-1 tabular-nums opacity-70">{effectiveOdds(leg, 2).toFixed(2)}x</span>
-                  </button>
-                </div>
+
+        <div className={`space-y-4 ${vaultEmpty ? "pointer-events-none opacity-40" : ""}`}>
+          {[...groupedByMarket.entries()].map(([title, legs]) => (
+            <div key={title}>
+              <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wider text-gray-500">
+                {title}
+                {legs[0] && !legs[0].onChain && !onChainLegIds.has(legs[0].id) && (
+                  <span className="ml-2 rounded bg-yellow-500/10 px-1.5 py-0.5 text-[10px] text-yellow-400">
+                    Analysis Only
+                  </span>
+                )}
+              </h3>
+              <div className="space-y-1">
+                {legs.map((leg) => {
+                  const selected = selectedLegs.find((s) => s.leg.id === leg.id);
+                  const currentOdds = selected
+                    ? effectiveOdds(leg, selected.outcomeChoice)
+                    : effectiveOdds(leg, 1);
+                  return (
+                    <div
+                      key={leg.id.toString()}
+                      className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 transition-all ${
+                        selected
+                          ? "border-accent-blue/50 bg-accent-blue/5"
+                          : "border-white/5 bg-gray-900/50 hover:border-white/10"
+                      }`}
+                    >
+                      <span className="min-w-0 flex-1 truncate text-sm text-gray-200">
+                        {leg.description}
+                        {!leg.onChain && !onChainLegIds.has(leg.id) && (
+                          <span className="ml-1 text-[10px] text-gray-500">(off-chain)</span>
+                        )}
+                      </span>
+                      <span className={`flex-shrink-0 tabular-nums text-xs font-semibold ${
+                        selected?.outcomeChoice === 1 ? "text-neon-green" :
+                        selected?.outcomeChoice === 2 ? "text-neon-red" :
+                        "text-gray-500"
+                      }`}>
+                        {currentOdds.toFixed(2)}x
+                      </span>
+                      {/* Dual-pill toggle */}
+                      <div className="flex flex-shrink-0 items-center rounded-full bg-white/5 p-0.5">
+                        <button
+                          disabled={vaultEmpty}
+                          onClick={() => toggleLeg(leg, 1)}
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-all ${
+                            selected?.outcomeChoice === 1
+                              ? "bg-neon-green/20 text-neon-green"
+                              : "text-gray-500 hover:text-gray-300"
+                          }`}
+                        >
+                          Yes
+                        </button>
+                        <button
+                          disabled={vaultEmpty}
+                          onClick={() => toggleLeg(leg, 2)}
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-all ${
+                            selected?.outcomeChoice === 2
+                              ? "bg-neon-red/20 text-neon-red"
+                              : "text-gray-500 hover:text-gray-300"
+                          }`}
+                        >
+                          No
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </div>
 
@@ -539,6 +822,13 @@ export function ParlayBuilder() {
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Off-chain warning */}
+          {selectedLegs.length > 0 && !allSelectedOnChain && (
+            <div className="rounded-lg border border-yellow-500/20 bg-yellow-500/5 px-3 py-2 text-xs text-yellow-400">
+              Some selected legs are off-chain (analysis only). Remove them to buy a ticket, or use AI Risk Analysis to evaluate the parlay.
             </div>
           )}
 

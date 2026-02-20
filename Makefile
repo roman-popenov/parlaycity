@@ -55,6 +55,9 @@ dev:
 	@cd packages/contracts && forge script script/Deploy.s.sol --broadcast --rpc-url http://127.0.0.1:8545 > ../../$(PID_DIR)/deploy.log 2>&1
 	@./scripts/sync-env.sh
 	@echo "  Contracts deployed, .env.local synced"
+	@# Register catalog legs on-chain
+	@cd packages/services && pnpm exec tsx ../../scripts/register-legs.ts > ../../$(PID_DIR)/register-legs.log 2>&1 || echo "  (register-legs skipped, see .pids/register-legs.log)"
+	@echo "  Catalog legs registered on-chain"
 	@# Start services
 	@cd packages/services && nohup pnpm dev > ../../$(PID_DIR)/services.log 2>&1 & echo $$! > $(PID_DIR)/services.pid
 	@echo "  Services started (pid $$(cat $(PID_DIR)/services.pid)) on :3001"
@@ -109,7 +112,13 @@ test-contracts:
 test-services:
 	cd packages/services && pnpm test
 
-test-all: test-contracts test-services
+test-web:
+	cd apps/web && pnpm test
+
+test-all: test-contracts test-services test-web
+
+test-e2e:
+	cd packages/e2e && pnpm test
 
 # -- Quality Gate --
 gate: test-all typecheck build-web
@@ -123,8 +132,16 @@ build-web:
 build-contracts:
 	cd packages/contracts && forge build
 
-coverage:
+coverage-contracts:
 	cd packages/contracts && forge coverage --report summary
+
+coverage-services:
+	cd packages/services && npx vitest run --coverage
+
+coverage-web:
+	cd apps/web && npx vitest run --coverage
+
+coverage: coverage-contracts coverage-services coverage-web
 
 snapshot:
 	cd packages/contracts && forge snapshot
@@ -155,6 +172,10 @@ demo-autopilot-crash:
 	@echo "Crashing last leg of every ticket (CRASH_ODDS=100)"
 	CRASH_ODDS=100 pnpm --filter services exec tsx ../../scripts/demo-autopilot.ts
 
+# -- Leg Registration --
+register-legs:
+	pnpm --filter services exec tsx ../../scripts/register-legs.ts
+
 # -- Agents --
 risk-agent:
 	pnpm --filter services exec tsx ../../scripts/risk-agent.ts
@@ -167,4 +188,4 @@ clean:
 	cd packages/contracts && forge clean
 	cd apps/web && rm -rf .next
 
-.PHONY: bootstrap setup chain deploy-local deploy-sepolia sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-all gate typecheck build-web build-contracts coverage snapshot ci ci-contracts ci-services ci-web demo-seed demo-autopilot demo-autopilot-crash clean risk-agent risk-agent-dry
+.PHONY: bootstrap setup chain deploy-local deploy-sepolia sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-web test-all test-e2e gate typecheck build-web build-contracts coverage coverage-contracts coverage-services coverage-web snapshot ci ci-contracts ci-services ci-web demo-seed demo-autopilot demo-autopilot-crash register-legs clean risk-agent risk-agent-dry

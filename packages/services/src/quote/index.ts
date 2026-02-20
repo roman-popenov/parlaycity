@@ -4,23 +4,12 @@ import {
   parseUSDC,
   computeQuote,
 } from "@parlaycity/shared";
-import { SEED_MARKETS } from "../catalog/seed.js";
+import { getFullLegMap } from "../catalog/registry.js";
 
 const router = Router();
 
-// Build a lookup from legId -> leg for quick access
-function getLegMap() {
-  const map = new Map<number, { probabilityPPM: number; active: boolean }>();
-  for (const market of SEED_MARKETS) {
-    for (const leg of market.legs) {
-      map.set(leg.id, { probabilityPPM: leg.probabilityPPM, active: leg.active });
-    }
-  }
-  return map;
-}
-
 /** POST /quote - compute a parlay quote */
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   const parsed = parseQuoteRequest(req.body);
   if (!parsed.success) {
     return res.status(400).json({
@@ -30,7 +19,7 @@ router.post("/", (req, res) => {
   }
 
   const { legIds, outcomes, stake } = parsed.data;
-  const legMap = getLegMap();
+  const legMap = await getFullLegMap();
 
   // Validate all legs exist and are active
   const probabilities: number[] = [];

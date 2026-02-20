@@ -1,0 +1,225 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Shape snapshots > GET /exposure 1`] = `
+{
+  "byLeg": {},
+  "hedgeActions": "empty-array",
+  "ticketCount": "number",
+  "totalExposure": "string",
+}
+`;
+
+exports[`Shape snapshots > GET /health 1`] = `
+{
+  "status": "string",
+  "timestamp": "number",
+}
+`;
+
+exports[`Shape snapshots > GET /markets (first item) 1`] = `
+{
+  "category": "string",
+  "description": "string",
+  "id": "string",
+  "legs": [
+    {
+      "active": "boolean",
+      "cutoffTime": "number",
+      "earliestResolve": "number",
+      "id": "number",
+      "probabilityPPM": "number",
+      "question": "string",
+      "sourceRef": "string",
+    },
+  ],
+  "title": "string",
+}
+`;
+
+exports[`Shape snapshots > GET /markets/categories 1`] = `
+{
+  "available": [
+    "string",
+  ],
+  "categories": [
+    {
+      "category": "string",
+      "legCount": "number",
+      "marketCount": "number",
+      "source": "string",
+    },
+  ],
+}
+`;
+
+exports[`Shape snapshots > GET /markets/ethdenver-2026 1`] = `
+{
+  "category": "string",
+  "description": "string",
+  "id": "string",
+  "legs": [
+    {
+      "active": "boolean",
+      "cutoffTime": "number",
+      "earliestResolve": "number",
+      "id": "number",
+      "probabilityPPM": "number",
+      "question": "string",
+      "sourceRef": "string",
+    },
+  ],
+  "title": "string",
+}
+`;
+
+exports[`Shape snapshots > GET /vault/health 1`] = `
+{
+  "activeTickets": "number",
+  "concentrationRisk": [
+    {
+      "category": "string",
+      "exposure": "string",
+      "legId": "number",
+      "pctOfTVL": "number",
+      "ticketCount": "number",
+      "warning": "string",
+    },
+  ],
+  "freeLiquidity": "string",
+  "recommendations": [
+    "string",
+  ],
+  "settlementCluster": {
+    "liquiditySufficient": "boolean",
+    "next24h": "number",
+    "totalExposure": "string",
+  },
+  "timestamp": "number",
+  "totalAssets": "string",
+  "totalReserved": "string",
+  "utilization": "number",
+  "utilizationBps": "number",
+  "vaultHealth": "string",
+}
+`;
+
+exports[`Shape snapshots > GET /vault/yield-report 1`] = `
+{
+  "currentStrategy": {
+    "apy": "number",
+    "deployed": "string",
+    "idle": "string",
+    "protocol": "string",
+  },
+  "protocols": [
+    {
+      "apy": "number",
+      "name": "string",
+      "protocol": "string",
+      "riskScore": "string",
+      "tvl": "string",
+    },
+  ],
+  "recommendation": {
+    "action": "string",
+    "projectedAnnualImprovement": "number",
+    "reasoning": "string",
+    "targetApy": "number",
+    "targetProtocol": "string",
+  },
+  "timestamp": "number",
+}
+`;
+
+exports[`Shape snapshots > POST /premium/agent-quote (paid) 1`] = `
+{
+  "quote": {
+    "edgeBps": "number",
+    "feePaid": "string",
+    "legIds": [
+      "number",
+    ],
+    "multiplierX1e6": "string",
+    "outcomes": [
+      "string",
+    ],
+    "potentialPayout": "string",
+    "probabilities": [
+      "number",
+    ],
+    "stake": "string",
+    "valid": "boolean",
+  },
+  "risk": {
+    "action": "string",
+    "confidence": "number",
+    "edgeBps": "number",
+    "expectedValue": "number",
+    "fairMultiplier": "number",
+    "kellyFraction": "number",
+    "netMultiplier": "number",
+    "reasoning": "string",
+    "riskTolerance": "string",
+    "suggestedStake": "string",
+    "warnings": [
+      "string",
+    ],
+    "winProbability": "number",
+  },
+}
+`;
+
+exports[`Shape snapshots > POST /premium/risk-assess (paid) 1`] = `
+{
+  "action": "string",
+  "confidence": "number",
+  "edgeBps": "number",
+  "expectedValue": "number",
+  "fairMultiplier": "number",
+  "kellyFraction": "number",
+  "netMultiplier": "number",
+  "reasoning": "string",
+  "riskTolerance": "string",
+  "suggestedStake": "string",
+  "warnings": "empty-array",
+  "winProbability": "number",
+}
+`;
+
+exports[`Shape snapshots > POST /premium/sim (paid) 1`] = `
+{
+  "expectedValue": "number",
+  "fairMultiplier": "number",
+  "kellyFraction": "number",
+  "kellySuggestedStakePct": "number",
+  "legIds": [
+    "number",
+  ],
+  "note": "string",
+  "outcomes": [
+    "string",
+  ],
+  "stake": "string",
+  "winProbability": "number",
+}
+`;
+
+exports[`Shape snapshots > POST /quote (valid) 1`] = `
+{
+  "edgeBps": "number",
+  "feePaid": "string",
+  "legIds": [
+    "number",
+  ],
+  "multiplierX1e6": "string",
+  "outcomes": [
+    "string",
+  ],
+  "potentialPayout": "string",
+  "probabilities": [
+    "number",
+  ],
+  "stake": "string",
+  "valid": "boolean",
+}
+`;

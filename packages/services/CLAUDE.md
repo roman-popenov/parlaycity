@@ -4,7 +4,8 @@
 
 Express on port 3001. Rate-limited.
 
-- `GET /markets` -- seed market catalog
+- `GET /markets` -- multi-category market catalog (seed + BDL NBA), supports `?category=` filter
+- `GET /markets/categories` -- available categories with market/leg counts
 - `POST /quote` -- off-chain parlay quote (must match on-chain execution)
 - `GET /exposure` -- mock hedger exposure tracking
 - `POST /premium/sim` -- x402-gated analytical simulation
