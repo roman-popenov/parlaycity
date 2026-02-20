@@ -34,6 +34,7 @@ apps/web/              Next.js 14 (App Router), React 18, TypeScript, Tailwind 3
 packages/contracts/    Foundry, Solidity 0.8.24, OpenZeppelin 5.x
 packages/services/     Express.js API, Zod validation
 packages/shared/       Shared math, types, schemas (consumed by services + web)
+packages/e2e/          E2E integration tests (Anvil-backed, vitest)
 ```
 
 ## Commands
@@ -54,6 +55,7 @@ make test-contracts    # forge test -vvv
 make test-services     # vitest run (packages/services)
 make test-all          # Both
 
+make test-e2e          # E2E integration tests (requires running Anvil + deploy)
 make gate              # test-all + typecheck + build-web (CI quality gate)
 make typecheck         # tsc --noEmit (apps/web)
 make build-web         # next build
@@ -62,6 +64,7 @@ make coverage          # forge coverage --report summary
 make snapshot          # forge snapshot (gas benchmarks)
 make clean             # forge clean + .next
 
+make register-legs     # Register seed legs on-chain from catalog (requires Anvil + deploy)
 make sync-env          # re-run sync-env.sh without redeploying
 make ci                # run full CI locally via act
 make ci-contracts      # run contracts CI job via act
@@ -81,7 +84,7 @@ Per-package: `pnpm --filter web dev`, `pnpm --filter web test`, `pnpm --filter s
 
 **Frontend:** Next.js 14 pages: `/` (builder), `/vault`, `/tickets`, `/ticket/[id]`. wagmi 2 + viem 2 + ConnectKit. Polling 5s/10s with stale-fetch guards.
 
-**Services:** Express port 3001. Routes: `/markets` (category filter via `?category=`), `/markets/categories`, `/quote`, `/exposure`, `/premium/sim` (x402-gated), `/premium/risk-assess` (x402-gated), `/premium/agent-quote` (x402-gated, combined quote + risk for autonomous agents), `/vault/health`, `/vault/yield-report`, `/health`. BDL integration for NBA markets (`BDL_API_KEY` env var). x402 uses real verification in production, stub in dev/test.
+**Services:** Express port 3001. Routes: `/markets` (category filter via `?category=`), `/markets/categories`, `/quote` (resolves legs from full catalog including NBA), `/exposure`, `/premium/sim` (x402-gated), `/premium/risk-assess` (x402-gated), `/premium/agent-quote` (x402-gated, combined quote + risk for autonomous agents), `/vault/health`, `/vault/yield-report`, `/health`. Catalog subsystem: `registry.ts` (unified leg map merging seed + BDL), `seed.ts` (7 hardcoded categories), `bdl.ts` (live NBA markets via BallDontLie API, 5-min cache, `BDL_API_KEY` env var). x402 uses real verification in production, stub in dev/test.
 
 **Shared:** `math.ts` mirrors `ParlayMath.sol` exactly. PPM=1e6, BPS=1e4.
 
@@ -114,9 +117,9 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 - MockYieldAdapter + AaveYieldAdapter (not in default deploy)
 - Frontend: parlay builder (multi-category tabs, API-driven legs, on-chain/off-chain indicators), vault dashboard, tickets list, ticket detail, MultiplierClimb viz (animated rocket + crash), RehabCTA, RehabLocks (mock)
 - Services: multi-category market catalog (7 seeded categories + BDL NBA), category filtering, unified market registry, quote, exposure (mock), x402-gated premium/sim + risk-assess + agent-quote (with optional 0G AI insight), vault/health, vault/yield-report
-- Scripts: risk-agent (autonomous agent loop with 0G inference, Kelly sizing, multi-candidate selection), demo-autopilot (leg resolution + crash simulation), demo-seed
-- Tests: unit, fuzz, invariant, integration (contracts), vitest (services + web)
-- CI: GitHub Actions (3 jobs), Makefile quality gate
+- Scripts: risk-agent (autonomous agent loop with 0G inference, Kelly sizing, multi-candidate selection), demo-autopilot (leg resolution + crash simulation), demo-seed, register-legs (on-chain leg registration from catalog with race-safe ID derivation)
+- Tests: unit, fuzz, invariant, integration (contracts), vitest (services + web), E2E integration (Anvil-backed, 20 tests across 5 suites: deploy, registration, API consistency, lifecycle, vault flow)
+- CI: GitHub Actions (3 jobs), Makefile quality gate, coverage thresholds enforced
 - Deploy script + sync-env
 
 ### NEEDS BUILDING
@@ -137,7 +140,7 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 
 - This repo is a fork of `roman-popenov/parlaycity`. Push branches to `origin` (stragitech), open PRs against the upstream with `gh pr create --repo roman-popenov/parlaycity`.
 - Small PRs against `main`. Main stays green.
-- Merged: PR #24 (cashout math parity), PR #25 (crash UX + rehab flow + demo scripts), PR #26 (0G risk agent + AI insight), PR #27 (README). In progress: multi-category markets + BDL. Remaining: Uniswap LP, SafetyModule, loss distribution, paymaster, dynamic pricing.
+- Merged: PR #24 (cashout math parity), PR #25 (crash UX + rehab flow + demo scripts), PR #26 (0G risk agent + AI insight), PR #27 (README), PR #28 (multi-category markets + BDL NBA integration + E2E tests + register-legs script). Remaining: Uniswap LP, SafetyModule, loss distribution, paymaster, dynamic pricing.
 - Every PR must pass `make gate` before merge.
 - Contract PRs must include tests AND a security note.
 
@@ -153,7 +156,18 @@ packages/contracts/test/fuzz/       # Fuzz tests (vault, math)
 packages/contracts/test/invariant/  # Invariant tests (totalReserved <= totalAssets)
 packages/contracts/test/Integration.t.sol  # Full lifecycle
 packages/services/test/             # API + math tests (vitest)
+  catalog.test.ts                   #   Market catalog (seed + BDL, category filtering)
+  smoke.test.ts                     #   All routes smoke + error paths
+  snapshots.test.ts                 #   API response shape regression
+  env-helpers.test.ts               #   BDL environment/config edge cases
+  agent-quote.test.ts               #   x402-gated agent quote endpoint
 apps/web/src/*/__tests__/           # Frontend tests (vitest)
+packages/e2e/test/                  # E2E integration tests (Anvil-backed)
+  01-deploy.test.ts                 #   Contract deployment verification
+  02-registration.test.ts           #   Leg registration + mapping
+  03-api-consistency.test.ts        #   API ↔ on-chain data consistency
+  04-lifecycle.test.ts              #   Full ticket lifecycle (buy → resolve → claim)
+  05-vault-flow.test.ts             #   Vault deposit/withdraw/reserve flows
 ```
 
 Foundry config: optimizer 200 runs, fuzz 256 runs, invariant 64 runs / depth 32.

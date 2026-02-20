@@ -19,17 +19,18 @@
 ## Flow 2: Buy a Parlay (2 minutes)
 
 1. Navigate to **/** (Parlay Builder)
-2. Select 3 legs from available markets:
-   - "ETH above $3000" (60% prob)
-   - "Base TVL > $15B" (45% prob)
-   - "Vitalik at ETHDenver" (35% prob)
-3. Watch the multiplier climb animation as legs are added
-4. Enter stake: 10 USDC
-5. See quote: ~10.6x multiplier, ~$95 potential payout, fee breakdown
-6. Click "Buy Ticket" → approve → confirm
-7. See ticket NFT minted, vault utilization increases
+2. Browse **category tabs**: All, Crypto, Sports, NBA, ETHDenver, Culture, Tech, DeFi, Meme
+3. Mix legs from different categories for a cross-category parlay:
+   - Crypto: "ETH above $3000" (60% prob)
+   - ETHDenver: "Vitalik at ETHDenver" (35% prob)
+   - NBA: "Lakers beat Celtics?" (live from BallDontLie API)
+4. Watch the multiplier climb animation as legs are added
+5. Enter stake: 10 USDC
+6. See quote: ~10.6x multiplier, ~$95 potential payout, fee breakdown
+7. Click "Buy Ticket" → approve → confirm
+8. See ticket NFT minted, vault utilization increases
 
-**Narrative**: "Each leg you add raises the multiplier — and the risk. Like a plane climbing higher."
+**Narrative**: "Mix crypto, sports, and culture bets in one parlay. Each leg you add raises the multiplier -- and the risk. Like a plane climbing higher."
 
 ## Flow 3: Settlement (1 minute)
 
@@ -60,7 +61,9 @@
 ## Key Talking Points
 
 - **Fully onchain**: tickets are NFTs, payouts are pull-based, math is transparent
+- **Multi-category markets**: crypto, sports, NBA (live data), ETHDenver, culture, tech, DeFi, memes -- all in one builder
+- **Live NBA data**: real games from BallDontLie API with team-stats-based probability estimation
 - **Hybrid settlement**: starts centralized for speed, upgrades to optimistic for trust
-- **House vault**: LPs earn the edge — not a zero-sum PvP game
+- **House vault**: LPs earn the edge -- not a zero-sum PvP game
 - **Base-native**: fast confirmations, low gas, smart wallet ready
 - **Composable**: oracle adapters are pluggable, hedge pipeline exists (stubbed)

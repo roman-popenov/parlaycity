@@ -45,6 +45,24 @@
 - [x] Write integration tests (valid payment, missing payment, invalid payment)
 - [x] `make gate` passes
 
+### PR8: Multi-Category Markets + BDL NBA -- MERGED (PR#28)
+- [x] Create unified market registry (`catalog/registry.ts`) merging seed + BDL sources
+- [x] Refactor seed markets into `catalog/seed.ts` with 7 categories (crypto, sports, ethdenver-2026, culture, tech, defi, meme)
+- [x] Build BDL API client (`catalog/bdl.ts`) -- fetch upcoming NBA games, team stats, probability estimation, 5-min cache
+- [x] Add `GET /markets/categories` endpoint with market/leg counts per category
+- [x] Add `?category=` filter to `GET /markets`
+- [x] Update `POST /quote` to resolve legs from full catalog (seed + NBA)
+- [x] Update `POST /premium/agent-quote` to use full catalog
+- [x] Build multi-category ParlayBuilder UI (category tabs, session persistence, on-chain indicators)
+- [x] Add stale selection reconciliation (useEffect syncs selectedLegs when allLegs updates)
+- [x] Add session restoration with fallback guards for unavailable categories
+- [x] Create `scripts/register-legs.ts` for on-chain leg registration with race-safe ID derivation
+- [x] Build E2E integration test suite (20 tests, 5 suites: deploy, registration, API consistency, lifecycle, vault flow)
+- [x] Add coverage threshold enforcement to CI
+- [x] Add smoke tests, snapshot tests, catalog tests, env-helpers tests
+- [x] Address 3 rounds of PR review (Copilot + Cursor Bugbot x2): stable NBA IDs, quote parity, snapshot types, BDL finals filter, stale refs, session persistence, config trust, race-safe IDs
+- [x] `make gate` passes
+
 ---
 
 ## Web Agent

@@ -61,6 +61,12 @@
 **What:** Replace stub with real @x402/express middleware. Kite AI $10K bounty.
 **Status:** Done. Real verification via `@x402/express` + `ExactEvmScheme`. Production verifies USDC on Base. Dev/test uses stub.
 
+### PR8: Multi-Category Markets + BDL NBA -- MERGED (PR#28)
+**Owner:** Services + Web + E2E
+**What:** Multi-category market catalog (7 seed categories + live NBA via BallDontLie API), category-filtered UI with session persistence, on-chain leg registration script, E2E integration tests (20 tests, 5 suites), coverage thresholds.
+**Files:** `packages/services/src/catalog/{registry,seed,bdl}.ts`, `apps/web/src/components/ParlayBuilder.tsx`, `packages/e2e/`, `scripts/register-legs.ts`, CI config.
+**Status:** Done. Merged as PR #28 (squash merge `303379d`). Three review rounds (Copilot + Cursor Bugbot x2) -- all findings addressed. Key fixes: stable NBA leg IDs (game.id-based), quote endpoint serving full catalog, snapshot type fidelity, stale selection reconciliation, BDL finals filter on fallback path.
+
 ### PR5: Sponsor UX (Paymaster + OnchainKit)
 **Owner:** Web agent
 **Branch:** `feat/sponsor-ux`
@@ -89,11 +95,12 @@
 ## Implementation Sequence
 
 ```
-Phase 1 (Today):    PR0 -- narrative docs (zero risk, high value)
-Phase 2 (Next):     PR1 + PR4 in parallel (contracts + services, independent)
-Phase 3:            PR2 + PR3 sequentially (SafetyModule then Cashout)
-Phase 4:            PR5 + PR6 in parallel (sponsor UX + crash UX)
-Phase 5:            PR7 -- stretch bounties as time allows
+Phase 1 (DONE):     PR0 -- narrative docs
+Phase 2 (DONE):     PR4 (x402) + PR8 (multi-category + BDL) + PR#24-27
+Phase 3 (Next):     PR1 (FeeRouter) + PR5 (Paymaster/OnchainKit) in parallel
+Phase 4:            PR2 + PR3 sequentially (SafetyModule then Cashout)
+Phase 5:            PR6 (crash UX, depends on PR3)
+Phase 6:            PR7 -- stretch bounties as time allows
 ```
 
 ---
