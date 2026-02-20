@@ -633,14 +633,17 @@ describe("ParlayBuilder", () => {
       });
 
       await waitFor(() => {
-        expect(mockFetch).toHaveBeenCalled();
-      });
+        // Find the risk-assess call (not the markets fetch)
+        const riskCall = mockFetch.mock.calls.find(
+          (c: unknown[]) => typeof c[0] === "string" && (c[0] as string).includes("risk-assess")
+        );
+        expect(riskCall).toBeDefined();
 
-      const fetchCall = mockFetch.mock.calls[0];
-      const body = JSON.parse(fetchCall[1].body);
-      // legIds must be numbers (Number(BigInt)), not strings
-      expect(body.legIds).toEqual([0, 1]);
-      expect(typeof body.legIds[0]).toBe("number");
+        const body = JSON.parse(riskCall![1].body);
+        // legIds must be numbers (Number(BigInt)), not strings
+        expect(body.legIds).toEqual([0, 1]);
+        expect(typeof body.legIds[0]).toBe("number");
+      });
     });
 
     it("rejects suggestedStake with scientific notation via type guard", async () => {

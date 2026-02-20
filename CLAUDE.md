@@ -81,7 +81,7 @@ Per-package: `pnpm --filter web dev`, `pnpm --filter web test`, `pnpm --filter s
 
 **Frontend:** Next.js 14 pages: `/` (builder), `/vault`, `/tickets`, `/ticket/[id]`. wagmi 2 + viem 2 + ConnectKit. Polling 5s/10s with stale-fetch guards.
 
-**Services:** Express port 3001. Routes: `/markets`, `/quote`, `/exposure`, `/premium/sim` (x402-gated), `/premium/risk-assess` (x402-gated), `/premium/agent-quote` (x402-gated, combined quote + risk for autonomous agents), `/vault/health`, `/vault/yield-report`, `/health`. x402 uses real verification in production, stub in dev/test.
+**Services:** Express port 3001. Routes: `/markets` (category filter via `?category=`), `/markets/categories`, `/quote`, `/exposure`, `/premium/sim` (x402-gated), `/premium/risk-assess` (x402-gated), `/premium/agent-quote` (x402-gated, combined quote + risk for autonomous agents), `/vault/health`, `/vault/yield-report`, `/health`. BDL integration for NBA markets (`BDL_API_KEY` env var). x402 uses real verification in production, stub in dev/test.
 
 **Shared:** `math.ts` mirrors `ParlayMath.sol` exactly. PPM=1e6, BPS=1e4.
 
@@ -112,8 +112,8 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 - ParlayMath: multiplier, edge, payout, progressive payout, cashout value -- supports Classic, Progressive, and EarlyCashout modes (Solidity + TypeScript mirror)
 - AdminOracleAdapter + OptimisticOracleAdapter
 - MockYieldAdapter + AaveYieldAdapter (not in default deploy)
-- Frontend: parlay builder, vault dashboard, tickets list, ticket detail, MultiplierClimb viz (animated rocket + crash), RehabCTA, RehabLocks (mock)
-- Services: catalog, quote, exposure (mock), x402-gated premium/sim + risk-assess + agent-quote (with optional 0G AI insight), vault/health, vault/yield-report
+- Frontend: parlay builder (multi-category tabs, API-driven legs, on-chain/off-chain indicators), vault dashboard, tickets list, ticket detail, MultiplierClimb viz (animated rocket + crash), RehabCTA, RehabLocks (mock)
+- Services: multi-category market catalog (7 seeded categories + BDL NBA), category filtering, unified market registry, quote, exposure (mock), x402-gated premium/sim + risk-assess + agent-quote (with optional 0G AI insight), vault/health, vault/yield-report
 - Scripts: risk-agent (autonomous agent loop with 0G inference, Kelly sizing, multi-candidate selection), demo-autopilot (leg resolution + crash simulation), demo-seed
 - Tests: unit, fuzz, invariant, integration (contracts), vitest (services + web)
 - CI: GitHub Actions (3 jobs), Makefile quality gate
@@ -137,7 +137,7 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 
 - This repo is a fork of `roman-popenov/parlaycity`. Push branches to `origin` (stragitech), open PRs against the upstream with `gh pr create --repo roman-popenov/parlaycity`.
 - Small PRs against `main`. Main stays green.
-- Merged: PR #24 (cashout math parity), PR #25 (crash UX + rehab flow + demo scripts). In review: PR #26 (0G risk agent + AI insight). Remaining: SafetyModule, loss distribution, paymaster, dynamic pricing.
+- Merged: PR #24 (cashout math parity), PR #25 (crash UX + rehab flow + demo scripts), PR #26 (0G risk agent + AI insight), PR #27 (README). In progress: multi-category markets + BDL. Remaining: Uniswap LP, SafetyModule, loss distribution, paymaster, dynamic pricing.
 - Every PR must pass `make gate` before merge.
 - Contract PRs must include tests AND a security note.
 

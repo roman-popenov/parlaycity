@@ -5,21 +5,11 @@ import {
   computeQuote,
 } from "@parlaycity/shared";
 import type { AgentQuoteResponse, AiInsight } from "@parlaycity/shared";
-import { SEED_MARKETS } from "../catalog/seed.js";
+import { getFullLegMap } from "../catalog/registry.js";
 import { computeRiskAssessment } from "../risk/compute.js";
 import { runZGInference, buildRiskPrompt } from "./0g-inference.js";
 
 const router = Router();
-
-function getLegMap() {
-  const map = new Map<number, { probabilityPPM: number; active: boolean; category: string }>();
-  for (const market of SEED_MARKETS) {
-    for (const leg of market.legs) {
-      map.set(leg.id, { probabilityPPM: leg.probabilityPPM, active: leg.active, category: market.category });
-    }
-  }
-  return map;
-}
 
 /**
  * POST /premium/agent-quote
@@ -36,7 +26,7 @@ router.post("/agent-quote", async (req, res) => {
   }
 
   const { legIds, outcomes, stake, bankroll, riskTolerance } = parsed.data;
-  const legMap = getLegMap();
+  const legMap = await getFullLegMap();
 
   // Validate all legs exist and are active, collect probabilities + categories
   const probabilities: number[] = [];
