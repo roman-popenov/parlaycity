@@ -7,24 +7,28 @@ import { useUserTickets, useLegDescriptions, useLegStatuses, type OnChainTicket,
 import { TicketCard, type TicketData, type TicketLeg } from "@/components/TicketCard";
 import { mapStatus, parseOutcomeChoice } from "@/lib/utils";
 
+const PPM = 1_000_000;
+
 function toTicketData(
   id: bigint,
   t: OnChainTicket,
   legMap: Map<string, LegInfo>,
   legStatuses: Map<string, LegOracleResult>,
 ): TicketData {
-  const multiplier = Number(t.multiplierX1e6) / 1_000_000;
+  const multiplier = Number(t.multiplierX1e6) / PPM;
   return {
     id,
     stake: t.stake,
+    feePaid: t.feePaid,
     payout: t.potentialPayout,
     legs: t.legIds.map((legId, i): TicketLeg => {
       const leg = legMap.get(legId.toString());
-      const ppm = leg ? Number(leg.probabilityPPM) / 1_000_000 : 0;
+      const rawPPM = leg ? Number(leg.probabilityPPM) : 0;
       const outcomeChoice = parseOutcomeChoice(t.outcomes[i]);
-      const isNo = outcomeChoice === 2;
-      const effectiveProb = outcomeChoice === 2 ? 1 - ppm : outcomeChoice === 1 ? ppm : 0;
-      const odds = effectiveProb > 0 ? 1 / effectiveProb : multiplier ** (1 / t.legIds.length);
+      const effectivePPM = outcomeChoice === 2
+        ? PPM - rawPPM
+        : outcomeChoice === 1 ? rawPPM : 0;
+      const odds = effectivePPM > 0 ? PPM / effectivePPM : multiplier ** (1 / t.legIds.length);
       const oracleResult = legStatuses.get(legId.toString());
       return {
         description: leg?.question ?? `Leg #${legId.toString()}`,
@@ -32,6 +36,7 @@ function toTicketData(
         outcomeChoice,
         resolved: oracleResult?.resolved ?? false,
         result: oracleResult?.status ?? 0,
+        probabilityPPM: effectivePPM,
       };
     }),
     status: mapStatus(t.status),

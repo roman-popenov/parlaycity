@@ -1,9 +1,7 @@
 "use client";
 
-import { useMemo } from "react";
 import { formatUnits } from "viem";
 import { useSettleTicket, useClaimPayout, useClaimProgressive, useCashoutEarly } from "@/lib/hooks";
-import { computeCashoutValueLocal } from "@/lib/cashout-math";
 
 export type TicketStatus = "Active" | "Won" | "Lost" | "Voided" | "Claimed";
 
@@ -13,17 +11,21 @@ export interface TicketLeg {
   outcomeChoice: number; // 1 = yes, 2 = no, 0 = unknown
   resolved: boolean;
   result: number; // 0 = unresolved, 1 = Won, 2 = Lost, 3 = Voided (oracle LegStatus)
+  probabilityPPM?: number; // raw integer PPM from LegRegistry (avoids lossy float round-trip)
 }
 
 export interface TicketData {
   id: bigint;
   stake: bigint;
+  feePaid: bigint;
   payout: bigint;
   legs: TicketLeg[];
   status: TicketStatus;
   createdAt: number;
   payoutMode?: number; // 0=Classic, 1=Progressive, 2=EarlyCashout
   claimedAmount?: bigint;
+  cashoutPenaltyBps?: number;
+  cashoutValue?: bigint; // pre-computed client-side cashout estimate (effectiveStake-based)
 }
 
 const STATUS_STYLES: Record<TicketStatus, string> = {
@@ -49,7 +51,6 @@ function getLegStatus(leg: TicketLeg): "win" | "loss" | "voided" | "pending" {
   if (leg.outcomeChoice !== 1 && leg.outcomeChoice !== 2) return "pending";
   if (leg.result === 3) return "voided";
   const isNoBet = leg.outcomeChoice === 2;
-  // Oracle: 1=Won (yes side won), 2=Lost (no side won)
   if (leg.result === 1) return isNoBet ? "loss" : "win";
   if (leg.result === 2) return isNoBet ? "win" : "loss";
   return "pending";
@@ -69,41 +70,13 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
 
   const multiplier = ticket.legs.reduce((acc, l) => acc * l.odds, 1);
   const allResolved = ticket.legs.every((l) => l.resolved);
-  const hasWonLegs = ticket.legs.some((l) => {
-    const s = getLegStatus(l);
-    return s === "win";
-  });
+  const hasWonLegs = ticket.legs.some((l) => getLegStatus(l) === "win");
   const hasUnresolved = ticket.legs.some((l) => !l.resolved);
   const hasLostLeg = ticket.legs.some((l) => getLegStatus(l) === "loss");
   const canSettle = ticket.status === "Active" && allResolved;
   const canClaim = ticket.status === "Won";
   const canClaimProgressive = ticket.status === "Active" && ticket.payoutMode === 1 && hasWonLegs && !hasLostLeg;
   const canCashout = ticket.status === "Active" && ticket.payoutMode === 2 && hasWonLegs && hasUnresolved && !hasLostLeg;
-
-  const cashoutDisplay = useMemo(() => {
-    if (!canCashout) return null;
-    const wonProbsPPM: number[] = [];
-    let unresolvedCount = 0;
-    for (const leg of ticket.legs) {
-      const s = getLegStatus(leg);
-      if (s === "win") {
-        const prob = leg.odds > 0 ? Math.round(1_000_000 / leg.odds) : 500_000;
-        wonProbsPPM.push(Math.max(1, Math.min(999_999, prob)));
-      } else if (s === "pending") {
-        unresolvedCount++;
-      }
-    }
-    if (wonProbsPPM.length === 0 || unresolvedCount === 0) return null;
-    const cashoutValue = computeCashoutValueLocal(
-      ticket.stake,
-      wonProbsPPM,
-      unresolvedCount,
-      ticket.legs.length,
-      ticket.payout,
-    );
-    if (cashoutValue === null) return null;
-    return `$${Number(formatUnits(cashoutValue, 6)).toFixed(2)}`;
-  }, [canCashout, ticket.legs, ticket.stake, ticket.payout]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-gray-900 to-gray-950">
@@ -135,7 +108,6 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
           const status = getLegStatus(leg);
           return (
             <div key={i} className="flex items-center gap-3 py-3">
-              {/* Status indicator with tooltip */}
               <div className="group relative flex-shrink-0">
                 <div
                   className={`flex h-7 w-7 cursor-help items-center justify-center rounded-full text-xs font-bold ${LEG_STATUS_CONFIG[status].style}`}
@@ -167,7 +139,7 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
         })}
       </div>
 
-      {/* Footer: payout info + actions */}
+      {/* Footer */}
       <div className="border-t border-white/5 px-6 py-4">
         <div className="mb-4 grid grid-cols-3 gap-4 text-center">
           <div>
@@ -190,7 +162,6 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
           </div>
         </div>
 
-        {/* Action buttons */}
         <div className="flex gap-3">
           {canSettle && (
             <button
@@ -223,12 +194,15 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
             <button
               onClick={(e) => {
                 e.preventDefault(); e.stopPropagation();
-                cashoutEarly(ticket.id, 0n);
+                const minOut = ticket.cashoutValue ? (ticket.cashoutValue * 98n) / 100n : 0n;
+                cashoutEarly(ticket.id, minOut);
               }}
               disabled={isCashingOut}
               className="flex-1 rounded-xl border border-yellow-500/30 bg-yellow-500/10 py-2.5 text-sm font-semibold text-yellow-400 transition-all hover:bg-yellow-500/20 disabled:opacity-50"
             >
-              {isCashingOut ? "Cashing out..." : cashoutDisplay ? `Cash Out ${cashoutDisplay}` : "Cash Out Early"}
+              {isCashingOut ? "Cashing out..." : ticket.cashoutValue
+                ? `Cash Out ~$${Number(formatUnits(ticket.cashoutValue, 6)).toFixed(2)}`
+                : "Cash Out Early"}
             </button>
           )}
         </div>
