@@ -223,7 +223,8 @@ export function ParlayBuilder() {
     try {
       const probabilities = selectedLegs.map((s) => {
         const prob = 1 / effectiveOdds(s.leg, s.outcomeChoice);
-        return Math.round(prob * 1_000_000);
+        const scaled = Math.round(prob * 1_000_000);
+        return Math.min(999_999, Math.max(1, scaled));
       });
 
       // x402 payment header is a proof-of-payment receipt, not a secret.

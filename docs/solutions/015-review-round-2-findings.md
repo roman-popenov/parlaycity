@@ -1,3 +1,13 @@
+---
+title: Review round 2 findings (dead code, zero-value boundary, comment accuracy, type guard, spec completeness)
+category: review/multi-pattern
+severity: medium
+prs: [12, 16, 17]
+commits: [da97a3d, 0210849, b899e22]
+tags: [dead-code, zero-value, bigint, comment-accuracy, type-guard, spec-completeness, api-boundary]
+date: 2026-02-19
+---
+
 # 015: Review Round 2 Findings (PR #12, #16, #17)
 
 Second round of automated reviews after rebasing and fixing first-round findings. Covers Copilot and Cursor Bug Bot across three PRs.

@@ -1,3 +1,13 @@
+---
+title: Risk advisor frontend bugs (stale fetch, BigInt falsy, type mismatch, silent errors)
+category: frontend/async
+severity: high
+prs: [10]
+commits: [c7bf937]
+tags: [risk-advisor, bigint, fetch-race, type-guard, silent-failure, api-boundary]
+date: 2026-02-19
+---
+
 # 014: Risk Advisor Frontend Bugs (PR #10 Review Findings)
 
 ## Problem
