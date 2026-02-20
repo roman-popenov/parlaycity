@@ -389,11 +389,14 @@ export function ParlayBuilder() {
 
   const handleBuy = async () => {
     if (!canBuy) return;
-    // Translate catalog leg IDs to on-chain IDs via leg mapping
+    // Translate catalog leg IDs to on-chain IDs via leg mapping.
+    // Mock/Deploy.s.sol legs (onChain=true) already have correct IDs — skip mapping
+    // to avoid collision with catalog IDs that share the same numeric range.
     const legIds = selectedLegs.map((s) => {
+      if (s.leg.onChain) return s.leg.id;
       const catalogId = s.leg.id.toString();
       if (Object.hasOwn(legMapping, catalogId)) return BigInt(legMapping[catalogId]);
-      return s.leg.id; // Deploy.s.sol legs (0, 1, 2) already match
+      return s.leg.id;
     });
     const outcomes = selectedLegs.map((s) => s.outcomeChoice);
     const success = await buyTicket(legIds, outcomes, stakeNum, payoutMode);

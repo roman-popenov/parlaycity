@@ -41,14 +41,6 @@ export async function getAllMarkets(categories?: string[]): Promise<Market[]> {
 }
 
 /**
- * Get all markets synchronously (seed only, no BDL).
- * Used by endpoints that need immediate access without async.
- */
-export function getSeedMarkets(): Market[] {
-  return SEED_MARKETS;
-}
-
-/**
  * Build a leg lookup map from all seed markets.
  * This is synchronous and always includes all seed legs.
  * For NBA legs, callers should use getAllMarkets() and build their own map.
