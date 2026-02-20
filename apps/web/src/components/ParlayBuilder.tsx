@@ -215,6 +215,12 @@ export function ParlayBuilder() {
         if (!r?.ok) return;
         const data = await r.json();
         if (data?.legs && typeof data.legs === "object") {
+          // Validate chainId matches current app chain to prevent stale mapping
+          const expectedChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? "31337");
+          if (data.chainId && data.chainId !== expectedChainId) {
+            console.warn(`[leg-mapping] Chain mismatch: mapping=${data.chainId}, app=${expectedChainId}. Ignoring.`);
+            return;
+          }
           setLegMapping(data.legs);
           // Keys are catalog leg IDs; values are on-chain contract IDs
           const catalogIds = new Set<bigint>(
@@ -277,6 +283,31 @@ export function ParlayBuilder() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Reconcile selectedLegs when allLegs changes (e.g., API fetch replaces mock data)
+  // so stale mock leg references (with wrong onChain flag) are replaced with current objects.
+  useEffect(() => {
+    setSelectedLegs((prev) => {
+      if (prev.length === 0) return prev;
+      const legMap = new Map(allLegs.map((l) => [l.id.toString(), l]));
+      let changed = false;
+      const reconciled: SelectedLeg[] = [];
+      for (const s of prev) {
+        const freshLeg = legMap.get(s.leg.id.toString());
+        if (freshLeg) {
+          if (freshLeg !== s.leg) {
+            reconciled.push({ ...s, leg: freshLeg });
+            changed = true;
+          } else {
+            reconciled.push(s);
+          }
+        } else {
+          changed = true; // leg no longer in catalog, drop it
+        }
+      }
+      return changed ? reconciled : prev;
+    });
+  }, [allLegs]);
+
   // Persist selectedLegs to sessionStorage on change
   useEffect(() => {
     if (!mounted) return;
@@ -319,6 +350,17 @@ export function ParlayBuilder() {
     if (activeCategory === "all") return allLegs;
     return allLegs.filter((l) => l.category === activeCategory);
   }, [allLegs, activeCategory]);
+
+  // Reset activeCategory if persisted value no longer matches any legs
+  useEffect(() => {
+    if (
+      activeCategory !== "all" &&
+      allLegs.length > 0 &&
+      filteredLegs.length === 0
+    ) {
+      setActiveCategory("all");
+    }
+  }, [activeCategory, allLegs.length, filteredLegs.length, setActiveCategory]);
 
   /** Group filtered legs by market title for display. */
   const groupedByMarket = useMemo(() => {

@@ -171,18 +171,18 @@ exports[`Shape snapshots > POST /premium/agent-quote (paid) 1`] = `
 
 exports[`Shape snapshots > POST /premium/risk-assess (paid) 1`] = `
 {
-  "details": {
-    "fieldErrors": {
-      "legIds": [
-        "string",
-      ],
-      "outcomes": [
-        "string",
-      ],
-    },
-    "formErrors": "empty-array",
-  },
-  "error": "string",
+  "action": "string",
+  "confidence": "number",
+  "edgeBps": "number",
+  "expectedValue": "number",
+  "fairMultiplier": "number",
+  "kellyFraction": "number",
+  "netMultiplier": "number",
+  "reasoning": "string",
+  "riskTolerance": "string",
+  "suggestedStake": "string",
+  "warnings": "empty-array",
+  "winProbability": "number",
 }
 `;
 

@@ -258,7 +258,9 @@ export async function fetchNBAMarkets(): Promise<Market[]> {
     const upcoming = data.data.filter((g) => g.status !== "Final");
 
     if (upcoming.length === 0) {
-      // If no upcoming, include recent completed games for demo
+      // If no upcoming, include recent non-final games (e.g. in-progress).
+      // Completed ("Final") games are excluded to prevent already-decided
+      // outcomes from being registered as bettable legs on-chain.
       const yesterday = new Date(today);
       yesterday.setDate(today.getDate() - 1);
       const recentData = await bdlFetch<{ data: BDLGame[] }>("/games", {
@@ -266,7 +268,7 @@ export async function fetchNBAMarkets(): Promise<Market[]> {
         "end_date": formatDate(today),
         per_page: "10",
       });
-      upcoming.push(...recentData.data.slice(0, 6));
+      upcoming.push(...recentData.data.filter((g) => g.status !== "Final").slice(0, 6));
     }
 
     // Collect unique team IDs for stats

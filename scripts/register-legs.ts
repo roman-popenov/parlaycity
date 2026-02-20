@@ -212,8 +212,16 @@ async function main() {
 
     await publicClient.waitForTransactionReceipt({ hash });
 
-    // The new leg ID is the previous legCount + created
-    const newId = legCount + created;
+    // Derive actual on-chain ID from post-creation legCount (race-safe)
+    const legCountAfter = safeBigIntToNumber(
+      await publicClient.readContract({
+        address: cfg.registryAddr,
+        abi: REGISTRY_ABI,
+        functionName: "legCount",
+      }),
+      "legCountAfter",
+    );
+    const newId = legCountAfter - 1;
     existingQuestions.set(normalizedQ, newId);
     mapping[String(leg.catalogId)] = newId;
     created++;

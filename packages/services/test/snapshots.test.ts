@@ -94,6 +94,8 @@ describe("Shape snapshots", () => {
       .post("/premium/risk-assess")
       .set("x-402-payment", "demo-token")
       .send({
+        legIds: [1, 2],
+        outcomes: ["Yes", "Yes"],
         stake: "10",
         probabilities: [600_000, 450_000],
         bankroll: "1000",
