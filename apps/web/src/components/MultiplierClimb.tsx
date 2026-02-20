@@ -148,9 +148,13 @@ export function MultiplierClimb({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedUpTo, animated, resolvedMultiplier]);
 
-  // Reset animation state when entering animated mode (e.g., replay restart)
+  // Reset animation state only on false→true transitions (replay restart),
+  // NOT on initial mount where the watch effect above needs to run first.
+  const prevAnimatedRef = useRef(animated);
   useEffect(() => {
-    if (!animated) return;
+    const wasAnimated = prevAnimatedRef.current;
+    prevAnimatedRef.current = animated;
+    if (!animated || wasAnimated) return; // skip unless false→true
     setShowCrash(false);
     setIsShaking(false);
     setAnimatedSegments(0);
