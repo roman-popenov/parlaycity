@@ -10,8 +10,12 @@ dependencies: []
 
 ## Problem Statement
 
-demo-seed.sh and demo-resolve.sh interpolate $1 and $BROADCAST directly into Python string. Pass as sys.argv instead.
+demo-seed.sh and demo-resolve.sh interpolated $1 and $BROADCAST directly into Python source code via string interpolation. A malicious broadcast filename or contract name could inject arbitrary Python code.
+
+## Solution
+
+Changed get_addr() in both scripts to pass $BROADCAST and $1 as sys.argv arguments to the Python script instead of shell string interpolation.
 
 ## Acceptance Criteria
 
-- [ ] get_addr uses sys.argv for arguments instead of shell interpolation
+- [x] get_addr uses sys.argv for arguments instead of shell interpolation

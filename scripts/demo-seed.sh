@@ -30,6 +30,16 @@ else
   CHAIN_ID=31337
 fi
 
+# Safety: when running in local mode, warn if a remote RPC env var is set.
+# Catches the case where a user has BASE_SEPOLIA_RPC_URL set but forgot to pass "sepolia".
+if [ "$NETWORK" = "local" ] && [ -n "${BASE_SEPOLIA_RPC_URL:-}" ]; then
+  echo "WARNING: NETWORK is 'local' but BASE_SEPOLIA_RPC_URL is set in your env."
+  echo "         Did you mean: $0 sepolia"
+  echo "         Continuing will use Anvil default keys against localhost."
+  read -rp "Continue with local? [y/N] " confirm
+  [ "$confirm" = "y" ] || [ "$confirm" = "Y" ] || exit 1
+fi
+
 # --- Load addresses from broadcast ---
 BROADCAST="$ROOT/packages/contracts/broadcast/Deploy.s.sol/$CHAIN_ID/run-latest.json"
 if [ ! -f "$BROADCAST" ]; then
@@ -40,14 +50,14 @@ fi
 get_addr() {
   python3 -c "
 import json, sys
-with open('$BROADCAST') as f:
+with open(sys.argv[1]) as f:
     data = json.load(f)
 for tx in data['transactions']:
-    if tx.get('transactionType') == 'CREATE' and tx.get('contractName') == '$1':
+    if tx.get('transactionType') == 'CREATE' and tx.get('contractName') == sys.argv[2]:
         print(tx['contractAddress'])
         sys.exit(0)
 sys.exit(1)
-"
+" "$BROADCAST" "$1"
 }
 
 USDC=$(get_addr "MockUSDC")

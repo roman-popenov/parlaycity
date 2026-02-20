@@ -10,8 +10,12 @@ dependencies: []
 
 ## Problem Statement
 
-The [profile.sepolia] section duplicates all 8 default settings. Foundry profiles inherit from default. Delete the profile or add only actual overrides.
+The [profile.sepolia] section duplicated all 8 default settings. Foundry profiles inherit from default.
+
+## Solution
+
+Deleted the entire [profile.sepolia] section. The [rpc_endpoints] section already contains the base-sepolia RPC URL for deployment.
 
 ## Acceptance Criteria
 
-- [ ] [profile.sepolia] section removed or contains only override values
+- [x] [profile.sepolia] section removed
