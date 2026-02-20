@@ -7,37 +7,79 @@ import { useUserTickets, useLegDescriptions, useLegStatuses, type OnChainTicket,
 import { TicketCard, type TicketData, type TicketLeg } from "@/components/TicketCard";
 import { mapStatus, parseOutcomeChoice } from "@/lib/utils";
 
+const PPM = 1_000_000;
+const BPS = 10_000;
+const BASE_CASHOUT_PENALTY_BPS = 1_500;
+
 function toTicketData(
   id: bigint,
   t: OnChainTicket,
   legMap: Map<string, LegInfo>,
   legStatuses: Map<string, LegOracleResult>,
 ): TicketData {
-  const multiplier = Number(t.multiplierX1e6) / 1_000_000;
+  const multiplier = Number(t.multiplierX1e6) / PPM;
+  const effectiveStake = t.stake - t.feePaid;
+  const penaltyBps = Number(t.cashoutPenaltyBps) || BASE_CASHOUT_PENALTY_BPS;
+  const wonProbsPPM: number[] = [];
+  let unresolvedCount = 0;
+
+  const legs: TicketLeg[] = t.legIds.map((legId, i): TicketLeg => {
+    const leg = legMap.get(legId.toString());
+    const rawPPM = leg ? Number(leg.probabilityPPM) : 0;
+    const outcomeChoice = parseOutcomeChoice(t.outcomes[i]);
+    const effectivePPM = outcomeChoice === 2
+      ? PPM - rawPPM
+      : outcomeChoice === 1 ? rawPPM : 0;
+    const odds = effectivePPM > 0 ? PPM / effectivePPM : multiplier ** (1 / t.legIds.length);
+    const oracleResult = legStatuses.get(legId.toString());
+    const resolved = oracleResult?.resolved ?? false;
+    const result = oracleResult?.status ?? 0;
+
+    if (resolved && result !== 3) {
+      const isNoBet = outcomeChoice === 2;
+      const isWon = (result === 1 && !isNoBet) || (result === 2 && isNoBet);
+      if (isWon && effectivePPM > 0) wonProbsPPM.push(effectivePPM);
+    } else {
+      unresolvedCount++;
+    }
+
+    return {
+      description: leg?.question ?? `Leg #${legId.toString()}`,
+      odds,
+      outcomeChoice,
+      resolved,
+      result,
+      probabilityPPM: effectivePPM,
+    };
+  });
+
+  // Compute cashout value for EarlyCashout tickets
+  let cashoutValue: bigint | undefined;
+  if (t.payoutMode === 2 && wonProbsPPM.length > 0 && unresolvedCount > 0 && effectiveStake > 0n) {
+    const ppm = BigInt(PPM);
+    let wonMultiplier = ppm;
+    for (const p of wonProbsPPM) {
+      if (p > 0 && p <= PPM) wonMultiplier = (wonMultiplier * ppm) / BigInt(p);
+    }
+    const fairValue = (effectiveStake * wonMultiplier) / ppm;
+    const scaledPenalty = (BigInt(penaltyBps) * BigInt(unresolvedCount)) / BigInt(legs.length);
+    let cv = (fairValue * (BigInt(BPS) - scaledPenalty)) / BigInt(BPS);
+    if (cv > t.potentialPayout) cv = t.potentialPayout;
+    cashoutValue = cv;
+  }
+
   return {
     id,
     stake: t.stake,
+    feePaid: t.feePaid,
     payout: t.potentialPayout,
-    legs: t.legIds.map((legId, i): TicketLeg => {
-      const leg = legMap.get(legId.toString());
-      const ppm = leg ? Number(leg.probabilityPPM) / 1_000_000 : 0;
-      const outcomeChoice = parseOutcomeChoice(t.outcomes[i]);
-      const isNo = outcomeChoice === 2;
-      const effectiveProb = outcomeChoice === 2 ? 1 - ppm : outcomeChoice === 1 ? ppm : 0;
-      const odds = effectiveProb > 0 ? 1 / effectiveProb : multiplier ** (1 / t.legIds.length);
-      const oracleResult = legStatuses.get(legId.toString());
-      return {
-        description: leg?.question ?? `Leg #${legId.toString()}`,
-        odds,
-        outcomeChoice,
-        resolved: oracleResult?.resolved ?? false,
-        result: oracleResult?.status ?? 0,
-      };
-    }),
+    legs,
     status: mapStatus(t.status),
     createdAt: Number(t.createdAt),
     payoutMode: t.payoutMode,
     claimedAmount: t.claimedAmount,
+    cashoutPenaltyBps: penaltyBps,
+    cashoutValue,
   };
 }
 

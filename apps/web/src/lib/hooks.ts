@@ -271,6 +271,7 @@ export interface OnChainTicket {
   /** Payout mode: 0=CLASSIC, 1=PROGRESSIVE, 2=EARLY_CASHOUT */
   payoutMode: number;
   claimedAmount: bigint;
+  cashoutPenaltyBps: bigint;
 }
 
 export function useTicket(ticketId: bigint | undefined) {

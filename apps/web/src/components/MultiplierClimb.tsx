@@ -9,6 +9,8 @@ interface MultiplierClimbProps {
   legMultipliers: number[];
   /** Whether a leg has crashed/failed */
   crashed?: boolean;
+  /** How many legs have resolved as Won (drives progressive animation) */
+  resolvedUpTo?: number;
 }
 
 /** Pick nice gridline values for log scale */
@@ -54,6 +56,7 @@ function formatLabel(v: number): string {
 export function MultiplierClimb({
   legMultipliers,
   crashed = false,
+  resolvedUpTo,
 }: MultiplierClimbProps) {
   const [isLog, setIsLog] = useState(true);
   const { maxLegs } = useParlayConfig();
@@ -243,18 +246,24 @@ export function MultiplierClimb({
 
         {/* Leg markers */}
         <div className="absolute bottom-2 left-0 flex w-full justify-around px-2">
-          {[...Array(effectiveMaxLegs)].map((_, i) => (
-            <div
-              key={i}
-              className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold transition-all duration-300 ${
-                i < legMultipliers.length
-                  ? "scale-100 bg-white/10 text-white"
-                  : "scale-75 bg-white/5 text-gray-600"
-              }`}
-            >
-              {i + 1}
-            </div>
-          ))}
+          {[...Array(effectiveMaxLegs)].map((_, i) => {
+            const resolved = resolvedUpTo !== undefined ? i < resolvedUpTo : i < legMultipliers.length;
+            const isActive = i < legMultipliers.length;
+            return (
+              <div
+                key={i}
+                className={`flex h-6 w-6 items-center justify-center rounded-full text-xs font-bold transition-all duration-300 ${
+                  resolved
+                    ? "scale-100 bg-neon-green/20 text-neon-green"
+                    : isActive
+                      ? "scale-100 bg-white/10 text-white"
+                      : "scale-75 bg-white/5 text-gray-600"
+                }`}
+              >
+                {i + 1}
+              </div>
+            );
+          })}
         </div>
 
         {/* Crashed overlay */}

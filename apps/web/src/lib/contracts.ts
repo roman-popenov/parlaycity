@@ -167,6 +167,7 @@ export const PARLAY_ENGINE_ABI = [
           { name: "createdAt", type: "uint256" },
           { name: "payoutMode", type: "uint8" },      // PayoutMode: 0=CLASSIC, 1=PROGRESSIVE, 2=EARLY_CASHOUT
           { name: "claimedAmount", type: "uint256" },
+          { name: "cashoutPenaltyBps", type: "uint256" },
         ],
       },
     ],
