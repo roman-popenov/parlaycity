@@ -47,7 +47,7 @@ const REGISTRY_ABI = parseAbi([
 
 // -- Helpers -----------------------------------------------------------------
 
-function normalize(s: string): string {
+export function normalize(s: string): string {
   return s.trim().toLowerCase();
 }
 

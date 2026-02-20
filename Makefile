@@ -112,7 +112,10 @@ test-contracts:
 test-services:
 	cd packages/services && pnpm test
 
-test-all: test-contracts test-services
+test-web:
+	cd apps/web && pnpm test
+
+test-all: test-contracts test-services test-web
 
 # -- Quality Gate --
 gate: test-all typecheck build-web
@@ -126,8 +129,16 @@ build-web:
 build-contracts:
 	cd packages/contracts && forge build
 
-coverage:
+coverage-contracts:
 	cd packages/contracts && forge coverage --report summary
+
+coverage-services:
+	cd packages/services && npx vitest run --coverage
+
+coverage-web:
+	cd apps/web && npx vitest run --coverage
+
+coverage: coverage-contracts coverage-services coverage-web
 
 snapshot:
 	cd packages/contracts && forge snapshot
@@ -174,4 +185,4 @@ clean:
 	cd packages/contracts && forge clean
 	cd apps/web && rm -rf .next
 
-.PHONY: bootstrap setup chain deploy-local deploy-sepolia sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-all gate typecheck build-web build-contracts coverage snapshot ci ci-contracts ci-services ci-web demo-seed demo-autopilot demo-autopilot-crash register-legs clean risk-agent risk-agent-dry
+.PHONY: bootstrap setup chain deploy-local deploy-sepolia sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-web test-all gate typecheck build-web build-contracts coverage coverage-contracts coverage-services coverage-web snapshot ci ci-contracts ci-services ci-web demo-seed demo-autopilot demo-autopilot-crash register-legs clean risk-agent risk-agent-dry

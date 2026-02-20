@@ -109,6 +109,11 @@ function setStakeInput(value: string) {
 let sessionStore: Record<string, string>;
 
 beforeEach(() => {
+  // Default fetch mock: reject immediately so ParlayBuilder falls back to MOCK_LEGS
+  // without waiting for a network timeout. Tests that need specific fetch behavior
+  // override this with their own vi.stubGlobal("fetch", ...).
+  vi.stubGlobal("fetch", vi.fn(() => Promise.reject(new Error("no network in test"))));
+
   sessionStore = {};
   vi.stubGlobal("sessionStorage", {
     getItem: vi.fn((key: string) => sessionStore[key] ?? null),

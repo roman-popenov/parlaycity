@@ -6,6 +6,16 @@ export default defineConfig({
     globals: true,
     environment: "jsdom",
     setupFiles: ["./src/test/setup.ts"],
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary"],
+      reportsDirectory: "./coverage",
+      include: ["src/**/*.{ts,tsx}"],
+      exclude: ["src/test/**", "src/app/layout.tsx", "src/lib/wagmi.ts"],
+      thresholds: {
+        statements: 30,
+      },
+    },
   },
   resolve: {
     alias: {
