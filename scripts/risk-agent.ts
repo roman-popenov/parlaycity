@@ -1,27 +1,33 @@
 /**
- * Risk Agent -- autonomous agent that discovers markets, assesses risk via
- * x402-gated API, and buys parlay tickets when conditions are favorable.
+ * Autonomous ParlayCity Risk Agent
  *
- * Demonstrates the full x402 agent loop:
- *   1. GET /markets to discover available legs
- *   2. Select 2-3 legs with favorable probabilities
- *   3. POST /premium/agent-quote with x402 payment header
- *   4. Parse risk assessment (Kelly fraction, EV, confidence)
- *   5. If favorable: approve USDC + call buyTicketWithMode on-chain
+ * Discovers markets, builds candidate parlays, pays for AI-powered risk
+ * assessment via x402 (powered by 0G inference), and makes structured
+ * buy/skip decisions.
  *
  * Usage (from repo root):
  *   pnpm --filter services exec tsx ../../scripts/risk-agent.ts
+ *   make risk-agent          # same thing
+ *   make risk-agent-dry      # DRY_RUN=true
  *
- * Env vars (or reads from apps/web/.env.local):
+ * Env vars:
+ *   SERVICES_URL          -- defaults to http://localhost:3001
+ *   RISK_TOLERANCE        -- conservative | moderate | aggressive (default: moderate)
+ *   DRY_RUN               -- true to log decisions without buying on-chain (default: true)
+ *   LOOP_INTERVAL_MS      -- ms between cycles, 0 for single run (default: 30000)
+ *   ONCE                  -- true for single run (default: false)
+ *   MAX_STAKE_USDC        -- human-readable max stake per ticket (default: 10)
+ *   MAX_LEGS              -- max legs per parlay candidate (default: 3)
+ *   MAX_CANDIDATES        -- max candidates to evaluate per cycle (default: 5)
+ *   CONFIDENCE_THRESHOLD  -- min confidence to buy (default: 0.6)
+ *   AGENT_BANKROLL        -- USDC bankroll for Kelly sizing (default: 1000)
+ *   AGENT_PAYOUT_MODE     -- 0=CLASSIC, 1=PROGRESSIVE, 2=EARLY_CASHOUT (default: 0)
+ *
+ * On-chain (only when DRY_RUN=false):
  *   RPC_URL               -- defaults to http://127.0.0.1:8545
  *   PRIVATE_KEY           -- defaults to Anvil account #1
  *   PARLAY_ENGINE_ADDRESS -- overrides .env.local
  *   USDC_ADDRESS          -- overrides .env.local
- *   SERVICES_URL          -- defaults to http://localhost:3001
- *   AGENT_BANKROLL        -- USDC bankroll for Kelly sizing (default: 1000)
- *   AGENT_RISK_TOLERANCE  -- conservative | moderate | aggressive (default: moderate)
- *   AGENT_STAKE           -- USDC stake per ticket (default: 5)
- *   AGENT_PAYOUT_MODE     -- 0=CLASSIC, 1=PROGRESSIVE, 2=EARLY_CASHOUT (default: 0)
  */
 
 import {
@@ -34,13 +40,16 @@ import {
   decodeEventLog,
   type Address,
   type Chain,
+  type PublicClient,
+  type WalletClient,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry, baseSepolia } from "viem/chains";
 
-import { loadEnvLocal, requireExplicitKeyForRemoteRpc, safeBigIntToNumber } from "./lib/env";
+import { loadEnvLocal, requireExplicitKeyForRemoteRpc, safeBigIntToNumber, safeParseNumber } from "./lib/env";
+import type { AgentQuoteResponse, AiInsight } from "@parlaycity/shared";
 
-// -- ABI fragments --------------------------------------------------------
+// -- ABI fragments (on-chain, only used when DRY_RUN=false) -----------------
 
 const USDC_ABI = parseAbi([
   "function approve(address spender, uint256 amount) returns (bool)",
@@ -55,7 +64,7 @@ const ENGINE_ABI = parseAbi([
   "event TicketPurchased(uint256 indexed ticketId, address indexed buyer, uint256[] legIds, bytes32[] outcomes, uint256 stake, uint256 multiplierX1e6, uint256 potentialPayout, uint8 mode, uint8 payoutMode)",
 ]);
 
-// -- Types ----------------------------------------------------------------
+// -- Types ------------------------------------------------------------------
 
 interface MarketLeg {
   id: number;
@@ -71,31 +80,25 @@ interface MarketResponse {
   legs: MarketLeg[];
 }
 
-interface AgentQuoteResponse {
-  quote: {
-    multiplierX1e6: string;
-    potentialPayout: string;
-    feePaid: string;
-    edgeBps: number;
-    valid: boolean;
-    reason?: string;
-  };
-  risk: {
-    action: string;
-    suggestedStake: string;
-    kellyFraction: number;
-    winProbability: number;
-    expectedValue: number;
-    confidence: number;
-    reasoning: string;
-    warnings: string[];
-    fairMultiplier: number;
-    netMultiplier: number;
-    edgeBps: number;
-  };
+interface DecisionLog {
+  timestamp: string;
+  cycle: number;
+  candidate: number;
+  legIds: number[];
+  outcomes: string[];
+  action: string;
+  confidence: number;
+  suggestedStake: string;
+  expectedValue: number;
+  kellyFraction: number;
+  reasoning: string;
+  warnings: string[];
+  aiInsight?: AiInsight;
+  dryRun: boolean;
+  ticketId?: number;
 }
 
-// -- Config ---------------------------------------------------------------
+// -- Config -----------------------------------------------------------------
 
 const PAYOUT_MODE_NAMES: Record<number, string> = {
   0: "CLASSIC",
@@ -103,15 +106,58 @@ const PAYOUT_MODE_NAMES: Record<number, string> = {
   2: "EARLY_CASHOUT",
 };
 
+const YES_OUTCOME = "0x0000000000000000000000000000000000000000000000000000000000000001" as const;
+
 function getConfig() {
+  const servicesUrl = process.env.SERVICES_URL ?? "http://localhost:3001";
+
+  const VALID_TOLERANCES = ["conservative", "moderate", "aggressive"] as const;
+  type RiskTolerance = (typeof VALID_TOLERANCES)[number];
+  const rawTolerance = process.env.RISK_TOLERANCE ?? "moderate";
+  const riskTolerance: RiskTolerance = VALID_TOLERANCES.includes(rawTolerance as RiskTolerance)
+    ? (rawTolerance as RiskTolerance)
+    : "moderate";
+
+  const dryRun = (process.env.DRY_RUN ?? "true").toLowerCase() !== "false";
+  const loopIntervalMs = Math.max(0, safeParseNumber(process.env.LOOP_INTERVAL_MS, 30000, "LOOP_INTERVAL_MS"));
+  const once = (process.env.ONCE ?? "false").toLowerCase() === "true" || loopIntervalMs === 0;
+  const maxStakeUsdc = safeParseNumber(process.env.MAX_STAKE_USDC, 10, "MAX_STAKE_USDC");
+  const maxLegs = Math.min(
+    Math.max(Math.floor(safeParseNumber(process.env.MAX_LEGS, 3, "MAX_LEGS")), 2),
+    5,
+  );
+  const maxCandidates = Math.min(
+    Math.max(Math.floor(safeParseNumber(process.env.MAX_CANDIDATES, 5, "MAX_CANDIDATES")), 1),
+    20,
+  );
+  const confidenceThreshold = Math.min(1, Math.max(0, safeParseNumber(process.env.CONFIDENCE_THRESHOLD, 0.6, "CONFIDENCE_THRESHOLD")));
+
+  const rawBankroll = process.env.AGENT_BANKROLL ?? "1000";
+  const bankroll = isNaN(Number(rawBankroll)) || Number(rawBankroll) <= 0 ? "1000" : rawBankroll;
+  const payoutModeRaw = Number(process.env.AGENT_PAYOUT_MODE ?? "0");
+  const payoutMode = [0, 1, 2].includes(payoutModeRaw) ? payoutModeRaw : 0;
+
+  return {
+    servicesUrl,
+    riskTolerance,
+    dryRun,
+    loopIntervalMs,
+    once,
+    maxStakeUsdc,
+    maxLegs,
+    maxCandidates,
+    confidenceThreshold,
+    bankroll,
+    payoutMode,
+  };
+}
+
+/** On-chain config -- only resolved when DRY_RUN=false */
+function getOnChainConfig() {
   const envLocal = loadEnvLocal();
-
   const rpcUrl = process.env.RPC_URL ?? "http://127.0.0.1:8545";
-
-  // Guard: refuse Anvil keys on remote networks
   requireExplicitKeyForRemoteRpc(rpcUrl);
 
-  // Default to Anvil account #1 (account #0 is the deployer/owner)
   const privateKey = (process.env.PRIVATE_KEY ??
     "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d") as `0x${string}`;
 
@@ -122,115 +168,145 @@ function getConfig() {
     envLocal.NEXT_PUBLIC_USDC_ADDRESS ??
     "") as Address;
 
-  const servicesUrl = process.env.SERVICES_URL ?? "http://localhost:3001";
-  const bankroll = process.env.AGENT_BANKROLL ?? "1000";
-  const riskTolerance = (process.env.AGENT_RISK_TOLERANCE ?? "moderate") as
-    | "conservative"
-    | "moderate"
-    | "aggressive";
-  const stake = process.env.AGENT_STAKE ?? "5";
-
-  const payoutModeRaw = Number(process.env.AGENT_PAYOUT_MODE ?? "0");
-  const payoutMode = [0, 1, 2].includes(payoutModeRaw) ? payoutModeRaw : 0;
-
   if (!engineAddr) throw new Error("Missing PARLAY_ENGINE_ADDRESS");
   if (!usdcAddr) throw new Error("Missing USDC_ADDRESS");
 
   const chain: Chain = rpcUrl.includes("sepolia") ? baseSepolia : foundry;
 
-  return { rpcUrl, privateKey, engineAddr, usdcAddr, servicesUrl, bankroll, riskTolerance, stake, payoutMode, chain };
+  return { rpcUrl, privateKey, engineAddr, usdcAddr, chain };
 }
 
-// -- Helpers --------------------------------------------------------------
+// -- Helpers ----------------------------------------------------------------
 
 function log(msg: string) {
   const ts = new Date().toISOString();
-  console.log(`[agent] [${ts}] ${msg}`);
+  console.log(`[risk-agent] [${ts}] ${msg}`);
 }
 
-// -- Step 1: Discover markets ---------------------------------------------
+function logDecision(decision: DecisionLog) {
+  console.log(JSON.stringify(decision));
+}
+
+// -- Step 1: Discover markets -----------------------------------------------
 
 async function discoverMarkets(servicesUrl: string): Promise<MarketResponse[]> {
-  log("Discovering markets...");
   const res = await fetch(`${servicesUrl}/markets`);
   if (!res.ok) throw new Error(`GET /markets failed: ${res.status} ${res.statusText}`);
-  const markets = (await res.json()) as MarketResponse[];
-  log(`Found ${markets.length} markets with ${markets.reduce((n, m) => n + m.legs.length, 0)} total legs`);
-  return markets;
+  return (await res.json()) as MarketResponse[];
 }
 
-// -- Step 2: Select favorable legs ----------------------------------------
+// -- Step 2: Build candidate parlays ----------------------------------------
 
-function selectLegs(markets: MarketResponse[]): { legIds: number[]; outcomes: string[]; questions: string[] } {
-  // Collect all active legs, sorted by probability (higher = more likely to win)
-  const allLegs: (MarketLeg & { category: string })[] = [];
+interface ParlayCandidate {
+  legIds: number[];
+  outcomes: string[];
+  questions: string[];
+  categories: string[];
+}
+
+/**
+ * Generate parlay candidates from active legs.
+ * Strategy: pick legs from different categories to reduce correlation.
+ * Produces combinations of 2..maxLegs legs, capped at maxCandidates.
+ */
+function buildCandidates(
+  markets: MarketResponse[],
+  maxLegs: number,
+  maxCandidates: number,
+): ParlayCandidate[] {
+  // Collect active legs grouped by category
+  const legsByCategory = new Map<string, (MarketLeg & { category: string })[]>();
   for (const market of markets) {
     for (const leg of market.legs) {
-      if (leg.active) {
-        allLegs.push({ ...leg, category: market.category });
+      if (!leg.active) continue;
+      const entry = { ...leg, category: market.category };
+      const arr = legsByCategory.get(market.category) ?? [];
+      arr.push(entry);
+      legsByCategory.set(market.category, arr);
+    }
+  }
+
+  const categories = [...legsByCategory.keys()];
+  if (categories.length === 0) return [];
+
+  // For each category, sort legs by probability descending (favor likely legs)
+  for (const legs of legsByCategory.values()) {
+    legs.sort((a, b) => b.probabilityPPM - a.probabilityPPM);
+  }
+
+  const candidates: ParlayCandidate[] = [];
+
+  // Strategy: pick the best leg from each of N different categories.
+  // Lazy backtracking avoids materializing all C(n,k) combos up front.
+  for (let size = 2; size <= Math.min(maxLegs, categories.length); size++) {
+    if (candidates.length >= maxCandidates) break;
+
+    const currentCombo: string[] = [];
+    const backtrack = (start: number) => {
+      if (candidates.length >= maxCandidates) return;
+      if (currentCombo.length === size) {
+        const combo = [...currentCombo];
+        const legs = combo.map((cat) => {
+          const catLegs = legsByCategory.get(cat);
+          if (!catLegs || catLegs.length === 0) return null;
+          return catLegs[0];
+        }).filter((l): l is (MarketLeg & { category: string }) => l !== null);
+        if (legs.length !== combo.length) return;
+        candidates.push({
+          legIds: legs.map((l) => l.id),
+          outcomes: legs.map(() => YES_OUTCOME),
+          questions: legs.map((l) => l.question),
+          categories: combo,
+        });
+        return;
       }
+      for (let i = start; i <= categories.length - (size - currentCombo.length); i++) {
+        if (candidates.length >= maxCandidates) return;
+        currentCombo.push(categories[i]);
+        backtrack(i + 1);
+        currentCombo.pop();
+      }
+    };
+    backtrack(0);
+  }
+
+  // If we have fewer categories than 2, build from the same category
+  if (categories.length === 1) {
+    const legs = legsByCategory.get(categories[0]);
+    if (legs && legs.length >= 2) {
+      candidates.push({
+        legIds: legs.slice(0, 2).map((l) => l.id),
+        outcomes: legs.slice(0, 2).map(() => YES_OUTCOME),
+        questions: legs.slice(0, 2).map((l) => l.question),
+        categories: [categories[0], categories[0]],
+      });
     }
   }
 
-  // Sort by probability descending (favor higher-probability legs for demo)
-  allLegs.sort((a, b) => b.probabilityPPM - a.probabilityPPM);
-
-  // Pick top 2-3 legs from different categories to reduce correlation
-  const selected: typeof allLegs = [];
-  const usedCategories = new Set<string>();
-
-  for (const leg of allLegs) {
-    if (selected.length >= 3) break;
-    // Prefer diversified categories, but allow same category if needed
-    if (!usedCategories.has(leg.category) || selected.length < 2) {
-      selected.push(leg);
-      usedCategories.add(leg.category);
-    }
-  }
-
-  // Ensure we have at least 2 legs
-  if (selected.length < 2) {
-    // Fall back to just the first 2 active legs
-    const fallback = allLegs.slice(0, 2);
-    if (fallback.length < 2) throw new Error("Not enough active legs to build a parlay");
-    selected.length = 0;
-    selected.push(...fallback);
-  }
-
-  const legIds = selected.map((l) => l.id);
-  // Bet "Yes" on all legs (outcome = 0x01 padded to bytes32)
-  const outcomes = selected.map(() =>
-    "0x0000000000000000000000000000000000000000000000000000000000000001",
-  );
-  const questions = selected.map(
-    (l) => `  Leg ${l.id}: "${l.question}" (prob: ${(l.probabilityPPM / 10000).toFixed(1)}%)`,
-  );
-
-  log(`Selected ${selected.length} legs:`);
-  for (const q of questions) log(q);
-
-  return { legIds, outcomes, questions };
+  return candidates.slice(0, maxCandidates);
 }
 
-// -- Step 3: Get risk assessment via x402 ---------------------------------
+// -- Step 3: Get risk assessment via x402 -----------------------------------
 
 async function getRiskAssessment(
   servicesUrl: string,
-  legIds: number[],
-  outcomes: string[],
-  stake: string,
-  bankroll: string,
+  candidate: ParlayCandidate,
+  stakeRaw: string,
+  bankrollRaw: string,
   riskTolerance: string,
 ): Promise<AgentQuoteResponse> {
-  log("Requesting x402-gated risk assessment...");
-
-  const body = { legIds, outcomes, stake, bankroll, riskTolerance };
+  const body = {
+    legIds: candidate.legIds,
+    outcomes: candidate.outcomes,
+    stake: stakeRaw,
+    bankroll: bankrollRaw,
+    riskTolerance,
+  };
 
   const res = await fetch(`${servicesUrl}/premium/agent-quote`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      // In dev/test mode, any non-empty X-402-Payment header works
       "X-402-Payment": "agent-bot-demo-payment",
     },
     body: JSON.stringify(body),
@@ -238,9 +314,7 @@ async function getRiskAssessment(
 
   if (res.status === 402) {
     const err = await res.json();
-    log("x402 payment required (expected in production):");
-    log(JSON.stringify(err, null, 2));
-    throw new Error("x402 payment required -- set up real payment for production");
+    throw new Error(`x402 payment required: ${JSON.stringify(err)}`);
   }
 
   if (!res.ok) {
@@ -248,149 +322,72 @@ async function getRiskAssessment(
     throw new Error(`POST /premium/agent-quote failed: ${res.status} ${text.slice(0, 300)}`);
   }
 
-  const data = (await res.json()) as AgentQuoteResponse;
-
-  log("Risk assessment received:");
-  log(`  Action: ${data.risk.action}`);
-  log(`  Kelly fraction: ${(data.risk.kellyFraction * 100).toFixed(2)}%`);
-  log(`  Win probability: ${(data.risk.winProbability * 100).toFixed(2)}%`);
-  log(`  Expected value: $${data.risk.expectedValue.toFixed(2)}`);
-  log(`  Confidence: ${(data.risk.confidence * 100).toFixed(0)}%`);
-  log(`  Suggested stake: $${data.risk.suggestedStake}`);
-  log(`  Fair multiplier: ${data.risk.fairMultiplier}x`);
-  log(`  Net multiplier: ${data.risk.netMultiplier}x`);
-  log(`  Reasoning: ${data.risk.reasoning}`);
-  if (data.risk.warnings.length > 0) {
-    log(`  Warnings: ${data.risk.warnings.join("; ")}`);
-  }
-
-  return data;
+  return (await res.json()) as AgentQuoteResponse;
 }
 
-// -- Step 4+5: Decide and buy ticket --------------------------------------
+// -- Step 4: On-chain buy (only when DRY_RUN=false) -------------------------
 
-async function main() {
-  const cfg = getConfig();
-  log("Starting ParlayCity Risk Agent");
-  log(`RPC: ${cfg.rpcUrl}`);
-  log(`Engine: ${cfg.engineAddr}`);
-  log(`USDC: ${cfg.usdcAddr}`);
-  log(`Services: ${cfg.servicesUrl}`);
-  log(`Bankroll: $${cfg.bankroll} | Stake: $${cfg.stake} | Risk: ${cfg.riskTolerance}`);
-  log(`Payout mode: ${PAYOUT_MODE_NAMES[cfg.payoutMode] ?? cfg.payoutMode}`);
+async function buyOnChain(
+  publicClient: PublicClient,
+  walletClient: WalletClient,
+  account: ReturnType<typeof privateKeyToAccount>,
+  engineAddr: Address,
+  usdcAddr: Address,
+  legIds: number[],
+  outcomes: string[],
+  stakeUsdc: string,
+  payoutMode: number,
+): Promise<number | undefined> {
+  const stakeRaw = parseUnits(stakeUsdc, 6);
 
-  const account = privateKeyToAccount(cfg.privateKey);
-  log(`Account: ${account.address}`);
-
-  const publicClient = createPublicClient({
-    chain: cfg.chain,
-    transport: http(cfg.rpcUrl),
-  });
-
-  const walletClient = createWalletClient({
-    chain: cfg.chain,
-    transport: http(cfg.rpcUrl),
-    account,
-  });
-
-  // Check USDC balance
+  // Check balance
   const balance = await publicClient.readContract({
-    address: cfg.usdcAddr,
+    address: usdcAddr,
     abi: USDC_ABI,
     functionName: "balanceOf",
     args: [account.address],
   });
-  log(`USDC balance: ${formatUnits(balance, 6)} USDC`);
-
-  if (balance === 0n) {
-    log("No USDC balance. Fund the account first (deploy script mints to Anvil accounts).");
-    process.exit(1);
-  }
-
-  // Step 1: Discover markets
-  const markets = await discoverMarkets(cfg.servicesUrl);
-
-  // Step 2: Select legs
-  const { legIds, outcomes } = selectLegs(markets);
-
-  // Step 3: Get risk assessment
-  const assessment = await getRiskAssessment(
-    cfg.servicesUrl,
-    legIds,
-    outcomes,
-    cfg.stake,
-    cfg.bankroll,
-    cfg.riskTolerance,
-  );
-
-  // Step 4: Decision
-  const { risk } = assessment;
-  const shouldBuy =
-    risk.action === "BUY" ||
-    (risk.action === "REDUCE_STAKE" && risk.kellyFraction > 0 && risk.expectedValue > -0.5);
-
-  if (!shouldBuy) {
-    log(`Decision: SKIP -- agent recommends ${risk.action}`);
-    log("Risk agent complete (no ticket purchased).");
-    return;
-  }
-
-  // Use suggested stake if available and less than our configured stake
-  const suggestedNum = Number(risk.suggestedStake);
-  const configuredNum = Number(cfg.stake);
-  const finalStake = suggestedNum > 0 && suggestedNum < configuredNum ? risk.suggestedStake : cfg.stake;
-
-  log(`Decision: BUY with $${finalStake} USDC (${PAYOUT_MODE_NAMES[cfg.payoutMode]})`);
-
-  // Step 5: Approve USDC + buy ticket on-chain
-  const stakeRaw = parseUnits(finalStake, 6);
 
   if (stakeRaw > balance) {
-    log(`Insufficient USDC: need ${finalStake}, have ${formatUnits(balance, 6)}`);
-    process.exit(1);
+    log(`Insufficient USDC: need ${stakeUsdc}, have ${formatUnits(balance, 6)}`);
+    return undefined;
   }
 
-  // Check and set allowance
+  // Approve if needed
   const allowance = await publicClient.readContract({
-    address: cfg.usdcAddr,
+    address: usdcAddr,
     abi: USDC_ABI,
     functionName: "allowance",
-    args: [account.address, cfg.engineAddr],
+    args: [account.address, engineAddr],
   });
 
   if (allowance < stakeRaw) {
     log("Approving USDC spend...");
     const approveTx = await walletClient.writeContract({
-      address: cfg.usdcAddr,
+      address: usdcAddr,
       abi: USDC_ABI,
       functionName: "approve",
-      args: [cfg.engineAddr, stakeRaw],
+      args: [engineAddr, stakeRaw],
       chain: walletClient.chain,
       account,
     });
     await publicClient.waitForTransactionReceipt({ hash: approveTx });
-    log("USDC approved.");
   }
 
   // Buy ticket
   log("Buying parlay ticket on-chain...");
-  const legIdsBigInt = legIds.map((id) => BigInt(id));
-  const outcomeBytes = outcomes as `0x${string}`[];
-
   const buyTx = await walletClient.writeContract({
-    address: cfg.engineAddr,
+    address: engineAddr,
     abi: ENGINE_ABI,
     functionName: "buyTicketWithMode",
-    args: [legIdsBigInt, outcomeBytes, stakeRaw, cfg.payoutMode],
+    args: [legIds.map((id) => BigInt(id)), outcomes as `0x${string}`[], stakeRaw, payoutMode],
     chain: walletClient.chain,
     account,
   });
 
   const receipt = await publicClient.waitForTransactionReceipt({ hash: buyTx });
-  log(`Transaction confirmed: ${receipt.transactionHash}`);
 
-  // Parse TicketPurchased event from receipt logs instead of ticketCount()-1
-  let ticketId: bigint | undefined;
+  // Parse TicketPurchased event
   for (const logEntry of receipt.logs) {
     try {
       const decoded = decodeEventLog({
@@ -399,48 +396,221 @@ async function main() {
         topics: logEntry.topics,
       });
       if (decoded.eventName === "TicketPurchased") {
-        ticketId = decoded.args.ticketId;
-        break;
+        return safeBigIntToNumber(decoded.args.ticketId, "ticketId");
       }
     } catch {
-      // Not our event, skip
+      // Not our event
     }
   }
 
-  if (ticketId === undefined) {
-    log("Warning: could not parse TicketPurchased event from receipt. Falling back to ticketCount.");
-    const ticketCount = await publicClient.readContract({
-      address: cfg.engineAddr,
-      abi: ENGINE_ABI,
-      functionName: "ticketCount",
-    });
-    ticketId = ticketCount - 1n;
+  // Fallback
+  const ticketCount = await publicClient.readContract({
+    address: engineAddr,
+    abi: ENGINE_ABI,
+    functionName: "ticketCount",
+  });
+  return safeBigIntToNumber(ticketCount - 1n, "ticketId");
+}
+
+// -- Main loop --------------------------------------------------------------
+
+let running = true;
+
+async function runCycle(
+  cfg: ReturnType<typeof getConfig>,
+  cycle: number,
+  onChain?: {
+    publicClient: PublicClient;
+    walletClient: WalletClient;
+    account: ReturnType<typeof privateKeyToAccount>;
+    engineAddr: Address;
+    usdcAddr: Address;
+  },
+) {
+  log(`--- Cycle ${cycle} ---`);
+
+  // Step 1: Discover markets
+  const markets = await discoverMarkets(cfg.servicesUrl);
+  const activeLegs = markets.reduce((n, m) => n + m.legs.filter((l) => l.active).length, 0);
+  log(`Found ${markets.length} markets, ${activeLegs} active legs`);
+
+  if (activeLegs < 2) {
+    log("Not enough active legs to build a parlay. Skipping cycle.");
+    return;
   }
 
-  const ticketIdNum = safeBigIntToNumber(ticketId, "ticketId");
+  // Step 2: Build candidates
+  const candidates = buildCandidates(markets, cfg.maxLegs, cfg.maxCandidates);
+  log(`Built ${candidates.length} candidate parlay(s)`);
 
-  const ticket = await publicClient.readContract({
-    address: cfg.engineAddr,
-    abi: ENGINE_ABI,
-    functionName: "getTicket",
-    args: [ticketId],
+  // Use human-readable USDC units (strings) for API -- parseUSDC on server converts to raw
+  const stakeHuman = String(cfg.maxStakeUsdc);
+  const bankrollHuman = cfg.bankroll;
+
+  // Step 3+4: Evaluate each candidate
+  for (let i = 0; i < candidates.length; i++) {
+    if (!running) break;
+
+    const candidate = candidates[i];
+    log(`Evaluating candidate ${i + 1}/${candidates.length}: legs [${candidate.legIds.join(", ")}]`);
+
+    let assessment: AgentQuoteResponse;
+    try {
+      assessment = await getRiskAssessment(
+        cfg.servicesUrl,
+        candidate,
+        stakeHuman,
+        bankrollHuman,
+        cfg.riskTolerance,
+      );
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log(`Failed to get assessment for candidate ${i + 1}: ${msg}`);
+      continue;
+    }
+
+    const { risk } = assessment;
+    const shouldBuy =
+      risk.action === "BUY" && risk.confidence >= cfg.confidenceThreshold;
+
+    // Determine final stake
+    const suggestedNum = Number(risk.suggestedStake);
+    const finalStake =
+      suggestedNum > 0 && suggestedNum < cfg.maxStakeUsdc
+        ? risk.suggestedStake
+        : String(cfg.maxStakeUsdc);
+
+    // Build structured decision log
+    const decision: DecisionLog = {
+      timestamp: new Date().toISOString(),
+      cycle,
+      candidate: i + 1,
+      legIds: candidate.legIds,
+      outcomes: candidate.outcomes,
+      action: shouldBuy ? "BUY" : `SKIP(${risk.action})`,
+      confidence: risk.confidence,
+      suggestedStake: risk.suggestedStake,
+      expectedValue: risk.expectedValue,
+      kellyFraction: risk.kellyFraction,
+      reasoning: risk.reasoning,
+      warnings: risk.warnings,
+      aiInsight: assessment.aiInsight,
+      dryRun: cfg.dryRun,
+    };
+
+    if (shouldBuy && !cfg.dryRun && onChain) {
+      try {
+        const ticketId = await buyOnChain(
+          onChain.publicClient,
+          onChain.walletClient,
+          onChain.account,
+          onChain.engineAddr,
+          onChain.usdcAddr,
+          candidate.legIds,
+          candidate.outcomes,
+          finalStake,
+          cfg.payoutMode,
+        );
+        if (ticketId !== undefined) {
+          decision.ticketId = ticketId;
+          log(`Purchased ticket #${ticketId}`);
+        }
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        log(`On-chain buy failed: ${msg}`);
+      }
+    } else if (shouldBuy && cfg.dryRun) {
+      log(`DRY RUN: would buy with $${finalStake} USDC (${PAYOUT_MODE_NAMES[cfg.payoutMode]})`);
+    }
+
+    logDecision(decision);
+  }
+
+  log(`--- Cycle ${cycle} complete ---`);
+}
+
+async function main() {
+  const cfg = getConfig();
+
+  log("Starting ParlayCity Autonomous Risk Agent");
+  log(`Services: ${cfg.servicesUrl}`);
+  log(`Risk tolerance: ${cfg.riskTolerance}`);
+  log(`Max stake: $${cfg.maxStakeUsdc} USDC | Bankroll: $${cfg.bankroll} USDC`);
+  log(`Max legs: ${cfg.maxLegs} | Max candidates/cycle: ${cfg.maxCandidates}`);
+  log(`Confidence threshold: ${cfg.confidenceThreshold}`);
+  log(`Payout mode: ${PAYOUT_MODE_NAMES[cfg.payoutMode]}`);
+  log(`Dry run: ${cfg.dryRun}`);
+  log(`Mode: ${cfg.once ? "single run" : `loop (${cfg.loopIntervalMs}ms interval)`}`);
+
+  // Set up on-chain clients only when needed
+  let onChain:
+    | {
+        publicClient: PublicClient;
+        walletClient: WalletClient;
+        account: ReturnType<typeof privateKeyToAccount>;
+        engineAddr: Address;
+        usdcAddr: Address;
+      }
+    | undefined;
+
+  if (!cfg.dryRun) {
+    const oc = getOnChainConfig();
+    const account = privateKeyToAccount(oc.privateKey);
+    log(`On-chain mode: RPC=${oc.rpcUrl} Engine=${oc.engineAddr} Account=${account.address}`);
+
+    const publicClient = createPublicClient({ chain: oc.chain, transport: http(oc.rpcUrl) });
+    const walletClient = createWalletClient({
+      chain: oc.chain,
+      transport: http(oc.rpcUrl),
+      account,
+    });
+
+    onChain = {
+      publicClient: publicClient as PublicClient,
+      walletClient: walletClient as WalletClient,
+      account,
+      engineAddr: oc.engineAddr,
+      usdcAddr: oc.usdcAddr,
+    };
+  }
+
+  // Graceful shutdown
+  process.on("SIGINT", () => {
+    log("Shutting down...");
+    running = false;
+  });
+  process.on("SIGTERM", () => {
+    log("Shutting down...");
+    running = false;
   });
 
-  const multiplierDisplay = safeBigIntToNumber(ticket.multiplierX1e6, "multiplierX1e6") / 1_000_000;
+  let cycle = 1;
 
-  log("Ticket purchased successfully!");
-  log(`  Ticket ID: #${ticketIdNum}`);
-  log(`  Stake: ${formatUnits(ticket.stake, 6)} USDC`);
-  log(`  Multiplier: ${multiplierDisplay.toFixed(2)}x`);
-  log(`  Potential payout: ${formatUnits(ticket.potentialPayout, 6)} USDC`);
-  log(`  Fee paid: ${formatUnits(ticket.feePaid, 6)} USDC`);
-  log(`  Legs: ${ticket.legIds.map((id) => safeBigIntToNumber(id, "legId")).join(", ")}`);
-  log(`  Payout mode: ${PAYOUT_MODE_NAMES[ticket.payoutMode] ?? ticket.payoutMode}`);
+  // Run first cycle
+  await runCycle(cfg, cycle, onChain);
 
-  log("Risk agent complete.");
+  if (cfg.once) {
+    log("Single-run mode. Exiting.");
+    return;
+  }
+
+  // Loop
+  while (running) {
+    await new Promise((r) => setTimeout(r, cfg.loopIntervalMs));
+    if (!running) break;
+    cycle++;
+    try {
+      await runCycle(cfg, cycle, onChain);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      log(`Cycle ${cycle} failed: ${msg}`);
+    }
+  }
+
+  log("Stopped.");
 }
 
 main().catch((err) => {
-  console.error("[agent] Fatal:", err);
+  console.error("[risk-agent] Fatal:", err);
   process.exit(1);
 });

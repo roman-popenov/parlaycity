@@ -155,9 +155,16 @@ demo-autopilot-crash:
 	@echo "Crashing last leg of every ticket (CRASH_ODDS=100)"
 	CRASH_ODDS=100 pnpm --filter services exec tsx ../../scripts/demo-autopilot.ts
 
+# -- Agents --
+risk-agent:
+	pnpm --filter services exec tsx ../../scripts/risk-agent.ts
+
+risk-agent-dry:
+	DRY_RUN=true pnpm --filter services exec tsx ../../scripts/risk-agent.ts
+
 # -- Cleanup --
 clean:
 	cd packages/contracts && forge clean
 	cd apps/web && rm -rf .next
 
-.PHONY: bootstrap setup chain deploy-local deploy-sepolia sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-all gate typecheck build-web build-contracts coverage snapshot ci ci-contracts ci-services ci-web demo-seed demo-autopilot demo-autopilot-crash clean
+.PHONY: bootstrap setup chain deploy-local deploy-sepolia sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-all gate typecheck build-web build-contracts coverage snapshot ci ci-contracts ci-services ci-web demo-seed demo-autopilot demo-autopilot-crash clean risk-agent risk-agent-dry

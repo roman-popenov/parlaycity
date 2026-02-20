@@ -112,8 +112,9 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 - ParlayMath: multiplier, edge, payout, progressive payout, cashout value -- supports Classic, Progressive, and EarlyCashout modes (Solidity + TypeScript mirror)
 - AdminOracleAdapter + OptimisticOracleAdapter
 - MockYieldAdapter + AaveYieldAdapter (not in default deploy)
-- Frontend: parlay builder, vault dashboard, tickets list, ticket detail, MultiplierClimb viz
-- Services: catalog, quote, exposure (mock), x402-gated premium/sim + risk-assess, vault/health, vault/yield-report
+- Frontend: parlay builder, vault dashboard, tickets list, ticket detail, MultiplierClimb viz (animated rocket + crash), RehabCTA, RehabLocks (mock)
+- Services: catalog, quote, exposure (mock), x402-gated premium/sim + risk-assess + agent-quote (with optional 0G AI insight), vault/health, vault/yield-report
+- Scripts: risk-agent (autonomous agent loop with 0G inference, Kelly sizing, multi-candidate selection), demo-autopilot (leg resolution + crash simulation), demo-seed
 - Tests: unit, fuzz, invariant, integration (contracts), vitest (services + web)
 - CI: GitHub Actions (3 jobs), Makefile quality gate
 - Deploy script + sync-env
@@ -125,12 +126,10 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 - ERC-4337 paymaster integration (gasless buyTicket/cashout/lock via Base Paymaster)
 - Per-market exposure tracking and caps
 - Utilization-based dynamic pricing (riskPremiumBps)
-- Rehab mode UX (losing users -> LP conversion CTA)
 - Good cause donation routing (Gitcoin-style)
 
 ### DISCONNECTED (exists but not wired)
 - `LockVault.sweepPenaltyShares`: penalty shares accumulate silently until owner sweeps
-- `MultiplierClimb` component exists but cashout game loop does not
 - `IHedgeAdapter` interface exists, services mock exists, but no deployed contract
 - `AaveYieldAdapter` exists in src but default deploy only uses MockYieldAdapter
 
@@ -138,7 +137,7 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 
 - This repo is a fork of `roman-popenov/parlaycity`. Push branches to `origin` (stragitech), open PRs against the upstream with `gh pr create --repo roman-popenov/parlaycity`.
 - Small PRs against `main`. Main stays green.
-- Sequence: PR0 (docs/narrative) -> PR1 (FeeRouter) -> PR2 (SafetyModule) -> PR3 (cashout) -> PR4 (x402 real verification) -> PR5 (paymaster + OnchainKit) -> PR6 (crash UX + rehab) -> PR7 (stretch)
+- Merged: PR #24 (cashout math parity), PR #25 (crash UX + rehab flow + demo scripts). In review: PR #26 (0G risk agent + AI insight). Remaining: SafetyModule, loss distribution, paymaster, dynamic pricing.
 - Every PR must pass `make gate` before merge.
 - Contract PRs must include tests AND a security note.
 
@@ -194,6 +193,12 @@ See `docs/solutions/` for detailed write-ups. Key patterns to avoid:
 21. **Zero BigInt at API boundaries**: `formatUnits(0n, 6)` produces `"0"` which Zod `> 0` rejects. Guard with `value !== undefined && value > 0n ? convert(value) : fallback`. This is the third variant of the zero-value problem (see #8, #12, #17). (015)
 22. **Type guard exhaustiveness**: A type guard asserting `data is T` MUST validate ALL fields of T, not just the ones currently consumed. Partial guards create unsound narrowing -- TypeScript trusts the assertion, so unchecked fields become runtime `undefined` behind a `string`/`number` type. (015)
 23. **Spec completeness**: Every interface, struct, or contract type referenced in a spec document MUST have an explicit definition in that document. Readers cannot infer method signatures from call sites alone. (015)
+24. **Lazy singleton retry storms**: When a lazy-init singleton fails initialization, set `disabled = true` on ALL failure paths. Otherwise every subsequent request retries, producing log spam and wasted I/O. (016)
+25. **Eager combinatorial materialization**: Never materialize full `C(n,k)` sets before filtering. Use backtracking with early termination (`if (results.length >= max) return`). `C(20,5)` = 15,504 items; `C(30,5)` = 142,506. (016)
+26. **useEffect declaration order on mount**: React effects fire in declaration order. A "reset" effect after a "watch" effect clobbers the watch on initial mount. Use `prevRef` to gate resets on specific prop transitions (e.g., `false -> true`), not every mount. (016)
+27. **SVG stroke reveal needs Euclidean distances**: `strokeDashoffset` based on `segmentIndex / totalSegments * pathLength` assumes uniform segments. Real SVG paths have variable segment lengths. Compute cumulative `Math.sqrt(dx*dx + dy*dy)` per segment. (016)
+28. **Test hermeticity for feature toggles**: Tests that depend on the ABSENCE of an env var must `delete process.env.KEY` in `beforeAll` and restore in `afterAll`. Dev environment leaks into CI otherwise. (016)
+29. **Unused dependencies from removed features**: `pnpm install` adds to package.json but removing consuming code doesn't remove the declaration. Grep for imports before shipping any PR that deletes or replaces functionality. (016)
 
 After every non-trivial bug fix, document in `docs/solutions/` with: Problem, Root Cause, Solution, Prevention (category-level).
 

@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p3
 issue_id: "032"
 tags: [code-review, duplication, pr18]
