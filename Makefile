@@ -21,6 +21,13 @@ deploy-local:
 	cd packages/contracts && forge script script/Deploy.s.sol --broadcast --rpc-url http://127.0.0.1:8545
 	./scripts/sync-env.sh
 
+deploy-sepolia:
+	@test -n "$$DEPLOYER_PRIVATE_KEY" || (echo "Error: DEPLOYER_PRIVATE_KEY env var required" && exit 1)
+	@test -n "$$BASE_SEPOLIA_RPC_URL" || (echo "Error: BASE_SEPOLIA_RPC_URL env var required (default: https://sepolia.base.org)" && exit 1)
+	cd packages/contracts && PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY forge script script/Deploy.s.sol \
+		--broadcast --rpc-url $$BASE_SEPOLIA_RPC_URL --verify --slow
+	./scripts/sync-env.sh sepolia
+
 sync-env:
 	./scripts/sync-env.sh
 
@@ -140,4 +147,4 @@ clean:
 	cd packages/contracts && forge clean
 	cd apps/web && rm -rf .next
 
-.PHONY: bootstrap setup chain deploy-local sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-all gate typecheck build-web build-contracts coverage snapshot ci ci-contracts ci-services ci-web clean
+.PHONY: bootstrap setup chain deploy-local deploy-sepolia sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-all gate typecheck build-web build-contracts coverage snapshot ci ci-contracts ci-services ci-web clean
