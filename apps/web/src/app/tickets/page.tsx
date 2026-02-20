@@ -16,7 +16,9 @@ function toTicketData(
 ): TicketData {
   const multiplier = Number(t.multiplierX1e6) / PPM;
   const effectiveStake = t.stake - t.feePaid;
-  const penaltyBps = Number(t.cashoutPenaltyBps) || BASE_CASHOUT_PENALTY_BPS;
+  // Nullish check: on-chain 0 bps is a valid penalty (|| would replace it with default)
+  const rawPenalty = Number(t.cashoutPenaltyBps);
+  const penaltyBps = Number.isFinite(rawPenalty) ? rawPenalty : BASE_CASHOUT_PENALTY_BPS;
   const wonProbsPPM: number[] = [];
   let unresolvedCount = 0;
 
