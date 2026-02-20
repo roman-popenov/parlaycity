@@ -69,6 +69,7 @@ export default function TicketPage() {
   // Build legs in a single pass, collecting cashout inputs simultaneously
   const wonProbsPPM: number[] = [];
   let unresolvedCount = 0;
+  let hasLostLeg = false;
 
   const legs: TicketLeg[] = onChainTicket.legIds.map((legId, i): TicketLeg => {
     const leg = legMap.get(legId.toString());
@@ -86,8 +87,12 @@ export default function TicketPage() {
       // Non-voided resolved leg
       const isNoBet = outcomeChoice === 2;
       const isWon = (result === 1 && !isNoBet) || (result === 2 && isNoBet);
+      const isLost = (result === 1 && isNoBet) || (result === 2 && !isNoBet);
       if (isWon && effectivePPM > 0) {
         wonProbsPPM.push(effectivePPM);
+      }
+      if (isLost) {
+        hasLostLeg = true;
       }
     } else {
       // Unresolved OR voided (result === 3) -- matches ParlayEngine.sol:554-557
@@ -106,7 +111,13 @@ export default function TicketPage() {
 
   // Compute cashout value using integer math (mirrors shared/math.ts computeCashoutValue)
   let cashoutValue: bigint | undefined;
-  if (wonProbsPPM.length > 0 && unresolvedCount > 0 && effectiveStake > 0n) {
+  if (
+    onChainTicket.payoutMode === 2 &&
+    !hasLostLeg &&
+    wonProbsPPM.length > 0 &&
+    unresolvedCount > 0 &&
+    effectiveStake > 0n
+  ) {
     const ppm = BigInt(PPM);
     let wonMultiplier = ppm;
     for (const p of wonProbsPPM) {
@@ -137,19 +148,23 @@ export default function TicketPage() {
   const legMultipliers: number[] = [];
   let resolvedWon = 0;
   let crashed = false;
+  const resolvedLegs: boolean[] = [];
 
   for (const leg of ticket.legs) {
     legMultipliers.push(leg.odds);
+    let isWon = false;
+    let isLost = false;
     if (leg.resolved) {
-      const isWon =
+      isWon =
         (leg.result === 1 && leg.outcomeChoice === 1) ||
         (leg.result === 2 && leg.outcomeChoice === 2);
-      const isLost =
+      isLost =
         (leg.result === 1 && leg.outcomeChoice === 2) ||
         (leg.result === 2 && leg.outcomeChoice === 1);
       if (isWon) resolvedWon++;
       if (isLost) crashed = true;
     }
+    resolvedLegs.push(isWon);
   }
 
   // Current live multiplier: product of won leg odds
@@ -161,6 +176,12 @@ export default function TicketPage() {
       (leg.result === 2 && leg.outcomeChoice === 2);
     if (isWon) liveMultiplier *= leg.odds;
   }
+
+  const displayValue = crashed
+    ? 0n
+    : ticket.payoutMode === 2 && cashoutValue !== undefined
+      ? cashoutValue
+      : ticket.payout;
 
   return (
     <div className="mx-auto max-w-lg space-y-6">
@@ -210,7 +231,7 @@ export default function TicketPage() {
           <MultiplierClimb
             legMultipliers={legMultipliers}
             crashed={crashed}
-            resolvedUpTo={resolvedWon}
+            resolvedLegs={resolvedLegs}
           />
           {/* Live stats bar */}
           <div className="flex items-center justify-between rounded-xl border border-white/5 bg-gray-900/50 px-4 py-3">
@@ -231,9 +252,7 @@ export default function TicketPage() {
                 {ticket.payoutMode === 2 ? "Cashout" : "Potential"}
               </p>
               <p className="text-lg font-bold tabular-nums text-yellow-400">
-                {cashoutValue !== undefined
-                  ? `$${Number(formatUnits(cashoutValue, 6)).toFixed(2)}`
-                  : `$${Number(formatUnits(ticket.payout, 6)).toFixed(2)}`}
+                {`$${Number(formatUnits(displayValue, 6)).toFixed(2)}`}
               </p>
             </div>
           </div>
@@ -245,7 +264,7 @@ export default function TicketPage() {
         <MultiplierClimb
           legMultipliers={legMultipliers}
           crashed={crashed}
-          resolvedUpTo={resolvedWon}
+          resolvedLegs={resolvedLegs}
         />
       )}
 

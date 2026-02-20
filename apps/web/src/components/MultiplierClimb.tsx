@@ -11,6 +11,8 @@ interface MultiplierClimbProps {
   crashed?: boolean;
   /** How many legs have resolved as Won (drives progressive animation) */
   resolvedUpTo?: number;
+  /** Per-leg resolution (won) state, by index */
+  resolvedLegs?: boolean[];
 }
 
 /** Pick nice gridline values for log scale */
@@ -57,6 +59,7 @@ export function MultiplierClimb({
   legMultipliers,
   crashed = false,
   resolvedUpTo,
+  resolvedLegs,
 }: MultiplierClimbProps) {
   const [isLog, setIsLog] = useState(true);
   const { maxLegs } = useParlayConfig();
@@ -247,7 +250,11 @@ export function MultiplierClimb({
         {/* Leg markers */}
         <div className="absolute bottom-2 left-0 flex w-full justify-around px-2">
           {[...Array(effectiveMaxLegs)].map((_, i) => {
-            const resolved = resolvedUpTo !== undefined ? i < resolvedUpTo : i < legMultipliers.length;
+            const resolved = resolvedLegs
+              ? resolvedLegs[i] ?? false
+              : resolvedUpTo !== undefined
+                ? i < resolvedUpTo
+                : i < legMultipliers.length;
             const isActive = i < legMultipliers.length;
             return (
               <div
