@@ -4,16 +4,9 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { formatUnits } from "viem";
 import { useTicket, useUserTickets, useLegDescriptions, useLegStatuses } from "@/lib/hooks";
-import {
-  TicketCard,
-  type TicketData,
-  type TicketLeg,
-} from "@/components/TicketCard";
+import { TicketCard } from "@/components/TicketCard";
 import { MultiplierClimb } from "@/components/MultiplierClimb";
-import { mapStatus, parseOutcomeChoice } from "@/lib/utils";
-const PPM = 1_000_000;
-const BPS = 10_000;
-const BASE_CASHOUT_PENALTY_BPS = 1_500;
+import { toTicketData } from "@/lib/ticketData";
 
 export default function TicketPage() {
   const params = useParams();
@@ -60,78 +53,7 @@ export default function TicketPage() {
     );
   }
 
-  const multiplier = Number(onChainTicket.multiplierX1e6) / PPM;
-  // Use effectiveStake (stake minus fee) for cashout math -- matches on-chain ParlayEngine.sol:613
-  const effectiveStake = onChainTicket.stake - onChainTicket.feePaid;
-  // Use ticket's snapshotted penalty if available, else default
-  const penaltyBps = Number(onChainTicket.cashoutPenaltyBps) || BASE_CASHOUT_PENALTY_BPS;
-
-  // Build legs in a single pass, collecting cashout inputs simultaneously
-  const wonProbsPPM: number[] = [];
-  let unresolvedCount = 0;
-
-  const legs: TicketLeg[] = onChainTicket.legIds.map((legId, i): TicketLeg => {
-    const leg = legMap.get(legId.toString());
-    const rawPPM = leg ? Number(leg.probabilityPPM) : 0;
-    const outcomeChoice = parseOutcomeChoice(onChainTicket.outcomes[i]);
-    const effectivePPM = outcomeChoice === 2
-      ? PPM - rawPPM
-      : outcomeChoice === 1 ? rawPPM : 0;
-    const odds = effectivePPM > 0 ? PPM / effectivePPM : multiplier ** (1 / onChainTicket.legIds.length);
-    const oracleResult = legStatuses.get(legId.toString());
-    const resolved = oracleResult?.resolved ?? false;
-    const result = oracleResult?.status ?? 0;
-
-    if (resolved && result !== 3) {
-      // Non-voided resolved leg
-      const isNoBet = outcomeChoice === 2;
-      const isWon = (result === 1 && !isNoBet) || (result === 2 && isNoBet);
-      if (isWon && effectivePPM > 0) {
-        wonProbsPPM.push(effectivePPM);
-      }
-    } else {
-      // Unresolved OR voided (result === 3) -- matches ParlayEngine.sol:554-557
-      unresolvedCount++;
-    }
-
-    return {
-      description: leg?.question ?? `Leg #${legId.toString()}`,
-      odds,
-      outcomeChoice,
-      resolved,
-      result,
-      probabilityPPM: effectivePPM,
-    };
-  });
-
-  // Compute cashout value using integer math (mirrors shared/math.ts computeCashoutValue)
-  let cashoutValue: bigint | undefined;
-  if (onChainTicket.payoutMode === 2 && wonProbsPPM.length > 0 && unresolvedCount > 0 && effectiveStake > 0n) {
-    const ppm = BigInt(PPM);
-    let wonMultiplier = ppm;
-    for (const p of wonProbsPPM) {
-      if (p > 0 && p <= PPM) wonMultiplier = (wonMultiplier * ppm) / BigInt(p);
-    }
-    const fairValue = (effectiveStake * wonMultiplier) / ppm;
-    const scaledPenalty = (BigInt(penaltyBps) * BigInt(unresolvedCount)) / BigInt(legs.length);
-    let cv = (fairValue * (BigInt(BPS) - scaledPenalty)) / BigInt(BPS);
-    if (cv > onChainTicket.potentialPayout) cv = onChainTicket.potentialPayout;
-    cashoutValue = cv;
-  }
-
-  const ticket: TicketData = {
-    id: ticketId!,
-    stake: onChainTicket.stake,
-    feePaid: onChainTicket.feePaid,
-    payout: onChainTicket.potentialPayout,
-    legs,
-    status: mapStatus(onChainTicket.status),
-    createdAt: Number(onChainTicket.createdAt),
-    payoutMode: onChainTicket.payoutMode,
-    claimedAmount: onChainTicket.claimedAmount,
-    cashoutPenaltyBps: penaltyBps,
-    cashoutValue,
-  };
+  const ticket = toTicketData(ticketId!, onChainTicket, legMap, legStatuses);
 
   // Crash game loop: compute leg multipliers and resolution state (single pass)
   const legMultipliers: number[] = [];
@@ -221,8 +143,8 @@ export default function TicketPage() {
                 {ticket.payoutMode === 2 && !crashed ? "Cashout" : "Potential"}
               </p>
               <p className="text-lg font-bold tabular-nums text-yellow-400">
-                {cashoutValue !== undefined && !crashed
-                  ? `$${Number(formatUnits(cashoutValue, 6)).toFixed(2)}`
+                {ticket.cashoutValue !== undefined && !crashed
+                  ? `$${Number(formatUnits(ticket.cashoutValue, 6)).toFixed(2)}`
                   : `$${Number(formatUnits(ticket.payout, 6)).toFixed(2)}`}
               </p>
             </div>
