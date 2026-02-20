@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccount, useReadContract, useWriteContract, usePublicClient } from "wagmi";
-import { parseUnits, toHex, pad } from "viem";
+import { parseUnits, toHex, pad, parseEventLogs } from "viem";
 import {
   USDC_ABI,
   HOUSE_VAULT_ABI,
@@ -71,6 +71,7 @@ export interface LegOracleResult {
 export function useLegStatuses(
   legIds: readonly bigint[],
   legMap: Map<string, LegInfo>,
+  pollIntervalMs = 5000,
 ) {
   const publicClient = usePublicClient();
   const [statuses, setStatuses] = useState<Map<string, LegOracleResult>>(new Map());
@@ -106,9 +107,9 @@ export function useLegStatuses(
 
   useEffect(() => {
     fetchStatuses();
-    const interval = setInterval(fetchStatuses, 5000);
+    const interval = setInterval(fetchStatuses, pollIntervalMs);
     return () => clearInterval(interval);
-  }, [fetchStatuses]);
+  }, [fetchStatuses, pollIntervalMs]);
 
   return statuses;
 }
@@ -395,10 +396,12 @@ export function useBuyTicket() {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [lastTicketId, setLastTicketId] = useState<bigint | null>(null);
 
   const resetSuccess = () => {
     setIsSuccess(false);
     setError(null);
+    setLastTicketId(null);
   };
 
   const buyTicket = async (
@@ -449,8 +452,33 @@ export function useBuyTicket() {
         throw new Error("Transaction reverted on-chain");
       }
 
+      // Parse TicketPurchased event from receipt to get the actual ticket ID
+      let newTicketId: bigint | undefined;
+      try {
+        const purchaseEvents = parseEventLogs({
+          abi: PARLAY_ENGINE_ABI,
+          logs: receipt.logs,
+          eventName: "TicketPurchased",
+        });
+        newTicketId = purchaseEvents[0]?.args?.ticketId;
+      } catch {
+        // ABI mismatch or unexpected log format -- fall through to fallback
+      }
+
+      // Fallback: read ticketCount post-confirmation (less reliable but works
+      // if event ABI drifts from contract)
+      if (newTicketId === undefined && publicClient) {
+        const count = await publicClient.readContract({
+          address: contractAddresses.parlayEngine as `0x${string}`,
+          abi: PARLAY_ENGINE_ABI,
+          functionName: "ticketCount",
+        });
+        newTicketId = (count as bigint) - 1n;
+      }
+
       setIsConfirming(false);
       setIsSuccess(true);
+      setLastTicketId(newTicketId ?? null);
       return true;
     } catch (err) {
       console.error("Buy ticket failed:", err);
@@ -469,6 +497,7 @@ export function useBuyTicket() {
     isConfirming,
     isSuccess,
     error,
+    lastTicketId,
   };
 }
 

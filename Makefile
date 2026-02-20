@@ -142,9 +142,22 @@ ci-services:
 ci-web:
 	act pull_request -j web
 
+# -- Demo --
+demo-seed:
+	./scripts/demo-seed.sh
+
+## Auto-resolve legs + settle tickets (buy a ticket, watch the rocket climb)
+demo-autopilot:
+	pnpm --filter services exec tsx ../../scripts/demo-autopilot.ts
+
+## Auto-resolve with a crash (set CRASH_LEG_INDEX, 0-indexed, to the leg that loses)
+demo-autopilot-crash:
+	@echo "Crashing last leg of every ticket (CRASH_ODDS=100)"
+	CRASH_ODDS=100 pnpm --filter services exec tsx ../../scripts/demo-autopilot.ts
+
 # -- Cleanup --
 clean:
 	cd packages/contracts && forge clean
 	cd apps/web && rm -rf .next
 
-.PHONY: bootstrap setup chain deploy-local deploy-sepolia sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-all gate typecheck build-web build-contracts coverage snapshot ci ci-contracts ci-services ci-web clean
+.PHONY: bootstrap setup chain deploy-local deploy-sepolia sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-all gate typecheck build-web build-contracts coverage snapshot ci ci-contracts ci-services ci-web demo-seed demo-autopilot demo-autopilot-crash clean

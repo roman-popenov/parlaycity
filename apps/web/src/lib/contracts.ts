@@ -243,6 +243,21 @@ export const PARLAY_ENGINE_ABI = [
     ],
     outputs: [],
   },
+  {
+    name: "TicketPurchased",
+    type: "event",
+    inputs: [
+      { name: "ticketId", type: "uint256", indexed: true },
+      { name: "buyer", type: "address", indexed: true },
+      { name: "legIds", type: "uint256[]", indexed: false },
+      { name: "outcomes", type: "bytes32[]", indexed: false },
+      { name: "stake", type: "uint256", indexed: false },
+      { name: "multiplierX1e6", type: "uint256", indexed: false },
+      { name: "potentialPayout", type: "uint256", indexed: false },
+      { name: "mode", type: "uint8", indexed: false },
+      { name: "payoutMode", type: "uint8", indexed: false },
+    ],
+  },
 ] as const;
 
 export const LEG_REGISTRY_ABI = [

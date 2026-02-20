@@ -1,5 +1,6 @@
 "use client";
 
+import { useState, useEffect, useRef, useCallback } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { formatUnits } from "viem";
@@ -10,8 +11,49 @@ import {
   type TicketLeg,
 } from "@/components/TicketCard";
 import { MultiplierClimb } from "@/components/MultiplierClimb";
+import { RehabCTA } from "@/components/RehabCTA";
 import { mapStatus, parseOutcomeChoice, isLegWon } from "@/lib/utils";
 import { PPM, BASE_CASHOUT_PENALTY_BPS, computeClientCashoutValue } from "@/lib/cashout";
+
+/** Hook to replay the rocket climb animation on settled tickets */
+function useReplay(resolvedWon: number, crashed: boolean) {
+  const [replaying, setReplaying] = useState(false);
+  const [replayStep, setReplayStep] = useState(0);
+  const [replayCrashed, setReplayCrashed] = useState(false);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const startReplay = useCallback(() => {
+    setReplaying(true);
+    setReplayStep(0);
+    setReplayCrashed(false);
+  }, []);
+
+  useEffect(() => {
+    if (!replaying) return;
+
+    if (replayStep < resolvedWon) {
+      timerRef.current = setTimeout(() => {
+        setReplayStep((s) => s + 1);
+      }, 1200); // 1.2s per leg for dramatic effect
+    } else if (replayStep === resolvedWon && crashed && !replayCrashed) {
+      // All won legs shown, now trigger crash
+      timerRef.current = setTimeout(() => {
+        setReplayCrashed(true);
+      }, 800);
+    }
+
+    return () => clearTimeout(timerRef.current);
+  }, [replaying, replayStep, crashed, replayCrashed, resolvedWon]);
+
+  const stopReplay = useCallback(() => {
+    clearTimeout(timerRef.current);
+    setReplaying(false);
+    setReplayStep(0);
+    setReplayCrashed(false);
+  }, []);
+
+  return { replaying, replayStep, replayCrashed, startReplay, stopReplay };
+}
 
 export default function TicketPage() {
   const params = useParams();
@@ -28,7 +70,9 @@ export default function TicketPage() {
   const { ticket: onChainTicket, isLoading } = useTicket(ticketId);
   const { tickets: userTickets } = useUserTickets();
   const legMap = useLegDescriptions(onChainTicket?.legIds ?? []);
-  const legStatuses = useLegStatuses(onChainTicket?.legIds ?? [], legMap);
+  // Active tickets poll faster (2s) for snappy rocket animation during demo
+  const isActive = onChainTicket?.status === 0;
+  const legStatuses = useLegStatuses(onChainTicket?.legIds ?? [], legMap, isActive ? 2000 : 5000);
 
   // Find prev/next ticket IDs from user's tickets
   const sortedIds = userTickets.map((t) => t.id).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
@@ -135,6 +179,9 @@ export default function TicketPage() {
     return isLegWon(l.outcomeChoice, l.result) ? m * l.odds : m;
   }, 1);
 
+  // Settled ticket state
+  const isSettled = ticket.status === "Won" || ticket.status === "Lost" || ticket.status === "Voided" || ticket.status === "Claimed";
+
   return (
     <div className="mx-auto max-w-lg space-y-6">
       {/* Navigation bar */}
@@ -184,6 +231,7 @@ export default function TicketPage() {
             legMultipliers={legMultipliers}
             crashed={crashed}
             resolvedUpTo={resolvedWon}
+            animated
           />
           {/* Live stats bar */}
           <div className="flex items-center justify-between rounded-xl border border-white/5 bg-gray-900/50 px-4 py-3">
@@ -213,16 +261,63 @@ export default function TicketPage() {
         </div>
       )}
 
-      {/* Settled state -- show final multiplier visualization */}
-      {(ticket.status === "Won" || ticket.status === "Lost" || ticket.status === "Voided" || ticket.status === "Claimed") && (
-        <MultiplierClimb
+      {/* Settled state -- replay-capable multiplier visualization */}
+      {isSettled && (
+        <SettledClimb
           legMultipliers={legMultipliers}
           crashed={crashed}
-          resolvedUpTo={resolvedWon}
+          resolvedWon={resolvedWon}
         />
       )}
 
+      {/* Rehab CTA for lost tickets -- silver lining card */}
+      {ticket.status === "Lost" && (
+        <RehabCTA stake={ticket.stake} />
+      )}
+
       <TicketCard ticket={ticket} />
+    </div>
+  );
+}
+
+/** Settled ticket climb with replay button */
+function SettledClimb({
+  legMultipliers,
+  crashed,
+  resolvedWon,
+}: {
+  legMultipliers: number[];
+  crashed: boolean;
+  resolvedWon: number;
+}) {
+  const { replaying, replayStep, replayCrashed, startReplay, stopReplay } =
+    useReplay(resolvedWon, crashed);
+
+  return (
+    <div className="space-y-2">
+      <MultiplierClimb
+        legMultipliers={legMultipliers}
+        crashed={replaying ? replayCrashed : crashed}
+        resolvedUpTo={replaying ? replayStep : resolvedWon}
+        animated={replaying}
+      />
+      <div className="flex justify-center">
+        {!replaying ? (
+          <button
+            onClick={startReplay}
+            className="rounded-lg border border-white/10 bg-white/5 px-4 py-1.5 text-sm text-gray-400 transition-colors hover:bg-white/10 hover:text-white"
+          >
+            Replay
+          </button>
+        ) : (
+          <button
+            onClick={stopReplay}
+            className="rounded-lg border border-accent-blue/30 bg-accent-blue/10 px-4 py-1.5 text-sm text-accent-blue transition-colors hover:bg-accent-blue/20"
+          >
+            Stop
+          </button>
+        )}
+      </div>
     </div>
   );
 }
