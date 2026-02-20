@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import Link from "next/link";
 import { useAccount } from "wagmi";
 import { formatUnits } from "viem";
 import { useModal } from "connectkit";
@@ -89,7 +90,7 @@ function isValidRiskResponse(data: unknown): data is RiskAdviceData {
 export function ParlayBuilder() {
   const { isConnected } = useAccount();
   const { setOpen: openConnectModal } = useModal();
-  const { buyTicket, resetSuccess, isPending, isConfirming, isSuccess, error } = useBuyTicket();
+  const { buyTicket, resetSuccess, isPending, isConfirming, isSuccess, error, lastTicketId } = useBuyTicket();
   const { balance: usdcBalance } = useUSDCBalance();
   const { freeLiquidity, maxPayout } = useVaultStats();
   const { baseFeeBps, perLegFeeBps, maxLegs, minStakeUSDC } = useParlayConfig();
@@ -567,7 +568,12 @@ export function ParlayBuilder() {
             >
               {txState === "pending" && "Transaction submitted..."}
               {txState === "confirming" && "Waiting for confirmation..."}
-              {txState === "confirmed" && "Your parlay ticket is live!"}
+              {txState === "confirmed" && lastTicketId != null && (
+                <Link href={`/ticket/${lastTicketId.toString()}`} className="underline underline-offset-2 hover:text-neon-green/80">
+                  Your parlay ticket is live! View Ticket #{lastTicketId.toString()} &rarr;
+                </Link>
+              )}
+              {txState === "confirmed" && lastTicketId == null && "Your parlay ticket is live!"}
             </div>
           )}
 

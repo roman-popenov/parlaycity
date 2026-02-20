@@ -1,12 +1,34 @@
 "use client";
 
-import { useMemo } from "react";
+import { useState, useMemo } from "react";
 import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useUserTickets, useLegDescriptions, useLegStatuses, type OnChainTicket, type LegInfo, type LegOracleResult } from "@/lib/hooks";
-import { TicketCard, type TicketData, type TicketLeg } from "@/components/TicketCard";
+import { TicketCard, type TicketData, type TicketLeg, type TicketStatus } from "@/components/TicketCard";
 import { mapStatus, parseOutcomeChoice, isLegWon } from "@/lib/utils";
 import { PPM, BASE_CASHOUT_PENALTY_BPS, computeClientCashoutValue } from "@/lib/cashout";
+
+type TabFilter = "all" | "active" | "settled" | "cashed";
+
+const TABS: { key: TabFilter; label: string }[] = [
+  { key: "all", label: "All" },
+  { key: "active", label: "Active" },
+  { key: "settled", label: "Settled" },
+  { key: "cashed", label: "Cashed Out" },
+];
+
+function matchesTab(status: TicketStatus, tab: TabFilter): boolean {
+  switch (tab) {
+    case "all":
+      return true;
+    case "active":
+      return status === "Active";
+    case "settled":
+      return status === "Won" || status === "Lost" || status === "Voided";
+    case "cashed":
+      return status === "Claimed";
+  }
+}
 
 function toTicketData(
   id: bigint,
@@ -73,6 +95,7 @@ function toTicketData(
 export default function TicketsPage() {
   const { isConnected } = useAccount();
   const { tickets, totalCount, isLoading, error, refetch } = useUserTickets();
+  const [activeTab, setActiveTab] = useState<TabFilter>("all");
 
   // Collect all unique leg IDs across all tickets
   const allLegIds = useMemo(() => {
@@ -87,6 +110,28 @@ export default function TicketsPage() {
 
   const legMap = useLegDescriptions(allLegIds);
   const legStatuses = useLegStatuses(allLegIds, legMap);
+
+  // Build ticket data and compute tab counts
+  const ticketDataList = useMemo(
+    () => tickets.map(({ id, ticket }) => toTicketData(id, ticket, legMap, legStatuses)),
+    [tickets, legMap, legStatuses],
+  );
+
+  const tabCounts = useMemo(() => {
+    const counts: Record<TabFilter, number> = { all: 0, active: 0, settled: 0, cashed: 0 };
+    for (const td of ticketDataList) {
+      counts.all++;
+      if (matchesTab(td.status, "active")) counts.active++;
+      if (matchesTab(td.status, "settled")) counts.settled++;
+      if (matchesTab(td.status, "cashed")) counts.cashed++;
+    }
+    return counts;
+  }, [ticketDataList]);
+
+  const filtered = useMemo(
+    () => ticketDataList.filter((td) => matchesTab(td.status, activeTab)),
+    [ticketDataList, activeTab],
+  );
 
   return (
     <div className="space-y-8">
@@ -117,6 +162,36 @@ export default function TicketsPage() {
         </button>
       </section>
 
+      {/* Status tabs */}
+      {tickets.length > 0 && (
+        <div className="flex gap-1 rounded-xl border border-white/5 bg-gray-900/50 p-1">
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition-all ${
+                activeTab === tab.key
+                  ? "bg-white/10 text-white"
+                  : "text-gray-500 hover:text-gray-300"
+              }`}
+            >
+              {tab.label}
+              {tabCounts[tab.key] > 0 && (
+                <span
+                  className={`ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
+                    activeTab === tab.key
+                      ? "bg-accent-blue/20 text-accent-blue"
+                      : "bg-white/5 text-gray-600"
+                  }`}
+                >
+                  {tabCounts[tab.key]}
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+      )}
+
       {error && (
         <div className="rounded-lg bg-neon-red/10 px-4 py-3 text-sm text-neon-red">
           Failed to load tickets: {error.length > 200 ? error.slice(0, 200) + "..." : error}
@@ -129,17 +204,25 @@ export default function TicketsPage() {
         </div>
       )}
 
-      {!isLoading && tickets.length > 0 && (
+      {!isLoading && filtered.length > 0 && (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {tickets.map(({ id, ticket }) => (
+          {filtered.map((td) => (
             <Link
-              key={id.toString()}
-              href={`/ticket/${id.toString()}`}
+              key={td.id.toString()}
+              href={`/ticket/${td.id.toString()}`}
               className="block transition-transform hover:scale-[1.02]"
             >
-              <TicketCard ticket={toTicketData(id, ticket, legMap, legStatuses)} />
+              <TicketCard ticket={td} />
             </Link>
           ))}
+        </div>
+      )}
+
+      {!isLoading && tickets.length > 0 && filtered.length === 0 && (
+        <div className="py-16 text-center">
+          <p className="text-gray-500">
+            No {activeTab === "active" ? "active" : activeTab === "settled" ? "settled" : activeTab === "cashed" ? "cashed out" : ""} tickets.
+          </p>
         </div>
       )}
 

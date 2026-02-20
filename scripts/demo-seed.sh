@@ -87,25 +87,17 @@ send() {
   cast send --private-key "$key" --rpc-url "$RPC_URL" "$@" > /dev/null 2>&1
 }
 
-# --- 1. Mint USDC (MockUSDC only -- skip on real networks with real USDC) ---
-# MockUSDC has a 10,000 USDC per-call cap. Deploy already mints 10k each,
-# so mint one more batch per wallet to have enough for LP + tickets.
-echo "--- Minting USDC ---"
-send "$DEPLOYER_KEY" "$USDC" "mint(address,uint256)" "$DEPLOYER_ADDR" 10000000000  # 10,000 USDC
-send "$DEPLOYER_KEY" "$USDC" "mint(address,uint256)" "$ACCOUNT1_ADDR" 10000000000  # 10,000 USDC
-echo "  Minted 10,000 USDC each (deployer + account1 now have ~20k each)"
-
-# --- 2. Deposit LP liquidity into HouseVault ---
-echo ""
+# --- 1. Deposit LP liquidity into HouseVault ---
+# Deploy.s.sol already minted 10,000 USDC each. Use a small slice for
+# realistic demo numbers that judges can relate to.
 echo "--- Depositing LP Liquidity ---"
-# approve vault, then deposit
-send "$DEPLOYER_KEY" "$USDC" "approve(address,uint256)" "$VAULT" 10000000000  # 10,000 USDC
-send "$DEPLOYER_KEY" "$VAULT" "deposit(uint256,address)" 10000000000 "$DEPLOYER_ADDR"
-echo "  Deployer deposited 10,000 USDC into HouseVault"
+send "$DEPLOYER_KEY" "$USDC" "approve(address,uint256)" "$VAULT" 600000000  # 600 USDC
+send "$DEPLOYER_KEY" "$VAULT" "deposit(uint256,address)" 600000000 "$DEPLOYER_ADDR"
+echo "  Deployer deposited 600 USDC into HouseVault"
 
-send "$ACCOUNT1_KEY" "$USDC" "approve(address,uint256)" "$VAULT" 5000000000  # 5,000 USDC
-send "$ACCOUNT1_KEY" "$VAULT" "deposit(uint256,address)" 5000000000 "$ACCOUNT1_ADDR"
-echo "  Account1 deposited 5,000 USDC into HouseVault"
+send "$ACCOUNT1_KEY" "$USDC" "approve(address,uint256)" "$VAULT" 400000000  # 400 USDC
+send "$ACCOUNT1_KEY" "$VAULT" "deposit(uint256,address)" 400000000 "$ACCOUNT1_ADDR"
+echo "  Account1 deposited 400 USDC into HouseVault"
 
 # --- 3. Create legs ---
 echo ""
@@ -157,44 +149,48 @@ echo ""
 echo "--- Buying Tickets ---"
 
 # Approve engine to spend USDC
-send "$DEPLOYER_KEY" "$USDC" "approve(address,uint256)" "$ENGINE" 500000000  # 500 USDC
-send "$ACCOUNT1_KEY" "$USDC" "approve(address,uint256)" "$ENGINE" 500000000  # 500 USDC
+send "$DEPLOYER_KEY" "$USDC" "approve(address,uint256)" "$ENGINE" 50000000  # 50 USDC
+send "$ACCOUNT1_KEY" "$USDC" "approve(address,uint256)" "$ENGINE" 50000000  # 50 USDC
 
 # Outcome bytes32 for "Yes" = keccak256("Yes")
 YES=$(cast keccak "Yes")
 
 # Ticket stakes are small to stay under vault's 5% max payout cap.
-# With 15k vault TVL, max payout ~750 USDC.
+# With 1,000 USDC vault TVL, max payout ~50 USDC.
 
-# Ticket 1: Deployer, Classic mode (0), legs 0+1, 10 USDC
+# Ticket 1: Deployer, Classic mode (0), legs 0+1, $2
 send "$DEPLOYER_KEY" "$ENGINE" \
   "buyTicketWithMode(uint256[],bytes32[],uint256,uint8)" \
-  "[$L0,$L1]" "[$YES,$YES]" 10000000 0
-echo "  Ticket: deployer, Classic, legs [$L0,$L1], stake 10 USDC"
+  "[$L0,$L1]" "[$YES,$YES]" 2000000 0
+echo "  Ticket: deployer, Classic, legs [$L0,$L1], stake \$2"
 
-# Ticket 2: Deployer, Progressive mode (1), legs 0+2+3, 5 USDC
+# Ticket 2: Deployer, Progressive mode (1), legs 0+2+3, $1
 send "$DEPLOYER_KEY" "$ENGINE" \
   "buyTicketWithMode(uint256[],bytes32[],uint256,uint8)" \
-  "[$L0,$L2,$L3]" "[$YES,$YES,$YES]" 5000000 1
-echo "  Ticket: deployer, Progressive, legs [$L0,$L2,$L3], stake 5 USDC"
+  "[$L0,$L2,$L3]" "[$YES,$YES,$YES]" 1000000 1
+echo "  Ticket: deployer, Progressive, legs [$L0,$L2,$L3], stake \$1"
 
-# Ticket 3: Account1, EarlyCashout mode (2), legs 1+3+4, 5 USDC
+# Ticket 3: Account1, EarlyCashout mode (2), legs 1+3+4, $2
 send "$ACCOUNT1_KEY" "$ENGINE" \
   "buyTicketWithMode(uint256[],bytes32[],uint256,uint8)" \
-  "[$L1,$L3,$L4]" "[$YES,$YES,$YES]" 5000000 2
-echo "  Ticket: account1, EarlyCashout, legs [$L1,$L3,$L4], stake 5 USDC"
+  "[$L1,$L3,$L4]" "[$YES,$YES,$YES]" 2000000 2
+echo "  Ticket: account1, EarlyCashout, legs [$L1,$L3,$L4], stake \$2"
 
-# Ticket 4: Account1, Classic mode (0), legs 2+4, 25 USDC
+# Ticket 4: Account1, Classic mode (0), legs 2+4, $3
 send "$ACCOUNT1_KEY" "$ENGINE" \
   "buyTicketWithMode(uint256[],bytes32[],uint256,uint8)" \
-  "[$L2,$L4]" "[$YES,$YES]" 25000000 0
-echo "  Ticket: account1, Classic, legs [$L2,$L4], stake 25 USDC"
+  "[$L2,$L4]" "[$YES,$YES]" 3000000 0
+echo "  Ticket: account1, Classic, legs [$L2,$L4], stake \$3"
 
 # --- Summary ---
 echo ""
 echo "=== Seed Complete ==="
 echo "Legs created:   5 (IDs $L0-$L4)"
 echo "Tickets bought: 4"
-echo "LP deposits:    15,000 USDC total"
+echo "LP deposits:    1,000 USDC total"
 echo ""
-echo "Next: use scripts/demo-resolve.sh to resolve legs and settle tickets."
+echo "Next: start the autopilot to auto-resolve legs:"
+echo "  make demo-autopilot"
+echo ""
+echo "Or resolve manually:"
+echo "  ./scripts/demo-resolve.sh"

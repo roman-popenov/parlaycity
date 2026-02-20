@@ -71,6 +71,7 @@ export interface LegOracleResult {
 export function useLegStatuses(
   legIds: readonly bigint[],
   legMap: Map<string, LegInfo>,
+  pollIntervalMs = 5000,
 ) {
   const publicClient = usePublicClient();
   const [statuses, setStatuses] = useState<Map<string, LegOracleResult>>(new Map());
@@ -106,9 +107,9 @@ export function useLegStatuses(
 
   useEffect(() => {
     fetchStatuses();
-    const interval = setInterval(fetchStatuses, 5000);
+    const interval = setInterval(fetchStatuses, pollIntervalMs);
     return () => clearInterval(interval);
-  }, [fetchStatuses]);
+  }, [fetchStatuses, pollIntervalMs]);
 
   return statuses;
 }
@@ -395,10 +396,12 @@ export function useBuyTicket() {
   const [isConfirming, setIsConfirming] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [lastTicketId, setLastTicketId] = useState<bigint | null>(null);
 
   const resetSuccess = () => {
     setIsSuccess(false);
     setError(null);
+    setLastTicketId(null);
   };
 
   const buyTicket = async (
@@ -429,6 +432,13 @@ export function useBuyTicket() {
         throw new Error("Approve transaction reverted on-chain");
       }
 
+      // Read ticket count before buy to determine new ticket's ID (0-indexed)
+      const countBefore = await publicClient.readContract({
+        address: contractAddresses.parlayEngine as `0x${string}`,
+        abi: PARLAY_ENGINE_ABI,
+        functionName: "ticketCount",
+      }) as bigint;
+
       // Encode outcomes as bytes32[]
       const outcomesBytes32 = outcomes.map((o) => pad(toHex(o), { size: 32 })) as `0x${string}`[];
 
@@ -451,6 +461,7 @@ export function useBuyTicket() {
 
       setIsConfirming(false);
       setIsSuccess(true);
+      setLastTicketId(countBefore); // new ticket ID = count before buy
       return true;
     } catch (err) {
       console.error("Buy ticket failed:", err);
@@ -469,6 +480,7 @@ export function useBuyTicket() {
     isConfirming,
     isSuccess,
     error,
+    lastTicketId,
   };
 }
 

@@ -1,4 +1,5 @@
 import { VaultDashboard } from "@/components/VaultDashboard";
+import { RehabLocks } from "@/components/RehabLocks";
 
 export default function VaultPage() {
   return (
@@ -19,6 +20,8 @@ export default function VaultPage() {
       </section>
 
       <VaultDashboard />
+
+      <RehabLocks />
 
       {/* Explainer */}
       <section className="mx-auto max-w-3xl rounded-2xl border border-white/5 bg-gray-900/30 p-8">
