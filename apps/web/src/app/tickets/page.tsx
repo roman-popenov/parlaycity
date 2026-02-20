@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAccount } from "wagmi";
 import { useUserTickets, useLegDescriptions, useLegStatuses, type OnChainTicket, type LegInfo, type LegOracleResult } from "@/lib/hooks";
 import { TicketCard, type TicketData, type TicketLeg } from "@/components/TicketCard";
-import { mapStatus, parseOutcomeChoice } from "@/lib/utils";
+import { mapStatus, parseOutcomeChoice, isLegWon } from "@/lib/utils";
 import { PPM, BASE_CASHOUT_PENALTY_BPS, computeClientCashoutValue } from "@/lib/cashout";
 
 function toTicketData(
@@ -35,9 +35,7 @@ function toTicketData(
     const result = oracleResult?.status ?? 0;
 
     if (resolved && result !== 3) {
-      const isNoBet = outcomeChoice === 2;
-      const isWon = (result === 1 && !isNoBet) || (result === 2 && isNoBet);
-      if (isWon && effectivePPM > 0) wonProbsPPM.push(effectivePPM);
+      if (isLegWon(outcomeChoice, result) && effectivePPM > 0) wonProbsPPM.push(effectivePPM);
     } else {
       unresolvedCount++;
     }

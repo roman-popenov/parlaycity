@@ -10,7 +10,7 @@ import {
   type TicketLeg,
 } from "@/components/TicketCard";
 import { MultiplierClimb } from "@/components/MultiplierClimb";
-import { mapStatus, parseOutcomeChoice } from "@/lib/utils";
+import { mapStatus, parseOutcomeChoice, isLegWon } from "@/lib/utils";
 import { PPM, BASE_CASHOUT_PENALTY_BPS, computeClientCashoutValue } from "@/lib/cashout";
 
 export default function TicketPage() {
@@ -84,9 +84,7 @@ export default function TicketPage() {
 
     if (resolved && result !== 3) {
       // Non-voided resolved leg
-      const isNoBet = outcomeChoice === 2;
-      const isWon = (result === 1 && !isNoBet) || (result === 2 && isNoBet);
-      if (isWon && effectivePPM > 0) {
+      if (isLegWon(outcomeChoice, result) && effectivePPM > 0) {
         wonProbsPPM.push(effectivePPM);
       }
     } else {
@@ -126,21 +124,15 @@ export default function TicketPage() {
   // Crash game loop: derive from already-computed leg data
   const legMultipliers = legs.map((l) => l.odds);
   // Derive resolvedWon from leg state, not wonProbsPPM.length (which excludes legs with 0 probability)
-  const resolvedWon = legs.filter((l) => {
-    if (!l.resolved || l.result === 3) return false;
-    const isNoBet = l.outcomeChoice === 2;
-    return (l.result === 1 && !isNoBet) || (l.result === 2 && isNoBet);
-  }).length;
-  const crashed = legs.some((l) => {
-    if (!l.resolved || l.result === 3) return false;
-    const isNoBet = l.outcomeChoice === 2;
-    return !((l.result === 1 && !isNoBet) || (l.result === 2 && isNoBet));
-  });
+  const resolvedWon = legs.filter((l) =>
+    l.resolved && l.result !== 3 && isLegWon(l.outcomeChoice, l.result),
+  ).length;
+  const crashed = legs.some((l) =>
+    l.resolved && l.result !== 3 && !isLegWon(l.outcomeChoice, l.result),
+  );
   const liveMultiplier = crashed ? 0 : legs.reduce((m, l) => {
     if (!l.resolved || l.result === 3) return m;
-    const isNoBet = l.outcomeChoice === 2;
-    const isWon = (l.result === 1 && !isNoBet) || (l.result === 2 && isNoBet);
-    return isWon ? m * l.odds : m;
+    return isLegWon(l.outcomeChoice, l.result) ? m * l.odds : m;
   }, 1);
 
   return (
