@@ -16,7 +16,7 @@ import { mapStatus, parseOutcomeChoice, isLegWon } from "@/lib/utils";
 import { PPM, BASE_CASHOUT_PENALTY_BPS, computeClientCashoutValue } from "@/lib/cashout";
 
 /** Hook to replay the rocket climb animation on settled tickets */
-function useReplay(totalLegs: number, resolvedWon: number, crashed: boolean) {
+function useReplay(resolvedWon: number, crashed: boolean) {
   const [replaying, setReplaying] = useState(false);
   const [replayStep, setReplayStep] = useState(0);
   const [replayCrashed, setReplayCrashed] = useState(false);
@@ -267,7 +267,6 @@ export default function TicketPage() {
           legMultipliers={legMultipliers}
           crashed={crashed}
           resolvedWon={resolvedWon}
-          totalLegs={legs.length}
         />
       )}
 
@@ -286,15 +285,13 @@ function SettledClimb({
   legMultipliers,
   crashed,
   resolvedWon,
-  totalLegs,
 }: {
   legMultipliers: number[];
   crashed: boolean;
   resolvedWon: number;
-  totalLegs: number;
 }) {
   const { replaying, replayStep, replayCrashed, startReplay, stopReplay } =
-    useReplay(totalLegs, resolvedWon, crashed);
+    useReplay(resolvedWon, crashed);
 
   return (
     <div className="space-y-2">

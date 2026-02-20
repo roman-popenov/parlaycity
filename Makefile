@@ -150,7 +150,7 @@ demo-seed:
 demo-autopilot:
 	pnpm --filter services exec tsx ../../scripts/demo-autopilot.ts
 
-## Auto-resolve with a crash (set CRASH_LEG_ID to the leg that loses)
+## Auto-resolve with a crash (set CRASH_LEG_INDEX, 0-indexed, to the leg that loses)
 demo-autopilot-crash:
 	@echo "Crashing last leg of every ticket (CRASH_ODDS=100)"
 	CRASH_ODDS=100 pnpm --filter services exec tsx ../../scripts/demo-autopilot.ts

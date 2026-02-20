@@ -55,29 +55,31 @@ export function RehabLocks() {
   if (lostTickets.length === 0) return null;
 
   // Share price: how many USDC per 1 vUSDC (as a float)
-  const sharePrice = assetsPerShare !== undefined
-    ? Number(formatUnits(assetsPerShare as bigint, 6))
-    : 1.0;
+  const sharePrice =
+    typeof assetsPerShare === "bigint"
+      ? Number(formatUnits(assetsPerShare, 6))
+      : 1.0;
 
   const locks: RehabLock[] = lostTickets.map((t) => {
     const stake = t.ticket.stake;
     // 10% of stake -> rehab amount (in USDC raw units)
     const rehabRaw = stake / 10n;
-    const rehabUsd = Number(formatUnits(rehabRaw, 6)).toFixed(2);
+    // Compute from raw bigint to avoid compounding rounding errors
+    const rehabFloat = Number(formatUnits(rehabRaw, 6));
+    const rehabUsd = rehabFloat.toFixed(2);
 
     // Shares "minted" at 1:1 (rehab amount in vUSDC terms)
-    const sharesFloat = Number(rehabUsd);
-    const shares = sharesFloat.toFixed(2);
+    const shares = rehabFloat.toFixed(2);
 
     // Current value = shares * current share price
-    const currentVal = sharesFloat * sharePrice;
+    const currentVal = rehabFloat * sharePrice;
     const currentValue = currentVal.toFixed(2);
 
     // Fees = share price appreciation above 1:1
     // On a fresh demo vault, winning tickets drain the vault so sharePrice < 1.0.
     // Losing tickets (which created these rehab locks) ADD to vault, so net
     // effect is slightly positive. Show 4 decimals to capture micro-fees.
-    const fees = Math.max(0, currentVal - sharesFloat);
+    const fees = Math.max(0, currentVal - rehabFloat);
     const feesEarned = fees < 0.01 ? fees.toFixed(4) : fees.toFixed(2);
 
     const createdAt = Number(t.ticket.createdAt);

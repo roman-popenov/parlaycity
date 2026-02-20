@@ -37,7 +37,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry, baseSepolia } from "viem/chains";
 
-import { loadEnvLocal, requireExplicitKeyForRemoteRpc, safeBigIntToNumber } from "./lib/env";
+import { loadEnvLocal, requireExplicitKeyForRemoteRpc, safeBigIntToNumber, safeParseNumber } from "./lib/env";
 
 // -- ABI fragments -----------------------------------------------------------
 
@@ -78,15 +78,15 @@ function getConfig() {
   const registryAddr = (process.env.LEG_REGISTRY_ADDRESS ??
     envLocal.NEXT_PUBLIC_LEG_REGISTRY_ADDRESS ?? "") as Address;
 
-  const resolveDelay = Number(process.env.RESOLVE_DELAY_MS ?? "10000");
-  const firstLegDelay = Number(process.env.FIRST_LEG_DELAY_MS ?? "15000");
-  const pollInterval = Number(process.env.POLL_INTERVAL_MS ?? "3000");
+  const resolveDelay = safeParseNumber(process.env.RESOLVE_DELAY_MS, 10000, "RESOLVE_DELAY_MS");
+  const firstLegDelay = safeParseNumber(process.env.FIRST_LEG_DELAY_MS, 15000, "FIRST_LEG_DELAY_MS");
+  const pollInterval = safeParseNumber(process.env.POLL_INTERVAL_MS, 3000, "POLL_INTERVAL_MS");
   // CRASH_LEG_INDEX: crash the Nth leg (0-indexed position) of each ticket
   const crashLegIndex = process.env.CRASH_LEG_INDEX !== undefined
-    ? Number(process.env.CRASH_LEG_INDEX)
+    ? safeParseNumber(process.env.CRASH_LEG_INDEX, 0, "CRASH_LEG_INDEX")
     : null;
   // 30% chance a ticket crashes (losing stake stays in vault = realistic economics)
-  const crashOdds = Number(process.env.CRASH_ODDS ?? "30");
+  const crashOdds = safeParseNumber(process.env.CRASH_ODDS, 30, "CRASH_ODDS");
 
   if (!engineAddr) throw new Error("Missing PARLAY_ENGINE_ADDRESS");
   if (!registryAddr) throw new Error("Missing LEG_REGISTRY_ADDRESS");
@@ -146,7 +146,10 @@ async function resolveLeg(
   }) as [number, `0x${string}`];
 
   if (currentStatus !== LegStatus.Unresolved) {
-    // Already resolved -- check if it's the result we want
+    if (currentStatus === LegStatus.Voided) {
+      console.log(`  [ticket #${ticketId}] Leg ${legIndex}/${legId} already resolved -> VOIDED (neutral, continuing)`);
+      return true;
+    }
     const bettorWon = outcomeChoice === 2
       ? currentStatus === LegStatus.Lost
       : currentStatus === LegStatus.Won;
@@ -297,13 +300,15 @@ async function processTicket(
     }) as [number, `0x${string}`];
 
     if (currentStatus !== LegStatus.Unresolved) {
+      if (currentStatus === LegStatus.Voided) {
+        console.log(`  [ticket #${ticketId}] Leg ${i}/${legId} already resolved -> VOIDED (neutral, continuing)`);
+        continue;
+      }
       const bettorWon = outcomeChoice === 2
         ? currentStatus === LegStatus.Lost
         : currentStatus === LegStatus.Won;
       console.log(`  [ticket #${ticketId}] Leg ${i}/${legId} already resolved -> ${bettorWon ? "WON" : "LOST"}`);
       if (!bettorWon) {
-        // Leg was already resolved unfavorably (maybe by another ticket's crash)
-        // Skip remaining legs, go straight to settle
         console.log(`  [ticket #${ticketId}] Early crash (shared leg resolved unfavorably)`);
         break;
       }

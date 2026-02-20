@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccount, useReadContract, useWriteContract, usePublicClient } from "wagmi";
-import { parseUnits, toHex, pad } from "viem";
+import { parseUnits, toHex, pad, parseEventLogs } from "viem";
 import {
   USDC_ABI,
   HOUSE_VAULT_ABI,
@@ -432,13 +432,6 @@ export function useBuyTicket() {
         throw new Error("Approve transaction reverted on-chain");
       }
 
-      // Read ticket count before buy to determine new ticket's ID (0-indexed)
-      const countBefore = await publicClient.readContract({
-        address: contractAddresses.parlayEngine as `0x${string}`,
-        abi: PARLAY_ENGINE_ABI,
-        functionName: "ticketCount",
-      }) as bigint;
-
       // Encode outcomes as bytes32[]
       const outcomesBytes32 = outcomes.map((o) => pad(toHex(o), { size: 32 })) as `0x${string}`[];
 
@@ -459,9 +452,33 @@ export function useBuyTicket() {
         throw new Error("Transaction reverted on-chain");
       }
 
+      // Parse TicketPurchased event from receipt to get the actual ticket ID
+      let newTicketId: bigint | undefined;
+      try {
+        const purchaseEvents = parseEventLogs({
+          abi: PARLAY_ENGINE_ABI,
+          logs: receipt.logs,
+          eventName: "TicketPurchased",
+        });
+        newTicketId = purchaseEvents[0]?.args?.ticketId;
+      } catch {
+        // ABI mismatch or unexpected log format -- fall through to fallback
+      }
+
+      // Fallback: read ticketCount post-confirmation (less reliable but works
+      // if event ABI drifts from contract)
+      if (newTicketId === undefined && publicClient) {
+        const count = await publicClient.readContract({
+          address: contractAddresses.parlayEngine as `0x${string}`,
+          abi: PARLAY_ENGINE_ABI,
+          functionName: "ticketCount",
+        });
+        newTicketId = (count as bigint) - 1n;
+      }
+
       setIsConfirming(false);
       setIsSuccess(true);
-      setLastTicketId(countBefore); // new ticket ID = count before buy
+      setLastTicketId(newTicketId ?? null);
       return true;
     } catch (err) {
       console.error("Buy ticket failed:", err);

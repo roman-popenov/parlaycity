@@ -152,8 +152,8 @@ echo "--- Buying Tickets ---"
 send "$DEPLOYER_KEY" "$USDC" "approve(address,uint256)" "$ENGINE" 50000000  # 50 USDC
 send "$ACCOUNT1_KEY" "$USDC" "approve(address,uint256)" "$ENGINE" 50000000  # 50 USDC
 
-# Outcome bytes32 for "Yes" = keccak256("Yes")
-YES=$(cast keccak "Yes")
+# Outcome bytes32 for "Yes" = bytes32(uint256(1)), matching ParlayEngine + frontend conventions
+YES="0x0000000000000000000000000000000000000000000000000000000000000001"
 
 # Ticket stakes are small to stay under vault's 5% max payout cap.
 # With 1,000 USDC vault TVL, max payout ~50 USDC.

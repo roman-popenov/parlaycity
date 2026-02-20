@@ -49,6 +49,19 @@ export function requireExplicitKeyForRemoteRpc(rpcUrl: string): void {
 }
 
 /**
+ * Parse a numeric env var with NaN guard and fallback.
+ */
+export function safeParseNumber(raw: string | undefined, fallback: number, name: string): number {
+  if (raw === undefined) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) {
+    console.warn(`[env] ${name}="${raw}" is not a valid number, using default ${fallback}`);
+    return fallback;
+  }
+  return n;
+}
+
+/**
  * Safe BigInt -> Number conversion. Throws if the value exceeds
  * Number.MAX_SAFE_INTEGER.
  */

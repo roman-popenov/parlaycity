@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useState, useMemo, useRef, useEffect, useLayoutEffect, useCallback } from "react";
 import { PARLAY_CONFIG } from "@/lib/config";
 import { useParlayConfig } from "@/lib/hooks";
 
@@ -77,6 +77,7 @@ export function MultiplierClimb({
   const [isShaking, setIsShaking] = useState(false);
   const [justResolvedLeg, setJustResolvedLeg] = useState<number | null>(null);
   const prevResolvedRef = useRef(0);
+  const displayedMultiplierRef = useRef(1);
   const animFrameRef = useRef<number>(0);
   const pathRef = useRef<SVGPathElement>(null);
 
@@ -106,7 +107,9 @@ export function MultiplierClimb({
         const elapsed = now - start;
         const progress = Math.min(elapsed / duration, 1);
         const eased = easeOutCubic(progress);
-        setDisplayedMultiplier(from + (to - from) * eased);
+        const value = from + (to - from) * eased;
+        displayedMultiplierRef.current = value;
+        setDisplayedMultiplier(value);
         if (progress < 1) {
           animFrameRef.current = requestAnimationFrame(tick);
         }
@@ -127,19 +130,34 @@ export function MultiplierClimb({
       // New leg(s) resolved -- animate segment + counter
       setAnimatedSegments(resolved);
       setJustResolvedLeg(resolved - 1);
-      animateCounter(displayedMultiplier, resolvedMultiplier);
+      animateCounter(displayedMultiplierRef.current, resolvedMultiplier);
       // Clear pop animation after it plays
       const timer = setTimeout(() => setJustResolvedLeg(null), 500);
       prevResolvedRef.current = resolved;
       return () => clearTimeout(timer);
-    } else if (resolved === 0 && prev === 0 && displayedMultiplier === 1) {
+    } else if (resolved === 0 && prev === 0 && displayedMultiplierRef.current === 1) {
       // Initial state
       setAnimatedSegments(0);
     }
 
     prevResolvedRef.current = resolved;
+    // resolvedMultiplier is memoized from legMultipliers + resolvedUpTo, so it captures
+    // those dependencies. animateCounter reads from displayedMultiplierRef (not state),
+    // avoiding the stale closure. Adding animateCounter/displayedMultiplier to deps
+    // would re-trigger on every animation frame.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resolvedUpTo, animated, resolvedMultiplier]);
+
+  // Reset animation state when entering animated mode (e.g., replay restart)
+  useEffect(() => {
+    if (!animated) return;
+    setShowCrash(false);
+    setIsShaking(false);
+    setAnimatedSegments(0);
+    displayedMultiplierRef.current = 1;
+    setDisplayedMultiplier(1);
+    prevResolvedRef.current = 0;
+  }, [animated]);
 
   // Crash trigger
   useEffect(() => {
@@ -216,22 +234,26 @@ export function MultiplierClimb({
       ? `M ${points.map((p) => `${p.x} ${p.y}`).join(" L ")}`
       : "";
 
+  // Reactively track SVG path total length for stroke dash animation
+  const [pathLength, setPathLength] = useState(0);
+  useLayoutEffect(() => {
+    if (pathRef.current) {
+      setPathLength(pathRef.current.getTotalLength());
+    }
+  }, [pathD]);
+
   // For animated mode: compute stroke-dasharray/offset to reveal segments progressively
   const dashStyle = useMemo(() => {
-    if (!animated || !pathRef.current || points.length <= 1) return undefined;
-    const totalLen = pathRef.current.getTotalLength();
-    if (totalLen === 0) return undefined;
-    // Each segment is between consecutive points
+    if (!animated || pathLength === 0 || points.length <= 1) return undefined;
     const totalSegments = points.length - 1;
     const revealedSegments = Math.min(animatedSegments, totalSegments);
     const revealFraction = totalSegments > 0 ? revealedSegments / totalSegments : 0;
-    const revealLen = totalLen * revealFraction;
+    const revealLen = pathLength * revealFraction;
     return {
-      strokeDasharray: `${totalLen}`,
-      strokeDashoffset: `${totalLen - revealLen}`,
+      strokeDasharray: `${pathLength}`,
+      strokeDashoffset: `${pathLength - revealLen}`,
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [animated, animatedSegments, points, pathD]);
+  }, [animated, animatedSegments, points, pathLength]);
 
   // Rocket tip position
   const rocketPos = useMemo(() => {
