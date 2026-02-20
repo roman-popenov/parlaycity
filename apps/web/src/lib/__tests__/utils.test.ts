@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapStatus, parseOutcomeChoice, sanitizeNumericInput, blockNonNumericKeys } from "../utils";
+import { mapStatus, parseOutcomeChoice, isLegWon, sanitizeNumericInput, blockNonNumericKeys } from "../utils";
 
 describe("mapStatus", () => {
   it("maps 0 -> Active", () => expect(mapStatus(0)).toBe("Active"));
@@ -52,6 +52,20 @@ describe("parseOutcomeChoice", () => {
   it("returns 0 for value 3", () => {
     expect(parseOutcomeChoice("0x3" as `0x${string}`)).toBe(0);
   });
+});
+
+describe("isLegWon", () => {
+  // YES bet (outcomeChoice=1) wins when result=1 (YES outcome)
+  it("YES bet wins on YES result", () => expect(isLegWon(1, 1)).toBe(true));
+  it("YES bet loses on NO result", () => expect(isLegWon(1, 2)).toBe(false));
+  // NO bet (outcomeChoice=2) wins when result=2 (NO outcome)
+  it("NO bet wins on NO result", () => expect(isLegWon(2, 2)).toBe(true));
+  it("NO bet loses on YES result", () => expect(isLegWon(2, 1)).toBe(false));
+  // Edge: voided (3) and unresolved (0) are never wins
+  it("returns false for voided result", () => expect(isLegWon(1, 3)).toBe(false));
+  it("returns false for unresolved result", () => expect(isLegWon(1, 0)).toBe(false));
+  // Edge: unknown outcomeChoice (0) is treated as YES bet (callers guard with effectivePPM > 0)
+  it("unknown outcomeChoice treated as YES bet", () => expect(isLegWon(0, 1)).toBe(true));
 });
 
 describe("sanitizeNumericInput", () => {

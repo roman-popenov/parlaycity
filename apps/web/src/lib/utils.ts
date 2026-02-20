@@ -53,6 +53,16 @@ export function mapStatus(statusCode: number): TicketStatus {
   }
 }
 
+/**
+ * Determine if a resolved leg is a win given the user's bet direction.
+ * outcomeChoice: 1 = YES bet, 2 = NO bet.
+ * result: 1 = YES outcome, 2 = NO outcome, 3 = Voided, 0 = Unresolved.
+ */
+export function isLegWon(outcomeChoice: number, result: number): boolean {
+  const isNoBet = outcomeChoice === 2;
+  return (result === 1 && !isNoBet) || (result === 2 && isNoBet);
+}
+
 export function parseOutcomeChoice(outcome: `0x${string}`): number {
   try {
     const value = Number(BigInt(outcome));
