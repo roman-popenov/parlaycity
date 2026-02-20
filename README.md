@@ -1,34 +1,84 @@
 # ParlayCity
 
-**On-chain parlay betting protocol on Base.**
+**Crash-Parlay AMM on Base.**
 
-Combine multiple prediction outcomes into high-multiplier parlay tickets, backed by a permissionless LP vault. Built at ETHDenver 2026.
+Combine multiple prediction outcomes into high-multiplier parlay tickets, backed by a permissionless LP vault. Watch your multiplier climb as each leg resolves -- cash out before the crash, or ride to full payout. Built at ETHDenver 2026.
 
 ---
 
 ## How It Works
 
-Users pick 2-5 binary outcomes (legs), stake USDC, and receive an ERC721 parlay ticket with a combined multiplier. LPs deposit USDC into the House Vault to underwrite bets and earn from fees + losing stakes. The protocol is fully on-chain with permissionless settlement.
+Users pick 2-5 binary outcomes (legs), stake USDC, and receive an ERC721 parlay ticket with a combined multiplier. As each leg resolves favorably, the multiplier climbs like a rocket. Cash out at any point, or watch it crash if a leg loses. LPs deposit USDC into the House Vault to underwrite bets and earn from fees + losing stakes. The protocol is fully on-chain with permissionless settlement.
 
 ```mermaid
 graph LR
     subgraph Bettors
         A[Pick Legs] --> B[Stake USDC]
         B --> C[Receive NFT Ticket]
-        C --> D[Settle & Claim]
+        C --> D{Watch the Rocket}
+        D -->|Cash Out| E[Claim Early Payout]
+        D -->|All Legs Win| F[Claim Full Payout]
+        D -->|Leg Loses| G[Crash]
     end
 
     subgraph Liquidity Providers
-        E[Deposit USDC] --> F[Receive vUSDC Shares]
-        F --> G[Earn Fees + Losses]
-        G --> H[Lock for Boosted Yield]
+        H[Deposit USDC] --> I[Receive vUSDC Shares]
+        I --> J[Earn Fees + Losses]
+        J --> K[Lock for Boosted Yield]
     end
 
     B -- stake --> Vault[(House Vault)]
-    D -- payout --> Vault
-    E -- deposit --> Vault
-    G -- withdraw --> Vault
+    Vault -- cashout --> E
+    Vault -- payout --> F
+    G -. 10% rehab .-> Lock[LockVault]
+    H -- deposit --> Vault
+    Vault -- withdraw --> J
 ```
+
+---
+
+## The Crash Game
+
+The core differentiator: tickets are live instruments with real-time cashout. A rocket climbs as each leg resolves favorably; it explodes when a leg loses.
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant UI as Frontend (Rocket)
+    participant Engine as ParlayEngine
+    participant Oracle
+
+    User->>Engine: buyTicket(legs, stake)
+    Engine-->>User: ERC721 ticket
+
+    loop Each Leg Resolution
+        Oracle-->>Engine: resolve(legId, Won)
+        Engine-->>UI: leg resolved (Won)
+        UI-->>User: Rocket climbs, multiplier ticks up
+        Note over User,UI: User can cashout at any point
+    end
+
+    alt Cash Out Early
+        User->>Engine: cashoutEarly(ticketId, minOut)
+        Engine-->>User: partial payout (slippage-protected)
+    else All Legs Win
+        User->>Engine: settleTicket() + claimPayout()
+        Engine-->>User: full payout
+    else Leg Loses
+        Oracle-->>Engine: resolve(legId, Lost)
+        UI-->>User: Rocket EXPLODES
+        Engine-->>Engine: settle as Lost
+        Note over User: 10% of stake -> rehab lock (planned)
+    end
+```
+
+### Payout Modes
+
+| Mode | Description |
+|---|---|
+| **Classic** | Win or lose. Full multiplier payout if all legs resolve correctly. |
+| **Progressive** | Partial payout increases as each leg resolves. Claim incrementally. |
+| **Early Cashout** | Exit at any point before all legs resolve. Value derived from effective stake and won-leg multiplier, discounted by a scaled penalty based on unresolved legs (mirrors `ParlayMath.computeCashoutValue`). |
 
 ---
 
@@ -37,16 +87,16 @@ graph LR
 ```mermaid
 graph TB
     subgraph Frontend ["Next.js Frontend"]
-        UI[ParlayBuilder / VaultDashboard / Tickets]
+        UI[ParlayBuilder / Crash Animation<br/>VaultDashboard / Tickets]
         WG[wagmi + ConnectKit]
     end
 
     subgraph Contracts ["Solidity Contracts (Base)"]
-        PE[ParlayEngine<br/>ERC721 Tickets]
+        PE[ParlayEngine<br/>ERC721 Tickets + Cashout]
         HV[HouseVault<br/>ERC4626-like LP Vault]
         LR[LegRegistry<br/>Outcome Registry]
         LV[LockVault<br/>Tiered Lock-ups]
-        YA[YieldAdapter<br/>Aave V3]
+        YA[YieldAdapter<br/>Mock / Aave V3]
 
         subgraph Oracles
             AO[AdminOracle<br/>Bootstrap Phase]
@@ -59,6 +109,13 @@ graph TB
         MK[Market Catalog]
         HE[Hedge/Exposure]
         PM[Premium Analytics<br/>x402-gated]
+        AQ[Agent Quote<br/>x402-gated + 0G AI]
+    end
+
+    subgraph Agents ["Autonomous Agents"]
+        RA[Risk Agent<br/>Kelly Criterion]
+        ZG[0G Inference<br/>Verifiable AI]
+        AP[Demo Autopilot<br/>Leg Resolution]
     end
 
     UI --> WG --> PE
@@ -70,6 +127,9 @@ graph TB
     HV --> YA
     LV --> HV
     QE --> MK
+    RA --> AQ
+    AQ --> ZG
+    AP --> Oracles
 ```
 
 ---
@@ -94,12 +154,16 @@ sequenceDiagram
 
     Oracle-->>Engine: leg outcomes resolved
 
-    alt Bettor Wins
-        Bettor->>Engine: settleTicket() → Won
+    alt All Legs Win
+        Bettor->>Engine: settleTicket() -> Won
         Bettor->>Engine: claimPayout()
         Engine->>Vault: payWinner(bettor, payout)
+    else Early Cashout
+        Bettor->>Engine: cashoutEarly(ticketId, minOut)
+        Engine->>Vault: payWinner(bettor, cashoutValue)
+        Engine->>Vault: releasePayout(remaining)
     else Bettor Loses
-        Bettor->>Engine: settleTicket() → Lost
+        Bettor->>Engine: settleTicket() -> Lost
         Engine->>Vault: releasePayout()
         Note over Vault: Stake stays in vault<br/>LP share value increases
     end
@@ -131,6 +195,85 @@ graph TB
 
     LV -->|before maturity| EW --> PEN
 ```
+
+---
+
+## Rehab Mode (Loser-to-LP Conversion) -- Planned
+
+> **Status:** UI mockup implemented (RehabCTA + RehabLocks components with mock data). Contract-level loss routing is designed but not yet deployed. See `docs/REHAB_MODE.md` for the full spec.
+
+The target design: when a ticket crashes, 10% of the losing stake is converted to vUSDC shares and force-locked for 120 days. During that period the locked shares earn fee income, giving losing bettors exposure to LP economics.
+
+```
+$100 losing stake (target design)
+  |-- $80 (80%)  -> stays in vault (LP share price appreciation)
+  |-- $10 (10%)  -> AMM liquidity pool
+  |-- $10 (10%)  -> rehab lock (force-locked vUSDC, 120 days)
+```
+
+After 120 days: withdraw shares or re-lock at 1.55x boosted weight. The rehab CTA is displayed on the ticket detail page when a ticket is lost (UI exists with mock data for demo purposes).
+
+---
+
+## 0G Verifiable AI Integration
+
+The agent-quote endpoint integrates with the [0G Compute Network](https://0g.ai/) for verifiable AI risk analysis. When `ZG_PRIVATE_KEY` is set, each quote request includes an AI-generated risk verdict from a model running on 0G's decentralized inference network.
+
+```mermaid
+sequenceDiagram
+    participant Agent as Risk Agent
+    participant API as /premium/agent-quote
+    participant ZG as 0G Network
+    participant Model as qwen-2.5-7b-instruct
+
+    Agent->>API: POST {legIds, outcomes, stake, bankroll}
+    API->>API: Compute quote + Kelly criterion risk
+    API->>ZG: getRequestHeaders(provider, prompt)
+    ZG-->>API: Signed headers
+    API->>Model: OpenAI-compatible chat completion
+    Model-->>API: Risk verdict (2-3 sentences)
+    API->>ZG: processResponse() -> verify
+    ZG-->>API: verified: true/false
+    API-->>Agent: {quote, risk, aiInsight}
+```
+
+Key properties:
+- **Verifiable**: Responses are cryptographically verified via 0G's `processResponse()` -- the AI can't silently change its answer
+- **Best-effort**: 5-second timeout, gracefully omitted if unavailable
+- **Model**: `qwen-2.5-7b-instruct` on 0G testnet (configurable)
+
+---
+
+## Autonomous Risk Agent
+
+The risk agent (`scripts/risk-agent.ts`) is a fully autonomous Kelly criterion betting agent that:
+
+1. Discovers markets from the services API
+2. Builds candidate parlay combinations
+3. Evaluates each via `/premium/agent-quote` (x402-gated, includes 0G AI insight)
+4. Applies configurable confidence thresholds and risk tolerance
+5. Executes on-chain buys when conditions are met (or logs decisions in dry-run mode)
+
+```bash
+# Dry run (default) -- logs decisions without executing
+make risk-agent-dry
+
+# Live execution
+make risk-agent
+```
+
+Configuration via environment variables:
+
+| Variable | Default | Description |
+|---|---|---|
+| `DRY_RUN` | `true` | Skip on-chain execution |
+| `MAX_STAKE_USDC` | `10` | Maximum stake per ticket |
+| `MAX_LEGS` | `3` | Maximum legs per parlay (2-5) |
+| `RISK_TOLERANCE` | `moderate` | `conservative` / `moderate` / `aggressive` |
+| `CONFIDENCE_THRESHOLD` | `0.6` | Minimum confidence to act |
+| `AGENT_PAYOUT_MODE` | `0` | 0=Classic, 1=Progressive, 2=EarlyCashout |
+| `LOOP_INTERVAL_MS` | `30000` | Cycle interval (0 = run once) |
+| `SERVICES_URL` | `http://localhost:3001` | Services API base URL |
 
 ---
 
@@ -169,8 +312,9 @@ parlaycity/
 ├── apps/web/                    # Next.js 14 frontend
 │   └── src/
 │       ├── app/                 # Pages: /, /vault, /tickets, /ticket/[id]
-│       ├── components/          # ParlayBuilder, VaultDashboard, TicketCard
-│       └── lib/                 # wagmi config, hooks, ABIs, contracts
+│       ├── components/          # ParlayBuilder, MultiplierClimb,
+│       │                        # VaultDashboard, TicketCard, RehabCTA
+│       └── lib/                 # wagmi config, hooks, ABIs, contracts, cashout
 ├── packages/
 │   ├── contracts/               # Foundry (Solidity)
 │   │   ├── src/core/            # HouseVault, ParlayEngine, LegRegistry, LockVault
@@ -179,9 +323,14 @@ parlaycity/
 │   │   ├── src/libraries/       # ParlayMath
 │   │   ├── script/              # Deploy.s.sol
 │   │   └── test/                # Unit, fuzz, invariant, integration tests
-│   ├── services/                # Express.js API (quotes, markets, exposure)
+│   ├── services/                # Express.js API (quotes, markets, exposure,
+│   │   └── src/premium/         # x402-gated: sim, risk-assess, agent-quote, 0G AI)
 │   └── shared/                  # TypeScript math, types, schemas (mirrors Solidity)
-├── Makefile                     # Dev, test, deploy commands
+├── scripts/
+│   ├── risk-agent.ts            # Autonomous Kelly criterion betting agent
+│   ├── demo-autopilot.ts        # Auto-resolve legs + settle for demos
+│   └── lib/                     # Shared script utilities (env loading, BigInt safety)
+├── Makefile                     # Dev, test, deploy, agent, demo commands
 └── package.json                 # pnpm workspace root
 ```
 
@@ -195,9 +344,28 @@ parlaycity/
 | Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS |
 | Wallet | wagmi 2, viem 2, ConnectKit |
 | API | Express.js, Zod, x402 payment protocol |
+| AI | 0G Compute Network (verifiable inference), OpenAI SDK |
 | Testing | Forge (unit/fuzz/invariant), Vitest, Testing Library |
 | Chain | Base (Anvil for local, Base Sepolia for testnet) |
 | Workspace | pnpm 8 workspaces |
+
+---
+
+## API Endpoints
+
+| Route | Auth | Description |
+|---|---|---|
+| `GET /markets` | Public | Seed market catalog with legs and probabilities |
+| `POST /quote` | Public | Off-chain parlay quote (matches on-chain execution) |
+| `GET /exposure` | Public | Mock hedger exposure tracking |
+| `POST /premium/sim` | x402 | Analytical simulation |
+| `POST /premium/risk-assess` | x402 | Kelly criterion risk advisor |
+| `POST /premium/agent-quote` | x402 | Combined quote + risk + 0G AI insight for agents |
+| `GET /vault/health` | Public | Vault health assessment |
+| `GET /vault/yield-report` | Public | Yield optimization report |
+| `GET /health` | Public | Service health check |
+
+x402 endpoints require an `X-402-Payment` header. In dev/test, any non-empty value is accepted.
 
 ---
 
@@ -205,11 +373,11 @@ parlaycity/
 
 | Contract | Description |
 |---|---|
-| `HouseVault` | ERC4626-like LP vault. Deposits USDC, mints vUSDC shares. Manages exposure reserves, yield deployment, and LP payouts. |
-| `ParlayEngine` | Core betting engine. Mints ERC721 ticket NFTs. Validates legs, computes multipliers via `ParlayMath`, reserves vault exposure, handles settlement. |
+| `HouseVault` | ERC4626-like LP vault. Deposits USDC, mints vUSDC shares. Manages exposure reserves, yield deployment, fee routing (90/5/5), and LP payouts. |
+| `ParlayEngine` | Core betting engine. Mints ERC721 ticket NFTs. Validates legs, computes multipliers via `ParlayMath`, reserves vault exposure. Supports Classic, Progressive, and EarlyCashout payout modes. |
 | `LegRegistry` | Admin-managed registry of betting outcomes with implied probabilities (PPM). Each leg references an oracle adapter. |
-| `LockVault` | Lock vUSDC shares for 30/60/90 days. Earns boosted fee share via Synthetix-style weighted reward distribution. |
-| `ParlayMath` | Pure library for multiplier, edge, and payout calculations. Mirrored in TypeScript. |
+| `LockVault` | Lock vUSDC shares for 30/60/90 days. Earns boosted fee share via Synthetix-style weighted reward distribution. Early withdraw with linear penalty. |
+| `ParlayMath` | Pure library for multiplier, edge, payout, progressive payout, and cashout value calculations. Mirrored in TypeScript. |
 | `AdminOracleAdapter` | Owner-resolved oracle for bootstrap phase. |
 | `OptimisticOracleAdapter` | Propose/challenge oracle with USDC bonds and liveness window. |
 | `AaveYieldAdapter` | Routes idle vault USDC to Aave V3 on Base for supply APY. |
@@ -228,41 +396,52 @@ parlaycity/
 ### Install
 
 ```bash
-git clone https://github.com/<your-org>/parlaycity.git
+git clone https://github.com/roman-popenov/parlaycity.git
 cd parlaycity
-pnpm install
-cd packages/contracts && forge install && cd ../..
+make setup     # pnpm install + forge install
 ```
 
 ### Local Development
 
+The fastest way to start the full stack:
+
 ```bash
-# Terminal 1: Start local chain
-make chain
+make dev       # Starts anvil + deploys contracts + services (3001) + web (3000)
+make dev-stop  # Tear down all services
+make dev-status # Check what's running
+```
 
-# Terminal 2: Deploy contracts
-make deploy-local
-# Copy printed addresses to apps/web/.env.local
+Or start components individually:
 
-# Terminal 3: Start frontend
-make dev-web
+```bash
+make chain          # Anvil only (8545)
+make deploy-local   # Deploy contracts + sync .env.local
+make dev-services   # Express API on 3001
+make dev-web        # Next.js on 3000
+```
 
-# Terminal 4 (optional): Start API server
-make dev-services
+### Demo Mode
+
+```bash
+# Buy a ticket in the UI, then watch it auto-resolve:
+make demo-autopilot
+
+# Force a crash on the last leg (100% crash rate):
+make demo-autopilot-crash
+
+# Run the autonomous risk agent (dry run):
+make risk-agent-dry
 ```
 
 ### Environment Variables
 
-Create `apps/web/.env.local`:
+`apps/web/.env.local` is auto-generated by `make deploy-local` via `scripts/sync-env.sh`. Only `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` needs manual setup.
+
+For 0G AI integration, set in the services environment:
 
 ```env
-NEXT_PUBLIC_CHAIN_ID=31337
-NEXT_PUBLIC_HOUSE_VAULT_ADDRESS=0x...
-NEXT_PUBLIC_PARLAY_ENGINE_ADDRESS=0x...
-NEXT_PUBLIC_LEG_REGISTRY_ADDRESS=0x...
-NEXT_PUBLIC_USDC_ADDRESS=0x...
-NEXT_PUBLIC_LOCK_VAULT_ADDRESS=0x...
-NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
+ZG_PRIVATE_KEY=0x...              # 0G testnet wallet private key
+ZG_AUTO_FUND_LEDGER=true          # Auto-fund 0G ledger (4 A0GI)
 ```
 
 ### Wallet Setup
@@ -276,20 +455,12 @@ NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=
 ## Testing
 
 ```bash
-# Solidity tests (unit + fuzz + invariant + integration)
-make test-contracts
-
-# TypeScript service tests
-make test-services
-
-# All tests
-make test-all
-
-# Full quality gate (tests + typecheck + build)
-make gate
-
-# Coverage report
-make coverage
+make test-contracts    # Solidity tests (unit + fuzz + invariant + integration)
+make test-services     # TypeScript service tests (vitest)
+make test-all          # Both
+make gate              # Full quality gate: tests + typecheck + build
+make coverage          # Forge coverage report
+make snapshot          # Gas benchmarks
 ```
 
 ### Test Coverage
@@ -297,7 +468,7 @@ make coverage
 | Suite | Tests |
 |---|---|
 | `HouseVault.t.sol` | Deposit/withdraw share math, reserve/release/pay, utilization cap, yield adapter integration |
-| `ParlayEngine.t.sol` | Ticket lifecycle, multiplier/fees, settlement (win/loss/void/partial void), claim |
+| `ParlayEngine.t.sol` | Ticket lifecycle, multiplier/fees, settlement (win/loss/void/partial void), cashout, progressive claim |
 | `LegRegistry.t.sol` | CRUD, validation, access control |
 | `LockVault.t.sol` | Lock positions, tier multipliers, rewards, early withdrawal penalty |
 | `AdminOracle.t.sol` | Resolve, double-resolve prevention |
@@ -307,12 +478,16 @@ make coverage
 | `Integration.t.sol` | Full lifecycle: win+claim, loss, partial void, lock vault, yield |
 | `quote.test.ts` | 30+ tests for shared math, parsers, schemas |
 | `api.test.ts` | API integration tests (markets, quotes, exposure, x402) |
+| `agent-quote.test.ts` | Agent quote endpoint: x402 gating, response shape, quote math, risk profiles, correlation detection, aiInsight |
+| `risk-compute.test.ts` | Kelly criterion, risk tolerance profiles, boundary conditions |
 
 ---
 
 ## Key Design Decisions
 
-**Vault-backed exposure**: The engine never holds USDC. All stakes go directly to the vault, and exposure is reserved 1:1. This means LP share value only changes through bet outcomes, not through custody risk.
+**Crash-parlay mechanic**: Tickets are live instruments, not fire-and-forget bets. The multiplier climbs as each leg resolves favorably and crashes when a leg loses. Users choose their own exit point via early cashout.
+
+**Vault-backed exposure**: The engine never holds USDC. All stakes go directly to the vault, and exposure is reserved 1:1. LP share value only changes through bet outcomes, not custody risk.
 
 **Permissionless settlement**: Anyone can call `settleTicket()` once oracle data is available. No keeper dependency for resolution.
 
@@ -323,6 +498,10 @@ make coverage
 **Shared math**: `ParlayMath.sol` and `packages/shared/src/math.ts` implement identical integer arithmetic. Off-chain quotes match on-chain execution exactly.
 
 **Yield on idle capital**: The vault's `totalAssets()` includes capital deployed to Aave via the yield adapter. Share prices reflect accrued yield with no settlement lag. A configurable buffer (default 25%) always stays local to cover payouts.
+
+**Verifiable AI** (integrated): Risk analysis uses 0G's decentralized inference network with cryptographic verification. The AI verdict is included in agent-quote responses when `ZG_PRIVATE_KEY` is configured, but is best-effort -- the protocol never depends on it for correctness.
+
+**Rehab as retention** (planned): Target design where a portion of losing stakes become force-locked LP positions, giving losers exposure to LP economics. UI components exist with mock data; contract-level loss routing is designed but not yet deployed.
 
 ---
 
