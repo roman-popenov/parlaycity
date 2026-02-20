@@ -46,9 +46,12 @@ const SESSION_KEYS = {
 
 // ── Pure helpers ─────────────────────────────────────────────────────────
 
-/** Yes odds from mock data. No odds = complement: yesOdds / (yesOdds - 1). */
+/** Yes odds from mock data. No odds = complement: yesOdds / (yesOdds - 1). Odds must be > 1. */
 function effectiveOdds(leg: MockLeg, outcome: number): number {
-  if (outcome === 2) return leg.odds / (leg.odds - 1);
+  if (outcome === 2) {
+    if (leg.odds <= 1) return leg.odds; // guard: avoid division by zero
+    return leg.odds / (leg.odds - 1);
+  }
   return leg.odds;
 }
 
