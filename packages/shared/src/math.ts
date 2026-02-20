@@ -141,9 +141,9 @@ export function computeCashoutValue(
   effectiveStake: bigint,
   wonProbsPPM: number[],
   unresolvedCount: number,
+  basePenaltyBps: number,
   totalLegs: number,
   potentialPayout: bigint,
-  basePenaltyBps: number = BASE_CASHOUT_PENALTY_BPS,
 ): { cashoutValue: bigint; penaltyBps: number; fairValue: bigint } {
   if (wonProbsPPM.length === 0) {
     throw new Error("computeCashoutValue: no won legs");
