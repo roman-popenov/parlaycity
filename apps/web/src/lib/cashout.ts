@@ -25,10 +25,17 @@ export function computeClientCashoutValue(
     return undefined;
   }
 
+  // Validate basePenaltyBps is a finite non-negative integer (BigInt() throws on non-integer)
+  if (!Number.isInteger(basePenaltyBps) || basePenaltyBps < 0) {
+    return undefined;
+  }
+
   const ppm = BigInt(PPM);
   let wonMultiplier = ppm;
   for (const p of wonProbsPPM) {
-    if (p > 0 && p <= PPM) wonMultiplier = (wonMultiplier * ppm) / BigInt(p);
+    // Fail fast on invalid probabilities (NaN comparisons are always false, so check isInteger first)
+    if (!Number.isInteger(p) || p <= 0 || p > PPM) return undefined;
+    wonMultiplier = (wonMultiplier * ppm) / BigInt(p);
   }
   const fairValue = (effectiveStake * wonMultiplier) / ppm;
   const scaledPenalty = (BigInt(basePenaltyBps) * BigInt(unresolvedCount)) / BigInt(totalLegs);

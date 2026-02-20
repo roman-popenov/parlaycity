@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { computeClientCashoutValue, PPM, BPS } from "@/lib/cashout";
+import { computeClientCashoutValue, PPM, BPS, BASE_CASHOUT_PENALTY_BPS } from "@/lib/cashout";
 
 describe("cashout math (computeClientCashoutValue)", () => {
   it("computes correct value for 2-leg ticket, 1 won, 1 unresolved", () => {
@@ -52,9 +52,32 @@ describe("cashout math (computeClientCashoutValue)", () => {
   });
 
   it("returns undefined for invalid inputs", () => {
+    // Empty probabilities
     expect(computeClientCashoutValue(9_700_000n, [], 1, 2, 39_200_000n, 1500)).toBeUndefined();
+    // Zero unresolved
     expect(computeClientCashoutValue(9_700_000n, [350_000], 0, 2, 39_200_000n, 1500)).toBeUndefined();
+    // Zero stake
     expect(computeClientCashoutValue(0n, [350_000], 1, 2, 39_200_000n, 1500)).toBeUndefined();
+    // Invalid probability values: 0 and > PPM
+    expect(computeClientCashoutValue(9_700_000n, [0], 1, 2, 39_200_000n, 1500)).toBeUndefined();
+    expect(computeClientCashoutValue(9_700_000n, [PPM + 1], 1, 2, 39_200_000n, 1500)).toBeUndefined();
+    // Non-integer probability (BigInt() would throw)
+    expect(computeClientCashoutValue(9_700_000n, [350_000.5], 1, 2, 39_200_000n, 1500)).toBeUndefined();
+    expect(computeClientCashoutValue(9_700_000n, [NaN], 1, 2, 39_200_000n, 1500)).toBeUndefined();
+    // Invalid basePenaltyBps: negative, NaN, Infinity, non-integer
+    expect(computeClientCashoutValue(9_700_000n, [350_000], 1, 2, 39_200_000n, -1)).toBeUndefined();
+    expect(computeClientCashoutValue(9_700_000n, [350_000], 1, 2, 39_200_000n, NaN)).toBeUndefined();
+    expect(computeClientCashoutValue(9_700_000n, [350_000], 1, 2, 39_200_000n, Infinity)).toBeUndefined();
+    expect(computeClientCashoutValue(9_700_000n, [350_000], 1, 2, 39_200_000n, 1500.5)).toBeUndefined();
+  });
+
+  it("accepts 0 bps penalty (no penalty applied)", () => {
+    const withPenalty = computeClientCashoutValue(9_700_000n, [350_000], 1, 2, 39_200_000n, BASE_CASHOUT_PENALTY_BPS)!;
+    const noPenalty = computeClientCashoutValue(9_700_000n, [350_000], 1, 2, 39_200_000n, 0)!;
+    // fairValue = 9_700_000 * (1_000_000 * 1_000_000 / 350_000) / 1_000_000 = 27_714_277
+    // 0 bps penalty means cv = fairValue exactly (no reduction)
+    expect(noPenalty).toBe(27_714_277n);
+    expect(noPenalty).toBeGreaterThanOrEqual(withPenalty);
   });
 
   it("caps cashout at potentialPayout", () => {

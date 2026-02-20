@@ -62,7 +62,9 @@ export default function TicketPage() {
   // Use effectiveStake (stake minus fee) for cashout math -- matches on-chain ParlayEngine.sol:613
   const effectiveStake = onChainTicket.stake - onChainTicket.feePaid;
   // Use ticket's snapshotted penalty if available, else default
-  const penaltyBps = Number(onChainTicket.cashoutPenaltyBps) || BASE_CASHOUT_PENALTY_BPS;
+  // Nullish check: on-chain 0 bps is a valid penalty (|| would replace it with default)
+  const rawPenalty = Number(onChainTicket.cashoutPenaltyBps);
+  const penaltyBps = Number.isFinite(rawPenalty) ? rawPenalty : BASE_CASHOUT_PENALTY_BPS;
 
   // Build legs in a single pass, collecting cashout inputs simultaneously
   const wonProbsPPM: number[] = [];
@@ -123,7 +125,12 @@ export default function TicketPage() {
 
   // Crash game loop: derive from already-computed leg data
   const legMultipliers = legs.map((l) => l.odds);
-  const resolvedWon = wonProbsPPM.length;
+  // Derive resolvedWon from leg state, not wonProbsPPM.length (which excludes legs with 0 probability)
+  const resolvedWon = legs.filter((l) => {
+    if (!l.resolved || l.result === 3) return false;
+    const isNoBet = l.outcomeChoice === 2;
+    return (l.result === 1 && !isNoBet) || (l.result === 2 && isNoBet);
+  }).length;
   const crashed = legs.some((l) => {
     if (!l.resolved || l.result === 3) return false;
     const isNoBet = l.outcomeChoice === 2;
