@@ -79,10 +79,8 @@ resolve_leg() {
   [ "$status" = "2" ] && status_name="Lost"
 
   echo "Resolving leg $lid as $status_name..."
-  cast send --private-key "$DEPLOYER_KEY" --rpc-url "$RPC_URL" \
-    "$ORACLE" "resolve(uint256,uint8,bytes32)" "$lid" "$status" "$outcome" > /dev/null 2>&1
-
-  if [ $? -eq 0 ]; then
+  if cast send --private-key "$DEPLOYER_KEY" --rpc-url "$RPC_URL" \
+    "$ORACLE" "resolve(uint256,uint8,bytes32)" "$lid" "$status" "$outcome" > /dev/null 2>&1; then
     echo "  Leg $lid resolved as $status_name"
   else
     echo "  ERROR: Failed to resolve leg $lid (may already be resolved)"
@@ -92,10 +90,8 @@ resolve_leg() {
 settle_ticket() {
   local tid="$1"
   echo "Settling ticket $tid..."
-  cast send --private-key "$DEPLOYER_KEY" --rpc-url "$RPC_URL" \
-    "$ENGINE" "settleTicket(uint256)" "$tid" > /dev/null 2>&1
-
-  if [ $? -eq 0 ]; then
+  if cast send --private-key "$DEPLOYER_KEY" --rpc-url "$RPC_URL" \
+    "$ENGINE" "settleTicket(uint256)" "$tid" > /dev/null 2>&1; then
     echo "  Ticket $tid settled"
   else
     echo "  Ticket $tid: settlement skipped (not all legs resolved or already settled)"
