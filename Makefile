@@ -117,6 +117,9 @@ test-web:
 
 test-all: test-contracts test-services test-web
 
+test-e2e:
+	cd packages/e2e && pnpm test
+
 # -- Quality Gate --
 gate: test-all typecheck build-web
 
@@ -185,4 +188,4 @@ clean:
 	cd packages/contracts && forge clean
 	cd apps/web && rm -rf .next
 
-.PHONY: bootstrap setup chain deploy-local deploy-sepolia sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-web test-all gate typecheck build-web build-contracts coverage coverage-contracts coverage-services coverage-web snapshot ci ci-contracts ci-services ci-web demo-seed demo-autopilot demo-autopilot-crash register-legs clean risk-agent risk-agent-dry
+.PHONY: bootstrap setup chain deploy-local deploy-sepolia sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-web test-all test-e2e gate typecheck build-web build-contracts coverage coverage-contracts coverage-services coverage-web snapshot ci ci-contracts ci-services ci-web demo-seed demo-autopilot demo-autopilot-crash register-legs clean risk-agent risk-agent-dry
