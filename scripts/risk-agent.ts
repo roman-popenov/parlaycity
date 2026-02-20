@@ -47,6 +47,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { foundry, baseSepolia } from "viem/chains";
 
 import { loadEnvLocal, requireExplicitKeyForRemoteRpc, safeBigIntToNumber, safeParseNumber } from "./lib/env";
+import type { AgentQuoteResponse, AiInsight } from "@parlaycity/shared";
 
 // -- ABI fragments (on-chain, only used when DRY_RUN=false) -----------------
 
@@ -79,43 +80,6 @@ interface MarketResponse {
   legs: MarketLeg[];
 }
 
-interface AiInsight {
-  analysis: string;
-  model: string;
-  provider: string;
-  verified: boolean;
-}
-
-interface AgentQuoteResponse {
-  quote: {
-    legIds: number[];
-    outcomes: string[];
-    stake: string;
-    multiplierX1e6: string;
-    potentialPayout: string;
-    feePaid: string;
-    edgeBps: number;
-    probabilities: number[];
-    valid: boolean;
-    reason?: string;
-  };
-  risk: {
-    action: string;
-    suggestedStake: string;
-    kellyFraction: number;
-    winProbability: number;
-    expectedValue: number;
-    confidence: number;
-    reasoning: string;
-    warnings: string[];
-    riskTolerance: string;
-    fairMultiplier: number;
-    netMultiplier: number;
-    edgeBps: number;
-  };
-  aiInsight?: AiInsight;
-}
-
 interface DecisionLog {
   timestamp: string;
   cycle: number;
@@ -146,12 +110,16 @@ const YES_OUTCOME = "0x000000000000000000000000000000000000000000000000000000000
 
 function getConfig() {
   const servicesUrl = process.env.SERVICES_URL ?? "http://localhost:3001";
-  const riskTolerance = (process.env.RISK_TOLERANCE ?? "moderate") as
-    | "conservative"
-    | "moderate"
-    | "aggressive";
+
+  const VALID_TOLERANCES = ["conservative", "moderate", "aggressive"] as const;
+  type RiskTolerance = (typeof VALID_TOLERANCES)[number];
+  const rawTolerance = process.env.RISK_TOLERANCE ?? "moderate";
+  const riskTolerance: RiskTolerance = VALID_TOLERANCES.includes(rawTolerance as RiskTolerance)
+    ? (rawTolerance as RiskTolerance)
+    : "moderate";
+
   const dryRun = (process.env.DRY_RUN ?? "true").toLowerCase() !== "false";
-  const loopIntervalMs = safeParseNumber(process.env.LOOP_INTERVAL_MS, 30000, "LOOP_INTERVAL_MS");
+  const loopIntervalMs = Math.max(0, safeParseNumber(process.env.LOOP_INTERVAL_MS, 30000, "LOOP_INTERVAL_MS"));
   const once = (process.env.ONCE ?? "false").toLowerCase() === "true" || loopIntervalMs === 0;
   const maxStakeUsdc = safeParseNumber(process.env.MAX_STAKE_USDC, 10, "MAX_STAKE_USDC");
   const maxLegs = Math.min(
@@ -162,8 +130,10 @@ function getConfig() {
     Math.max(Math.floor(safeParseNumber(process.env.MAX_CANDIDATES, 5, "MAX_CANDIDATES")), 1),
     20,
   );
-  const confidenceThreshold = safeParseNumber(process.env.CONFIDENCE_THRESHOLD, 0.6, "CONFIDENCE_THRESHOLD");
-  const bankroll = process.env.AGENT_BANKROLL ?? "1000";
+  const confidenceThreshold = Math.min(1, Math.max(0, safeParseNumber(process.env.CONFIDENCE_THRESHOLD, 0.6, "CONFIDENCE_THRESHOLD")));
+
+  const rawBankroll = process.env.AGENT_BANKROLL ?? "1000";
+  const bankroll = isNaN(Number(rawBankroll)) || Number(rawBankroll) <= 0 ? "1000" : rawBankroll;
   const payoutModeRaw = Number(process.env.AGENT_PAYOUT_MODE ?? "0");
   const payoutMode = [0, 1, 2].includes(payoutModeRaw) ? payoutModeRaw : 0;
 

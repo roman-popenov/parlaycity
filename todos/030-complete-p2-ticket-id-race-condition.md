@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p2
 issue_id: "030"
 tags: [code-review, correctness, pr18]

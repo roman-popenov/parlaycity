@@ -133,7 +133,7 @@ export async function runZGInference(prompt: string): Promise<ZGInferenceResult 
     const { OpenAI } = await import("openai");
     const openai = new OpenAI({
       baseURL: endpoint,
-      apiKey: "",
+      apiKey: "not-needed", // 0G endpoint handles auth via custom headers; SDK rejects empty string
       defaultHeaders: { ...headers } as Record<string, string>,
     });
 
@@ -143,7 +143,11 @@ export async function runZGInference(prompt: string): Promise<ZGInferenceResult 
       max_tokens: 256,
     });
 
-    const content = completion.choices[0]?.message?.content ?? "";
+    const content = completion.choices[0]?.message?.content;
+    if (!content) {
+      console.warn("[0g-inference] Empty response from 0G (no choices or null content)");
+      return null;
+    }
 
     // Verify response via 0G (returns boolean | null)
     let verified = false;
