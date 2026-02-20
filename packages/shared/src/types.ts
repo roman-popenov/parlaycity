@@ -160,7 +160,15 @@ export interface AgentQuoteRequest {
   riskTolerance: RiskProfile;
 }
 
+export interface AiInsight {
+  analysis: string;
+  model: string;
+  provider: string;
+  verified: boolean;
+}
+
 export interface AgentQuoteResponse {
   quote: QuoteResponse;
   risk: RiskAssessResponse;
+  aiInsight?: AiInsight;
 }

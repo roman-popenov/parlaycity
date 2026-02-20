@@ -4,9 +4,10 @@ import {
   parseUSDC,
   computeQuote,
 } from "@parlaycity/shared";
-import type { AgentQuoteResponse } from "@parlaycity/shared";
+import type { AgentQuoteResponse, AiInsight } from "@parlaycity/shared";
 import { SEED_MARKETS } from "../catalog/seed.js";
 import { computeRiskAssessment } from "../risk/compute.js";
+import { runZGInference, buildRiskPrompt } from "./0g-inference.js";
 
 const router = Router();
 
@@ -25,7 +26,7 @@ function getLegMap() {
  * x402-gated endpoint that combines quote + risk assessment in one call.
  * Resolves leg probabilities from the catalog so agents don't need to know them.
  */
-router.post("/agent-quote", (req, res) => {
+router.post("/agent-quote", async (req, res) => {
   const parsed = parseAgentQuoteRequest(req.body);
   if (!parsed.success) {
     return res.status(400).json({
@@ -63,8 +64,45 @@ router.post("/agent-quote", (req, res) => {
 
   // --- Risk Assessment (shared with /premium/risk-assess) ---
   const result = computeRiskAssessment({ stake, bankroll, riskTolerance, probabilities, categories });
+  const risk = result.data;
 
-  return res.json({ quote, risk: result.data } satisfies AgentQuoteResponse);
+  // --- 0G AI Insight (best-effort, 5s timeout) ---
+  let aiInsight: AiInsight | undefined;
+  try {
+    const prompt = buildRiskPrompt({
+      legIds,
+      outcomes,
+      winProbability: risk.winProbability,
+      kellyFraction: risk.kellyFraction,
+      expectedValue: risk.expectedValue,
+      fairMultiplier: risk.fairMultiplier,
+      netMultiplier: risk.netMultiplier,
+      edgeBps: risk.edgeBps,
+      warnings: risk.warnings,
+      action: risk.action,
+      riskTolerance,
+      stake,
+    });
+
+    const inference = await Promise.race([
+      runZGInference(prompt),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 5_000)),
+    ]);
+
+    if (inference) {
+      aiInsight = {
+        analysis: inference.content,
+        model: inference.model,
+        provider: inference.provider,
+        verified: inference.verified,
+      };
+    }
+  } catch (e) {
+    console.warn("[agent-quote] AI insight failed:", (e as Error).message);
+  }
+
+  const response: AgentQuoteResponse = { quote, risk, ...(aiInsight && { aiInsight }) };
+  return res.json(response);
 });
 
 export default router;
