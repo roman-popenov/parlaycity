@@ -6,10 +6,7 @@ import { useAccount } from "wagmi";
 import { useUserTickets, useLegDescriptions, useLegStatuses, type OnChainTicket, type LegInfo, type LegOracleResult } from "@/lib/hooks";
 import { TicketCard, type TicketData, type TicketLeg } from "@/components/TicketCard";
 import { mapStatus, parseOutcomeChoice } from "@/lib/utils";
-
-const PPM = 1_000_000;
-const BPS = 10_000;
-const BASE_CASHOUT_PENALTY_BPS = 1_500;
+import { PPM, BASE_CASHOUT_PENALTY_BPS, computeClientCashoutValue } from "@/lib/cashout";
 
 function toTicketData(
   id: bigint,
@@ -54,19 +51,9 @@ function toTicketData(
   });
 
   // Compute cashout value for EarlyCashout tickets
-  let cashoutValue: bigint | undefined;
-  if (t.payoutMode === 2 && wonProbsPPM.length > 0 && unresolvedCount > 0 && effectiveStake > 0n) {
-    const ppm = BigInt(PPM);
-    let wonMultiplier = ppm;
-    for (const p of wonProbsPPM) {
-      if (p > 0 && p <= PPM) wonMultiplier = (wonMultiplier * ppm) / BigInt(p);
-    }
-    const fairValue = (effectiveStake * wonMultiplier) / ppm;
-    const scaledPenalty = (BigInt(penaltyBps) * BigInt(unresolvedCount)) / BigInt(legs.length);
-    let cv = (fairValue * (BigInt(BPS) - scaledPenalty)) / BigInt(BPS);
-    if (cv > t.potentialPayout) cv = t.potentialPayout;
-    cashoutValue = cv;
-  }
+  const cashoutValue = t.payoutMode === 2
+    ? computeClientCashoutValue(effectiveStake, wonProbsPPM, unresolvedCount, legs.length, t.potentialPayout, penaltyBps)
+    : undefined;
 
   return {
     id,
