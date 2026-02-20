@@ -1,5 +1,5 @@
 ---
-status: pending
+status: complete
 priority: p2
 issue_id: "029"
 tags: [code-review, security, pr18, pr19]
@@ -10,25 +10,14 @@ dependencies: []
 
 ## Problem Statement
 
-Both agent scripts (settler-bot.ts, risk-agent.ts) and demo shell scripts (demo-seed.sh, demo-resolve.sh) default to well-known Anvil private keys. When RPC_URL points to a non-local endpoint but PRIVATE_KEY is not set, scripts silently use the Anvil key on a live network.
+Both agent scripts (settler-bot.ts, risk-agent.ts) and demo shell scripts (demo-seed.sh, demo-resolve.sh) default to well-known Anvil private keys. When NETWORK is "local" but BASE_SEPOLIA_RPC_URL is set in the environment, the user may have forgotten to pass "sepolia" as an argument.
 
-## Proposed Solutions
+## Solution
 
-### Option A: Require PRIVATE_KEY for non-local RPC (Recommended)
-```typescript
-const isLocal = rpcUrl.includes("127.0.0.1") || rpcUrl.includes("localhost");
-if (!isLocal && !process.env.PRIVATE_KEY) {
-  throw new Error("PRIVATE_KEY required for non-local RPC");
-}
-```
-- Effort: Small
+Added safety guard in both scripts: when running in local mode, check if BASE_SEPOLIA_RPC_URL env var is set. If so, print a warning and require y/N confirmation before continuing. Agent scripts (settler-bot.ts, risk-agent.ts) also check for non-local RPC without PRIVATE_KEY.
 
 ## Acceptance Criteria
 
-- [ ] Scripts refuse to use default keys when RPC_URL is non-local
-- [ ] Clear error message directs user to set PRIVATE_KEY
-
-## Resources
-
-- PRs #18, #19
-- Lesson #7: Production env vars must throw on zero/empty defaults
+- [x] Scripts warn when NETWORK is local but BASE_SEPOLIA_RPC_URL is set
+- [x] User must confirm (y/N) to continue with local mode
+- [x] Scripts refuse to use default keys when RPC_URL is non-local
