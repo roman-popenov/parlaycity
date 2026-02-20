@@ -154,8 +154,14 @@ function getConfig() {
   const loopIntervalMs = safeParseNumber(process.env.LOOP_INTERVAL_MS, 30000, "LOOP_INTERVAL_MS");
   const once = (process.env.ONCE ?? "false").toLowerCase() === "true" || loopIntervalMs === 0;
   const maxStakeUsdc = safeParseNumber(process.env.MAX_STAKE_USDC, 10, "MAX_STAKE_USDC");
-  const maxLegs = Math.min(Math.max(safeParseNumber(process.env.MAX_LEGS, 3, "MAX_LEGS"), 2), 5);
-  const maxCandidates = Math.min(Math.max(safeParseNumber(process.env.MAX_CANDIDATES, 5, "MAX_CANDIDATES"), 1), 20);
+  const maxLegs = Math.min(
+    Math.max(Math.floor(safeParseNumber(process.env.MAX_LEGS, 3, "MAX_LEGS")), 2),
+    5,
+  );
+  const maxCandidates = Math.min(
+    Math.max(Math.floor(safeParseNumber(process.env.MAX_CANDIDATES, 5, "MAX_CANDIDATES")), 1),
+    20,
+  );
   const confidenceThreshold = safeParseNumber(process.env.CONFIDENCE_THRESHOLD, 0.6, "CONFIDENCE_THRESHOLD");
   const bankroll = process.env.AGENT_BANKROLL ?? "1000";
   const payoutModeRaw = Number(process.env.AGENT_PAYOUT_MODE ?? "0");
@@ -260,27 +266,38 @@ function buildCandidates(
 
   const candidates: ParlayCandidate[] = [];
 
-  // Strategy: pick the best leg from each of N different categories
-  // Generate size-2 and size-3 (up to maxLegs) combos
+  // Strategy: pick the best leg from each of N different categories.
+  // Lazy backtracking avoids materializing all C(n,k) combos up front.
   for (let size = 2; size <= Math.min(maxLegs, categories.length); size++) {
-    const combos = combinations(categories, size);
-    for (const combo of combos) {
-      if (candidates.length >= maxCandidates) break;
-
-      const legs = combo.map((cat) => {
-        const catLegs = legsByCategory.get(cat);
-        if (!catLegs || catLegs.length === 0) return null;
-        return catLegs[0];
-      }).filter((l): l is (MarketLeg & { category: string }) => l !== null);
-      if (legs.length !== combo.length) continue; // skip incomplete combos
-      candidates.push({
-        legIds: legs.map((l) => l.id),
-        outcomes: legs.map(() => YES_OUTCOME),
-        questions: legs.map((l) => l.question),
-        categories: combo,
-      });
-    }
     if (candidates.length >= maxCandidates) break;
+
+    const currentCombo: string[] = [];
+    const backtrack = (start: number) => {
+      if (candidates.length >= maxCandidates) return;
+      if (currentCombo.length === size) {
+        const combo = [...currentCombo];
+        const legs = combo.map((cat) => {
+          const catLegs = legsByCategory.get(cat);
+          if (!catLegs || catLegs.length === 0) return null;
+          return catLegs[0];
+        }).filter((l): l is (MarketLeg & { category: string }) => l !== null);
+        if (legs.length !== combo.length) return;
+        candidates.push({
+          legIds: legs.map((l) => l.id),
+          outcomes: legs.map(() => YES_OUTCOME),
+          questions: legs.map((l) => l.question),
+          categories: combo,
+        });
+        return;
+      }
+      for (let i = start; i <= categories.length - (size - currentCombo.length); i++) {
+        if (candidates.length >= maxCandidates) return;
+        currentCombo.push(categories[i]);
+        backtrack(i + 1);
+        currentCombo.pop();
+      }
+    };
+    backtrack(0);
   }
 
   // If we have fewer categories than 2, build from the same category
@@ -297,28 +314,6 @@ function buildCandidates(
   }
 
   return candidates.slice(0, maxCandidates);
-}
-
-/** Generate all k-combinations of an array. */
-function combinations<T>(arr: T[], k: number): T[][] {
-  if (k === 0) return [[]];
-  if (k > arr.length) return [];
-  const result: T[][] = [];
-
-  function recurse(start: number, current: T[]) {
-    if (current.length === k) {
-      result.push([...current]);
-      return;
-    }
-    for (let i = start; i < arr.length; i++) {
-      current.push(arr[i]);
-      recurse(i + 1, current);
-      current.pop();
-    }
-  }
-
-  recurse(0, []);
-  return result;
 }
 
 // -- Step 3: Get risk assessment via x402 -----------------------------------

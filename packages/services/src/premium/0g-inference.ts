@@ -67,6 +67,7 @@ export async function getZGBroker(): Promise<CachedBroker | null> {
           await broker.ledger.addLedger(LEDGER_MIN_A0GI);
         } else {
           console.warn("[0g-inference] No ledger found and auto-funding disabled (set ZG_AUTO_FUND_LEDGER=true). Disabling.");
+          disabled = true;
           return null;
         }
       }
@@ -74,7 +75,8 @@ export async function getZGBroker(): Promise<CachedBroker | null> {
       // Discover services (include unacknowledged so we can acknowledge)
       const services = await broker.inference.listService(0, 50, true);
       if (services.length === 0) {
-        console.warn("[0g-inference] No services available on 0G network");
+        console.warn("[0g-inference] No services available on 0G network. Disabling.");
+        disabled = true;
         return null;
       }
 

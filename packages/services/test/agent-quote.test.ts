@@ -1,4 +1,4 @@
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import request from "supertest";
 import app from "../src/index.js";
 import {
@@ -8,6 +8,16 @@ import {
   computeEdge,
   applyEdge,
 } from "@parlaycity/shared";
+
+// Ensure tests are hermetic: ZG_PRIVATE_KEY must not leak from dev environment
+let savedZgKey: string | undefined;
+beforeAll(() => {
+  savedZgKey = process.env.ZG_PRIVATE_KEY;
+  delete process.env.ZG_PRIVATE_KEY;
+});
+afterAll(() => {
+  if (savedZgKey !== undefined) process.env.ZG_PRIVATE_KEY = savedZgKey;
+});
 
 const validBody = {
   legIds: [1, 2],
