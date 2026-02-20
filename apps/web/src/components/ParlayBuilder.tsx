@@ -11,7 +11,7 @@ import {
   blockNonNumericKeys,
   useSessionState,
 } from "@/lib/utils";
-import { MOCK_LEGS, type MockLeg } from "@/lib/mock";
+import { MOCK_LEGS } from "@/lib/mock";
 import { useBuyTicket, useParlayConfig, useUSDCBalance, useVaultStats } from "@/lib/hooks";
 import { MultiplierClimb } from "./MultiplierClimb";
 
@@ -222,7 +222,7 @@ export function ParlayBuilder() {
           setOnChainLegIds(ids);
         }
       })
-      .catch(() => {});
+      .catch(() => { /* leg-mapping.json not available -- use default on-chain IDs */ });
   }, []);
 
   // Fetch markets from API (upgrades from MOCK_LEGS to full catalog)
@@ -378,7 +378,7 @@ export function ParlayBuilder() {
     // Translate catalog leg IDs to on-chain IDs via leg mapping
     const legIds = selectedLegs.map((s) => {
       const catalogId = s.leg.id.toString();
-      if (catalogId in legMapping) return BigInt(legMapping[catalogId]);
+      if (Object.hasOwn(legMapping, catalogId)) return BigInt(legMapping[catalogId]);
       return s.leg.id; // Deploy.s.sol legs (0, 1, 2) already match
     });
     const outcomes = selectedLegs.map((s) => s.outcomeChoice);

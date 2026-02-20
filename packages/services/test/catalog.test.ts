@@ -164,7 +164,7 @@ describe("Seed data integrity", () => {
     }
   });
 
-  it("original legs 1-9 are unchanged", () => {
+  it("legs 1-9 have stable IDs and expected structure", () => {
     // Legs 1-3: ethdenver-2026 (crypto)
     const m1 = SEED_MARKETS.find((m) => m.id === "ethdenver-2026");
     expect(m1).toBeDefined();
@@ -190,6 +190,15 @@ describe("Seed data integrity", () => {
       for (const leg of market.legs) {
         expect(leg.probabilityPPM).toBeGreaterThan(0);
         expect(leg.probabilityPPM).toBeLessThan(1_000_000);
+      }
+    }
+  });
+
+  it("all probabilities are in fair range (350K-650K PPM)", () => {
+    for (const market of SEED_MARKETS) {
+      for (const leg of market.legs) {
+        expect(leg.probabilityPPM).toBeGreaterThanOrEqual(350_000);
+        expect(leg.probabilityPPM).toBeLessThanOrEqual(650_000);
       }
     }
   });
