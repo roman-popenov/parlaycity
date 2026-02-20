@@ -271,7 +271,7 @@ function buildCandidates(
         const catLegs = legsByCategory.get(cat);
         if (!catLegs || catLegs.length === 0) return null;
         return catLegs[0];
-      }).filter((l): l is MarketLeg => l !== null);
+      }).filter((l): l is (MarketLeg & { category: string }) => l !== null);
       if (legs.length !== combo.length) continue; // skip incomplete combos
       candidates.push({
         legIds: legs.map((l) => l.id),
@@ -285,8 +285,8 @@ function buildCandidates(
 
   // If we have fewer categories than 2, build from the same category
   if (categories.length === 1) {
-    const legs = legsByCategory.get(categories[0])!;
-    if (legs.length >= 2) {
+    const legs = legsByCategory.get(categories[0]);
+    if (legs && legs.length >= 2) {
       candidates.push({
         legIds: legs.slice(0, 2).map((l) => l.id),
         outcomes: legs.slice(0, 2).map(() => YES_OUTCOME),
