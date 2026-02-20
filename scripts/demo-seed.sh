@@ -1,0 +1,190 @@
+#!/usr/bin/env bash
+# demo-seed.sh -- Seeds the deployed ParlayCity contracts with sample data.
+#
+# Creates 5 legs, deposits LP liquidity, buys 4 tickets across 2 wallets
+# using Classic, Progressive, and EarlyCashout payout modes.
+#
+# Usage:
+#   ./scripts/demo-seed.sh                 # Local Anvil (default)
+#   ./scripts/demo-seed.sh sepolia         # Base Sepolia
+#
+# Requires: cast (foundry), deployed contracts (run deploy first)
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+ROOT="$SCRIPT_DIR/.."
+
+NETWORK="${1:-local}"
+
+# --- RPC + keys ---
+if [ "$NETWORK" = "sepolia" ]; then
+  RPC_URL="${BASE_SEPOLIA_RPC_URL:?Set BASE_SEPOLIA_RPC_URL}"
+  DEPLOYER_KEY="${DEPLOYER_PRIVATE_KEY:?Set DEPLOYER_PRIVATE_KEY}"
+  ACCOUNT1_KEY="${ACCOUNT1_PRIVATE_KEY:?Set ACCOUNT1_PRIVATE_KEY for Sepolia}"
+  CHAIN_ID=84532
+else
+  RPC_URL="http://127.0.0.1:8545"
+  # Anvil default keys
+  DEPLOYER_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+  ACCOUNT1_KEY="0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d"
+  CHAIN_ID=31337
+fi
+
+# --- Load addresses from broadcast ---
+BROADCAST="$ROOT/packages/contracts/broadcast/Deploy.s.sol/$CHAIN_ID/run-latest.json"
+if [ ! -f "$BROADCAST" ]; then
+  echo "ERROR: No broadcast at $BROADCAST. Deploy first."
+  exit 1
+fi
+
+get_addr() {
+  python3 -c "
+import json, sys
+with open('$BROADCAST') as f:
+    data = json.load(f)
+for tx in data['transactions']:
+    if tx.get('transactionType') == 'CREATE' and tx.get('contractName') == '$1':
+        print(tx['contractAddress'])
+        sys.exit(0)
+sys.exit(1)
+"
+}
+
+USDC=$(get_addr "MockUSDC")
+VAULT=$(get_addr "HouseVault")
+ENGINE=$(get_addr "ParlayEngine")
+REGISTRY=$(get_addr "LegRegistry")
+ORACLE=$(get_addr "AdminOracleAdapter")
+
+DEPLOYER_ADDR=$(cast wallet address "$DEPLOYER_KEY")
+ACCOUNT1_ADDR=$(cast wallet address "$ACCOUNT1_KEY")
+
+echo "=== ParlayCity Demo Seed ==="
+echo "Network:      $NETWORK (chain $CHAIN_ID)"
+echo "RPC:          $RPC_URL"
+echo "Deployer:     $DEPLOYER_ADDR"
+echo "Account1:     $ACCOUNT1_ADDR"
+echo "USDC:         $USDC"
+echo "HouseVault:   $VAULT"
+echo "ParlayEngine: $ENGINE"
+echo "LegRegistry:  $REGISTRY"
+echo "Oracle:       $ORACLE"
+echo ""
+
+# Helper: send a transaction
+send() {
+  local key="$1"; shift
+  cast send --private-key "$key" --rpc-url "$RPC_URL" "$@" > /dev/null 2>&1
+}
+
+# --- 1. Mint USDC (MockUSDC only -- skip on real networks with real USDC) ---
+# MockUSDC has a 10,000 USDC per-call cap. Deploy already mints 10k each,
+# so mint one more batch per wallet to have enough for LP + tickets.
+echo "--- Minting USDC ---"
+send "$DEPLOYER_KEY" "$USDC" "mint(address,uint256)" "$DEPLOYER_ADDR" 10000000000  # 10,000 USDC
+send "$DEPLOYER_KEY" "$USDC" "mint(address,uint256)" "$ACCOUNT1_ADDR" 10000000000  # 10,000 USDC
+echo "  Minted 10,000 USDC each (deployer + account1 now have ~20k each)"
+
+# --- 2. Deposit LP liquidity into HouseVault ---
+echo ""
+echo "--- Depositing LP Liquidity ---"
+# approve vault, then deposit
+send "$DEPLOYER_KEY" "$USDC" "approve(address,uint256)" "$VAULT" 10000000000  # 10,000 USDC
+send "$DEPLOYER_KEY" "$VAULT" "deposit(uint256,address)" 10000000000 "$DEPLOYER_ADDR"
+echo "  Deployer deposited 10,000 USDC into HouseVault"
+
+send "$ACCOUNT1_KEY" "$USDC" "approve(address,uint256)" "$VAULT" 5000000000  # 5,000 USDC
+send "$ACCOUNT1_KEY" "$VAULT" "deposit(uint256,address)" 5000000000 "$ACCOUNT1_ADDR"
+echo "  Account1 deposited 5,000 USDC into HouseVault"
+
+# --- 3. Create legs ---
+echo ""
+echo "--- Creating Legs ---"
+
+NOW=$(cast block latest --rpc-url "$RPC_URL" -f timestamp)
+CUTOFF=$((NOW + 86400))       # +1 day
+RESOLVE=$((NOW + 86400 + 3600))  # +1 day + 1 hour
+
+# createLeg(string,string,uint256,uint256,address,uint256)
+LEGS=(
+  "Will ETH break \$5000 by March 2026?|coingecko:eth|350000"
+  "Will BTC reach \$200k by March 2026?|coingecko:btc|250000"
+  "Will SOL flip \$400 by March 2026?|coingecko:sol|200000"
+  "Will Base TVL exceed \$20B by March 2026?|defillama:base|400000"
+  "Will ETHDenver 2026 have 20k+ attendees?|manual:ethdenver|600000"
+)
+
+for i in "${!LEGS[@]}"; do
+  IFS='|' read -r question source prob <<< "${LEGS[$i]}"
+  send "$DEPLOYER_KEY" "$REGISTRY" \
+    "createLeg(string,string,uint256,uint256,address,uint256)" \
+    "$question" "$source" "$CUTOFF" "$RESOLVE" "$ORACLE" "$prob"
+  echo "  Leg $i: $question (prob: ${prob} PPM)"
+done
+
+# Figure out leg IDs -- the deploy script already created 3 legs (0,1,2),
+# so our new legs start at 3. But on a fresh deploy they start at 0.
+# Read _legCount to determine what we have.
+LEG_COUNT_HEX=$(cast call "$REGISTRY" "legCount()(uint256)" --rpc-url "$RPC_URL" 2>/dev/null || echo "")
+if [ -z "$LEG_COUNT_HEX" ]; then
+  # Try alternative: read the last known ID
+  echo "  (Could not read legCount, assuming legs start at 0)"
+  FIRST_LEG=0
+else
+  TOTAL_LEGS=$((LEG_COUNT_HEX))
+  FIRST_LEG=$((TOTAL_LEGS - 5))
+  echo "  Total legs in registry: $TOTAL_LEGS (our legs: $FIRST_LEG-$((TOTAL_LEGS - 1)))"
+fi
+
+L0=$FIRST_LEG
+L1=$((FIRST_LEG + 1))
+L2=$((FIRST_LEG + 2))
+L3=$((FIRST_LEG + 3))
+L4=$((FIRST_LEG + 4))
+
+# --- 4. Buy tickets ---
+echo ""
+echo "--- Buying Tickets ---"
+
+# Approve engine to spend USDC
+send "$DEPLOYER_KEY" "$USDC" "approve(address,uint256)" "$ENGINE" 500000000  # 500 USDC
+send "$ACCOUNT1_KEY" "$USDC" "approve(address,uint256)" "$ENGINE" 500000000  # 500 USDC
+
+# Outcome bytes32 for "Yes" = keccak256("Yes")
+YES=$(cast keccak "Yes")
+
+# Ticket stakes are small to stay under vault's 5% max payout cap.
+# With 15k vault TVL, max payout ~750 USDC.
+
+# Ticket 1: Deployer, Classic mode (0), legs 0+1, 10 USDC
+send "$DEPLOYER_KEY" "$ENGINE" \
+  "buyTicketWithMode(uint256[],bytes32[],uint256,uint8)" \
+  "[$L0,$L1]" "[$YES,$YES]" 10000000 0
+echo "  Ticket: deployer, Classic, legs [$L0,$L1], stake 10 USDC"
+
+# Ticket 2: Deployer, Progressive mode (1), legs 0+2+3, 5 USDC
+send "$DEPLOYER_KEY" "$ENGINE" \
+  "buyTicketWithMode(uint256[],bytes32[],uint256,uint8)" \
+  "[$L0,$L2,$L3]" "[$YES,$YES,$YES]" 5000000 1
+echo "  Ticket: deployer, Progressive, legs [$L0,$L2,$L3], stake 5 USDC"
+
+# Ticket 3: Account1, EarlyCashout mode (2), legs 1+3+4, 5 USDC
+send "$ACCOUNT1_KEY" "$ENGINE" \
+  "buyTicketWithMode(uint256[],bytes32[],uint256,uint8)" \
+  "[$L1,$L3,$L4]" "[$YES,$YES,$YES]" 5000000 2
+echo "  Ticket: account1, EarlyCashout, legs [$L1,$L3,$L4], stake 5 USDC"
+
+# Ticket 4: Account1, Classic mode (0), legs 2+4, 25 USDC
+send "$ACCOUNT1_KEY" "$ENGINE" \
+  "buyTicketWithMode(uint256[],bytes32[],uint256,uint8)" \
+  "[$L2,$L4]" "[$YES,$YES]" 25000000 0
+echo "  Ticket: account1, Classic, legs [$L2,$L4], stake 25 USDC"
+
+# --- Summary ---
+echo ""
+echo "=== Seed Complete ==="
+echo "Legs created:   5 (IDs $L0-$L4)"
+echo "Tickets bought: 4"
+echo "LP deposits:    15,000 USDC total"
+echo ""
+echo "Next: use scripts/demo-resolve.sh to resolve legs and settle tickets."
