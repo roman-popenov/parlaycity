@@ -17,6 +17,7 @@ function toTicketData(
   return {
     id,
     stake: t.stake,
+    feePaid: t.feePaid,
     payout: t.potentialPayout,
     legs: t.legIds.map((legId, i): TicketLeg => {
       const leg = legMap.get(legId.toString());

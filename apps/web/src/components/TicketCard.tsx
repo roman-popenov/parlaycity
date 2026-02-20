@@ -18,6 +18,7 @@ export interface TicketLeg {
 export interface TicketData {
   id: bigint;
   stake: bigint;
+  feePaid: bigint;
   payout: bigint;
   legs: TicketLeg[];
   status: TicketStatus;
@@ -89,13 +90,14 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
       if (s === "win") {
         const prob = leg.odds > 0 ? Math.round(1_000_000 / leg.odds) : 500_000;
         wonProbsPPM.push(Math.max(1, Math.min(999_999, prob)));
-      } else if (s === "pending") {
+      } else if (s === "pending" || s === "voided") {
         unresolvedCount++;
       }
     }
     if (wonProbsPPM.length === 0 || unresolvedCount === 0) return null;
+    const effectiveStake = ticket.stake > ticket.feePaid ? ticket.stake - ticket.feePaid : 0n;
     const cashoutValue = computeCashoutValueLocal(
-      ticket.stake,
+      effectiveStake,
       wonProbsPPM,
       unresolvedCount,
       ticket.legs.length,
@@ -103,7 +105,7 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
     );
     if (cashoutValue === null) return null;
     return `$${Number(formatUnits(cashoutValue, 6)).toFixed(2)}`;
-  }, [canCashout, ticket.legs, ticket.stake, ticket.payout]);
+  }, [canCashout, ticket.legs, ticket.stake, ticket.feePaid, ticket.payout]);
 
   return (
     <div className="overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-gray-900 to-gray-950">

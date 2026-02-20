@@ -33,6 +33,7 @@ function makeTicket(overrides: Partial<TicketData> = {}): TicketData {
   return {
     id: 1n,
     stake: 10_000_000n, // 10 USDC
+    feePaid: 0n,
     payout: 39_200_000n, // 39.2 USDC
     legs: [
       {

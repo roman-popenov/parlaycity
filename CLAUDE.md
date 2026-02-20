@@ -180,6 +180,7 @@ See `docs/solutions/` for detailed write-ups. Key patterns to avoid:
 21. **Zero BigInt at API boundaries**: `formatUnits(0n, 6)` produces `"0"` which Zod `> 0` rejects. Guard with `value !== undefined && value > 0n ? convert(value) : fallback`. This is the third variant of the zero-value problem (see #8, #12, #17). (015)
 22. **Type guard exhaustiveness**: A type guard asserting `data is T` MUST validate ALL fields of T, not just the ones currently consumed. Partial guards create unsound narrowing -- TypeScript trusts the assertion, so unchecked fields become runtime `undefined` behind a `string`/`number` type. (015)
 23. **Spec completeness**: Every interface, struct, or contract type referenced in a spec document MUST have an explicit definition in that document. Readers cannot infer method signatures from call sites alone. (015)
+24. **Cashout UI parity**: Client-side cashout math must use fee-adjusted stake and count voided legs as unresolved to match on-chain payouts. (016)
 
 After every non-trivial bug fix, document in `docs/solutions/` with: Problem, Root Cause, Solution, Prevention (category-level).
 

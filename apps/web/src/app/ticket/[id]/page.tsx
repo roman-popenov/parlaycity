@@ -62,6 +62,7 @@ export default function TicketPage() {
   const ticket: TicketData = {
     id: ticketId!,
     stake: onChainTicket.stake,
+    feePaid: onChainTicket.feePaid,
     payout: onChainTicket.potentialPayout,
     legs: onChainTicket.legIds.map(
       (legId, i): TicketLeg => {
@@ -119,7 +120,7 @@ export default function TicketPage() {
   // Compute live cashout value for EarlyCashout tickets
   let liveCashoutValue: bigint | null = null;
   if (ticket.payoutMode === 2 && ticket.status === "Active" && !crashed && resolvedWon > 0) {
-    const unresolvedCount = ticket.legs.filter((l) => !l.resolved).length;
+    const unresolvedCount = ticket.legs.filter((l) => !l.resolved || l.result === 3).length;
     if (unresolvedCount > 0) {
       const wonProbsPPM: number[] = [];
       for (const leg of ticket.legs) {
@@ -133,8 +134,9 @@ export default function TicketPage() {
         }
       }
       if (wonProbsPPM.length > 0) {
+        const effectiveStake = ticket.stake > ticket.feePaid ? ticket.stake - ticket.feePaid : 0n;
         liveCashoutValue = computeCashoutValueLocal(
-          ticket.stake,
+          effectiveStake,
           wonProbsPPM,
           unresolvedCount,
           ticket.legs.length,
