@@ -72,6 +72,7 @@ function isValidRiskResponse(data: unknown): data is RiskAdviceData {
   return (
     typeof d.action === "string" &&
     typeof d.suggestedStake === "string" &&
+    /^\d+(?:\.\d*)?$/.test(d.suggestedStake) &&
     typeof d.kellyFraction === "number" &&
     typeof d.winProbability === "number" &&
     typeof d.reasoning === "string" &&
@@ -158,11 +159,11 @@ export function ParlayBuilder() {
   const feeAmount = (stakeNum * feeBps) / 10000;
   const potentialPayout = (stakeNum - feeAmount) * multiplier;
 
-  const freeLiquidityNum = freeLiquidity !== undefined ? Number(freeLiquidity) / 1e6 : 0;
-  const maxPayoutNum = maxPayout !== undefined ? Number(maxPayout) / 1e6 : 0;
+  const freeLiquidityNum = freeLiquidity !== undefined ? parseFloat(formatUnits(freeLiquidity, 6)) : 0;
+  const maxPayoutNum = maxPayout !== undefined ? parseFloat(formatUnits(maxPayout, 6)) : 0;
   const insufficientLiquidity = potentialPayout > 0 && potentialPayout > freeLiquidityNum;
   const exceedsMaxPayout = potentialPayout > 0 && maxPayout !== undefined && potentialPayout > maxPayoutNum;
-  const usdcBalanceNum = usdcBalance !== undefined ? Number(usdcBalance) / 1e6 : 0;
+  const usdcBalanceNum = usdcBalance !== undefined ? parseFloat(formatUnits(usdcBalance, 6)) : 0;
   const insufficientBalance = stakeNum > 0 && usdcBalance !== undefined && stakeNum > usdcBalanceNum;
 
   const canBuy =
@@ -405,7 +406,7 @@ export function ParlayBuilder() {
               </label>
               {usdcBalance !== undefined && (
                 <span className="text-xs text-gray-500">
-                  Balance: {(Number(usdcBalance) / 1e6).toFixed(2)}
+                  Balance: {parseFloat(formatUnits(usdcBalance, 6)).toFixed(2)}
                 </span>
               )}
             </div>
@@ -423,7 +424,7 @@ export function ParlayBuilder() {
                 {usdcBalance !== undefined && usdcBalance > 0n && (
                   <button
                     type="button"
-                    onClick={() => setStake((Number(usdcBalance) / 1e6).toString())}
+                    onClick={() => setStake(formatUnits(usdcBalance!, 6))}
                     className="rounded-md bg-accent-blue/20 px-2 py-0.5 text-xs font-semibold text-accent-blue transition-colors hover:bg-accent-blue/30"
                   >
                     MAX
@@ -526,7 +527,7 @@ export function ParlayBuilder() {
                   )}
                   {riskAdvice.suggestedStake && riskAdvice.suggestedStake !== stake && (
                     <button
-                      onClick={() => setStake(riskAdvice!.suggestedStake)}
+                      onClick={() => setStake(sanitizeNumericInput(riskAdvice!.suggestedStake))}
                       className="mt-1.5 rounded bg-accent-blue/20 px-2 py-0.5 text-accent-blue hover:bg-accent-blue/30"
                     >
                       Use suggested: ${riskAdvice.suggestedStake}

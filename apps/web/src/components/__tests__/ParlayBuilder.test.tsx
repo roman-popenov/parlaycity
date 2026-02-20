@@ -245,6 +245,29 @@ describe("ParlayBuilder", () => {
       });
     });
 
+    it("MAX button sets stake via formatUnits (not Number division)", async () => {
+      // 123.456789 USDC = 123_456_789n (6 decimals)
+      setupConnectedUser({ balance: 123_456_789n });
+      render(<ParlayBuilder />);
+      await waitFor(() => {
+        expect(screen.getByText("MAX")).toBeInTheDocument();
+      });
+      fireEvent.click(screen.getByText("MAX"));
+      const input = screen.getByPlaceholderText("Min 1 USDC") as HTMLInputElement;
+      // formatUnits(123_456_789n, 6) = "123.456789"
+      expect(input.value).toBe("123.456789");
+    });
+
+    it("displays balance via formatUnits", async () => {
+      // 50.123456 USDC
+      setupConnectedUser({ balance: 50_123_456n });
+      render(<ParlayBuilder />);
+      await waitFor(() => {
+        // parseFloat(formatUnits(50_123_456n, 6)).toFixed(2) = "50.12"
+        expect(screen.getByText("Balance: 50.12")).toBeInTheDocument();
+      });
+    });
+
     it("shows 'Insufficient USDC Balance' when stake exceeds zero balance", async () => {
       setupConnectedUser({ balance: 0n });
       render(<ParlayBuilder />);
@@ -618,6 +641,102 @@ describe("ParlayBuilder", () => {
       // legIds must be numbers (Number(BigInt)), not strings
       expect(body.legIds).toEqual([0, 1]);
       expect(typeof body.legIds[0]).toBe("number");
+    });
+
+    it("rejects suggestedStake with scientific notation via type guard", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          action: "BUY",
+          suggestedStake: "1e18", // scientific notation -- regex rejects
+          kellyFraction: 0.05,
+          winProbability: 0.12,
+          reasoning: "ok",
+          warnings: [],
+        }),
+      });
+      vi.stubGlobal("fetch", mockFetch);
+
+      render(<ParlayBuilder />);
+      await waitFor(() => {
+        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
+      });
+      selectLegs(2);
+      setStakeInput("10");
+
+      await act(async () => {
+        fireEvent.click(screen.getByText("AI Risk Analysis (x402)"));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("Invalid response from risk advisor")).toBeInTheDocument();
+      });
+    });
+
+    it("rejects suggestedStake with negative value via type guard", async () => {
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve({
+          action: "BUY",
+          suggestedStake: "-100",
+          kellyFraction: 0.05,
+          winProbability: 0.12,
+          reasoning: "ok",
+          warnings: [],
+        }),
+      });
+      vi.stubGlobal("fetch", mockFetch);
+
+      render(<ParlayBuilder />);
+      await waitFor(() => {
+        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
+      });
+      selectLegs(2);
+      setStakeInput("10");
+
+      await act(async () => {
+        fireEvent.click(screen.getByText("AI Risk Analysis (x402)"));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("Invalid response from risk advisor")).toBeInTheDocument();
+      });
+    });
+
+    it("applies sanitizeNumericInput to suggestedStake on click", async () => {
+      const riskData = {
+        action: "REDUCE_STAKE",
+        suggestedStake: "5",
+        kellyFraction: 0.02,
+        winProbability: 0.08,
+        reasoning: "Reduce stake",
+        warnings: [],
+      };
+      const mockFetch = vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(riskData),
+      });
+      vi.stubGlobal("fetch", mockFetch);
+
+      render(<ParlayBuilder />);
+      await waitFor(() => {
+        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
+      });
+      selectLegs(2);
+      setStakeInput("10");
+
+      await act(async () => {
+        fireEvent.click(screen.getByText("AI Risk Analysis (x402)"));
+      });
+
+      await waitFor(() => {
+        expect(screen.getByText("Use suggested: $5")).toBeInTheDocument();
+      });
+
+      fireEvent.click(screen.getByText("Use suggested: $5"));
+
+      const input = screen.getByPlaceholderText("Min 1 USDC") as HTMLInputElement;
+      expect(input.value).toBe("5");
     });
 
     it("clears stale risk advice when inputs change", async () => {
