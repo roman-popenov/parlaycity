@@ -71,9 +71,6 @@ interface RiskAdviceData {
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
-/** Fallback on-chain leg IDs (from Deploy.s.sol). Overridden by leg-mapping.json. */
-const DEFAULT_ON_CHAIN_LEG_IDS = new Set([0n, 1n, 2n]);
-
 const CATEGORY_LABELS: Record<string, string> = {
   all: "All",
   crypto: "Crypto",
@@ -112,8 +109,9 @@ function effectiveOdds(leg: DisplayLeg, outcome: number): number {
   return leg.odds;
 }
 
-/** Transform API markets into DisplayLeg array. */
-function apiMarketsToLegs(markets: APIMarket[], onChainIds: Set<bigint>): DisplayLeg[] {
+/** Transform API markets into DisplayLeg array. All API legs start as off-chain;
+ *  the live onChainLegIds set (from leg-mapping.json) determines on-chain status reactively. */
+function apiMarketsToLegs(markets: APIMarket[]): DisplayLeg[] {
   const legs: DisplayLeg[] = [];
   for (const market of markets) {
     for (const leg of market.legs) {
@@ -126,7 +124,7 @@ function apiMarketsToLegs(markets: APIMarket[], onChainIds: Set<bigint>): Displa
         expiresAt: leg.cutoffTime,
         category: market.category,
         marketTitle: market.title,
-        onChain: onChainIds.has(BigInt(leg.id)),
+        onChain: false,
       });
     }
   }
@@ -196,8 +194,10 @@ export function ParlayBuilder() {
   const [activeCategory, setActiveCategory] = useSessionState<string>(SESSION_KEYS.category, "all");
 
   // Dynamic on-chain leg mapping (from register-legs script output)
+  // legMapping: catalog leg ID (string) -> on-chain contract leg ID (number)
+  // onChainLegIds: set of CATALOG IDs that have on-chain mappings
   const [legMapping, setLegMapping] = useState<Record<string, number>>({});
-  const [onChainLegIds, setOnChainLegIds] = useState<Set<bigint>>(DEFAULT_ON_CHAIN_LEG_IDS);
+  const [onChainLegIds, setOnChainLegIds] = useState<Set<bigint>>(new Set());
 
   // ── Input state (persisted to sessionStorage) ──────────────────────────
 
@@ -209,26 +209,43 @@ export function ParlayBuilder() {
 
   // Fetch leg-mapping.json (from register-legs script) to know which catalog legs are on-chain
   useEffect(() => {
-    fetch("/leg-mapping.json")
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
+    (async () => {
+      try {
+        const r = await fetch("/leg-mapping.json");
+        if (!r?.ok) return;
+        const data = await r.json();
         if (data?.legs && typeof data.legs === "object") {
           setLegMapping(data.legs);
-          const ids = new Set<bigint>(
-            Object.values(data.legs as Record<string, number>).map((v) => BigInt(v)),
+          // Keys are catalog leg IDs; values are on-chain contract IDs
+          const catalogIds = new Set<bigint>(
+            Object.keys(data.legs as Record<string, number>).map((k) => BigInt(k)),
           );
-          // Also include the default Deploy.s.sol IDs (0, 1, 2)
-          for (const id of DEFAULT_ON_CHAIN_LEG_IDS) ids.add(id);
-          setOnChainLegIds(ids);
+          setOnChainLegIds(catalogIds);
         }
-      })
-      .catch(() => { /* leg-mapping.json not available -- use default on-chain IDs */ });
+      } catch {
+        /* leg-mapping.json not available -- all API legs remain off-chain */
+      }
+    })();
   }, []);
 
   // Fetch markets from API (upgrades from MOCK_LEGS to full catalog)
   useEffect(() => {
     setMounted(true);
     let cancelled = false;
+
+    // Parse stored selections early so we can re-restore after API legs load
+    let storedSelections: StoredSelection[] | null = null;
+    try {
+      const raw = sessionStorage.getItem(SESSION_KEYS.legs);
+      if (raw) {
+        storedSelections = JSON.parse(raw);
+        // Immediate restore against MOCK_LEGS (IDs 0, 1, 2)
+        const restored = restoreSelections(storedSelections!, mockToDisplayLegs());
+        if (restored.length > 0) setSelectedLegs(restored);
+      }
+    } catch {
+      // parse error or sessionStorage unavailable
+    }
 
     async function fetchMarkets() {
       try {
@@ -237,11 +254,17 @@ export function ParlayBuilder() {
         const markets: APIMarket[] = await res.json();
         if (cancelled || !Array.isArray(markets)) return;
 
-        const legs = apiMarketsToLegs(markets, onChainLegIds);
+        const legs = apiMarketsToLegs(markets);
         if (legs.length > 0) {
           setAllLegs(legs);
           const cats = [...new Set(markets.map((m) => m.category))].sort();
           setAvailableCategories(cats);
+
+          // Re-restore selections against full catalog to recover picks from new categories
+          if (storedSelections && storedSelections.length > 0) {
+            const restored = restoreSelections(storedSelections, legs);
+            if (restored.length > 0) setSelectedLegs(restored);
+          }
         }
       } catch {
         // Keep initial MOCK_LEGS data -- no change needed
@@ -250,21 +273,9 @@ export function ParlayBuilder() {
 
     fetchMarkets();
 
-    // Restore selectedLegs from sessionStorage
-    try {
-      const raw = sessionStorage.getItem(SESSION_KEYS.legs);
-      if (raw) {
-        const stored: StoredSelection[] = JSON.parse(raw);
-        // Use current allLegs (MOCK_LEGS at this point)
-        const restored = restoreSelections(stored, mockToDisplayLegs());
-        if (restored.length > 0) setSelectedLegs(restored);
-      }
-    } catch {
-      // parse error or sessionStorage unavailable
-    }
-
     return () => { cancelled = true; };
-  }, [onChainLegIds]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Persist selectedLegs to sessionStorage on change
   useEffect(() => {
@@ -335,8 +346,11 @@ export function ParlayBuilder() {
   const usdcBalanceNum = usdcBalance !== undefined ? parseFloat(formatUnits(usdcBalance, 6)) : 0;
   const insufficientBalance = stakeNum > 0 && usdcBalance !== undefined && stakeNum > usdcBalanceNum;
 
-  /** All selected legs must be on-chain to enable buying. */
-  const allSelectedOnChain = selectedLegs.every((s) => s.leg.onChain);
+  /** All selected legs must be on-chain to enable buying.
+   *  MOCK_LEGS have onChain=true (Deploy.s.sol). API legs use live onChainLegIds (from leg-mapping). */
+  const allSelectedOnChain = selectedLegs.every(
+    (s) => s.leg.onChain || onChainLegIds.has(s.leg.id),
+  );
 
   const canBuy =
     mounted &&
@@ -526,7 +540,7 @@ export function ParlayBuilder() {
             <div key={title}>
               <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wider text-gray-500">
                 {title}
-                {legs[0] && !legs[0].onChain && (
+                {legs[0] && !legs[0].onChain && !onChainLegIds.has(legs[0].id) && (
                   <span className="ml-2 rounded bg-yellow-500/10 px-1.5 py-0.5 text-[10px] text-yellow-400">
                     Analysis Only
                   </span>
@@ -549,7 +563,7 @@ export function ParlayBuilder() {
                     >
                       <span className="min-w-0 flex-1 truncate text-sm text-gray-200">
                         {leg.description}
-                        {!leg.onChain && (
+                        {!leg.onChain && !onChainLegIds.has(leg.id) && (
                           <span className="ml-1 text-[10px] text-gray-500">(off-chain)</span>
                         )}
                       </span>
