@@ -18,7 +18,7 @@ graph LR
         C --> D{Watch the Rocket}
         D -->|Cash Out| E[Claim Early Payout]
         D -->|All Legs Win| F[Claim Full Payout]
-        D -->|Leg Loses| G[Crash & Rehab Lock]
+        D -->|Leg Loses| G[Crash]
     end
 
     subgraph Liquidity Providers
@@ -28,11 +28,11 @@ graph LR
     end
 
     B -- stake --> Vault[(House Vault)]
-    E -- cashout --> Vault
-    F -- payout --> Vault
-    G -- 10% rehab --> Lock[LockVault]
+    Vault -- cashout --> E
+    Vault -- payout --> F
+    G -. 10% rehab .-> Lock[LockVault]
     H -- deposit --> Vault
-    J -- withdraw --> Vault
+    Vault -- withdraw --> J
 ```
 
 ---
@@ -68,7 +68,7 @@ sequenceDiagram
         Oracle-->>Engine: resolve(legId, Lost)
         UI-->>User: Rocket EXPLODES
         Engine-->>Engine: settle as Lost
-        Note over User: 10% of stake -> rehab lock
+        Note over User: 10% of stake -> rehab lock (planned)
     end
 ```
 
@@ -78,7 +78,7 @@ sequenceDiagram
 |---|---|
 | **Classic** | Win or lose. Full multiplier payout if all legs resolve correctly. |
 | **Progressive** | Partial payout increases as each leg resolves. Claim incrementally. |
-| **Early Cashout** | Exit at any point before all legs resolve. Price = `potentialPayout * P_remaining * (1 - fee)`. |
+| **Early Cashout** | Exit at any point before all legs resolve. Value derived from effective stake and won-leg multiplier, discounted by a scaled penalty based on unresolved legs (mirrors `ParlayMath.computeCashoutValue`). |
 
 ---
 
@@ -87,7 +87,7 @@ sequenceDiagram
 ```mermaid
 graph TB
     subgraph Frontend ["Next.js Frontend"]
-        UI[ParlayBuilder / Crash Animation<br/>VaultDashboard / Tickets / RehabCTA]
+        UI[ParlayBuilder / Crash Animation<br/>VaultDashboard / Tickets]
         WG[wagmi + ConnectKit]
     end
 
@@ -95,8 +95,8 @@ graph TB
         PE[ParlayEngine<br/>ERC721 Tickets + Cashout]
         HV[HouseVault<br/>ERC4626-like LP Vault]
         LR[LegRegistry<br/>Outcome Registry]
-        LV[LockVault<br/>Tiered Lock-ups + Rehab]
-        YA[YieldAdapter<br/>Aave V3]
+        LV[LockVault<br/>Tiered Lock-ups]
+        YA[YieldAdapter<br/>Mock / Aave V3]
 
         subgraph Oracles
             AO[AdminOracle<br/>Bootstrap Phase]
@@ -198,18 +198,20 @@ graph TB
 
 ---
 
-## Rehab Mode (Loser-to-LP Conversion)
+## Rehab Mode (Loser-to-LP Conversion) -- Planned
 
-When a ticket crashes, the user isn't empty-handed. 10% of the losing stake is converted to vUSDC shares and force-locked for 120 days. During that period the locked shares earn fee income, giving losing bettors exposure to LP economics.
+> **Status:** UI mockup implemented (RehabCTA + RehabLocks components with mock data). Contract-level loss routing is designed but not yet deployed. See `docs/REHAB_MODE.md` for the full spec.
+
+The target design: when a ticket crashes, 10% of the losing stake is converted to vUSDC shares and force-locked for 120 days. During that period the locked shares earn fee income, giving losing bettors exposure to LP economics.
 
 ```
-$100 losing stake
+$100 losing stake (target design)
   |-- $80 (80%)  -> stays in vault (LP share price appreciation)
   |-- $10 (10%)  -> AMM liquidity pool
   |-- $10 (10%)  -> rehab lock (force-locked vUSDC, 120 days)
 ```
 
-After 120 days: withdraw shares or re-lock at 1.55x boosted weight. The rehab CTA is displayed on the ticket detail page when a ticket is lost.
+After 120 days: withdraw shares or re-lock at 1.55x boosted weight. The rehab CTA is displayed on the ticket detail page when a ticket is lost (UI exists with mock data for demo purposes).
 
 ---
 
@@ -310,8 +312,8 @@ parlaycity/
 ├── apps/web/                    # Next.js 14 frontend
 │   └── src/
 │       ├── app/                 # Pages: /, /vault, /tickets, /ticket/[id]
-│       ├── components/          # ParlayBuilder, MultiplierClimb, RehabCTA,
-│       │                        # RehabLocks, VaultDashboard, TicketCard
+│       ├── components/          # ParlayBuilder, MultiplierClimb,
+│       │                        # VaultDashboard, TicketCard, RehabCTA
 │       └── lib/                 # wagmi config, hooks, ABIs, contracts, cashout
 ├── packages/
 │   ├── contracts/               # Foundry (Solidity)
@@ -497,9 +499,9 @@ make snapshot          # Gas benchmarks
 
 **Yield on idle capital**: The vault's `totalAssets()` includes capital deployed to Aave via the yield adapter. Share prices reflect accrued yield with no settlement lag. A configurable buffer (default 25%) always stays local to cover payouts.
 
-**Verifiable AI**: Risk analysis uses 0G's decentralized inference network with cryptographic verification. The AI verdict is included in agent-quote responses but is best-effort -- the protocol never depends on it for correctness.
+**Verifiable AI** (integrated): Risk analysis uses 0G's decentralized inference network with cryptographic verification. The AI verdict is included in agent-quote responses when `ZG_PRIVATE_KEY` is configured, but is best-effort -- the protocol never depends on it for correctness.
 
-**Rehab as retention**: Losing bettors aren't fully drained. 10% of losing stakes become force-locked LP positions, giving losers exposure to LP economics and a path to becoming voluntary LPs.
+**Rehab as retention** (planned): Target design where a portion of losing stakes become force-locked LP positions, giving losers exposure to LP economics. UI components exist with mock data; contract-level loss routing is designed but not yet deployed.
 
 ---
 
