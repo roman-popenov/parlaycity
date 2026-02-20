@@ -12,7 +12,7 @@ exports[`Shape snapshots > GET /exposure 1`] = `
 exports[`Shape snapshots > GET /health 1`] = `
 {
   "status": "string",
-  "timestamp": "string",
+  "timestamp": "number",
 }
 `;
 
@@ -94,7 +94,7 @@ exports[`Shape snapshots > GET /vault/health 1`] = `
     "next24h": "number",
     "totalExposure": "string",
   },
-  "timestamp": "string",
+  "timestamp": "number",
   "totalAssets": "string",
   "totalReserved": "string",
   "utilization": "number",
@@ -127,7 +127,7 @@ exports[`Shape snapshots > GET /vault/yield-report 1`] = `
     "targetApy": "number",
     "targetProtocol": "string",
   },
-  "timestamp": "string",
+  "timestamp": "number",
 }
 `;
 

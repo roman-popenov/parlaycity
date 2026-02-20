@@ -281,9 +281,9 @@ export async function fetchNBAMarkets(): Promise<Market[]> {
     // Fetch team stats for probability estimation
     const teamStats = await fetchTeamStats([...teamIds]);
 
-    // Transform games to markets
-    const markets: Market[] = upcoming.map((game, idx) =>
-      gameToMarket(game, NBA_LEG_ID_OFFSET + idx * 2, teamStats),
+    // Transform games to markets (IDs derived from game.id for stability)
+    const markets: Market[] = upcoming.map((game) =>
+      gameToMarket(game, NBA_LEG_ID_OFFSET + game.id * 2, teamStats),
     );
 
     cachedMarkets = markets;

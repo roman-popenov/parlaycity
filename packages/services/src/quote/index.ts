@@ -4,12 +4,12 @@ import {
   parseUSDC,
   computeQuote,
 } from "@parlaycity/shared";
-import { getSeedLegMap } from "../catalog/registry.js";
+import { getFullLegMap } from "../catalog/registry.js";
 
 const router = Router();
 
 /** POST /quote - compute a parlay quote */
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   const parsed = parseQuoteRequest(req.body);
   if (!parsed.success) {
     return res.status(400).json({
@@ -19,7 +19,7 @@ router.post("/", (req, res) => {
   }
 
   const { legIds, outcomes, stake } = parsed.data;
-  const legMap = getSeedLegMap();
+  const legMap = await getFullLegMap();
 
   // Validate all legs exist and are active
   const probabilities: number[] = [];

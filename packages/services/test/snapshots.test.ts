@@ -30,13 +30,10 @@ function shapeOf(value: unknown): unknown {
   return typeof value;
 }
 
-/** Replace dynamic fields that change between runs. */
+/** Replace dynamic fields that change between runs (preserving original types). */
 function stabilize(body: Record<string, unknown>): Record<string, unknown> {
   const copy = JSON.parse(JSON.stringify(body));
-  if ("timestamp" in copy) copy.timestamp = "<DYNAMIC>";
-  if (copy.settlementCluster?.totalExposure !== undefined) {
-    // nested objects are fine, just stabilize root timestamps
-  }
+  if ("timestamp" in copy) copy.timestamp = 0;
   return copy;
 }
 
