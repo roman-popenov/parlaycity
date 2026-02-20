@@ -23,11 +23,10 @@
  *   AGENT_STAKE           -- USDC stake per ticket (default: 5)
  */
 
-import { readFileSync } from "fs";
-import { resolve } from "path";
 import {
   createPublicClient,
   createWalletClient,
+  decodeEventLog,
   http,
   parseAbi,
   parseUnits,
@@ -37,6 +36,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry, baseSepolia } from "viem/chains";
+import { loadEnvLocal } from "./lib/env";
 
 // -- ABI fragments --------------------------------------------------------
 
@@ -47,6 +47,7 @@ const USDC_ABI = parseAbi([
 ]);
 
 const ENGINE_ABI = parseAbi([
+  "event TicketPurchased(uint256 indexed ticketId, address indexed buyer, uint256[] legIds, bytes32[] outcomes, uint256 stake, uint256 multiplierX1e6, uint256 potentialPayout, uint8 mode, uint8 payoutMode)",
   "function buyTicketWithMode(uint256[] legIds, bytes32[] outcomes, uint256 stake, uint8 payoutMode) returns (uint256 ticketId)",
   "function getTicket(uint256 ticketId) view returns ((address buyer, uint256 stake, uint256[] legIds, bytes32[] outcomes, uint256 multiplierX1e6, uint256 potentialPayout, uint256 feePaid, uint8 mode, uint8 status, uint256 createdAt, uint8 payoutMode, uint256 claimedAmount, uint256 cashoutPenaltyBps))",
   "function ticketCount() view returns (uint256)",
@@ -93,24 +94,6 @@ interface AgentQuoteResponse {
 }
 
 // -- Config ---------------------------------------------------------------
-
-function loadEnvLocal(): Record<string, string> {
-  const envPath = resolve(process.cwd(), "../../apps/web/.env.local");
-  try {
-    const content = readFileSync(envPath, "utf-8");
-    const vars: Record<string, string> = {};
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx === -1) continue;
-      vars[trimmed.slice(0, eqIdx)] = trimmed.slice(eqIdx + 1);
-    }
-    return vars;
-  } catch {
-    return {};
-  }
-}
 
 function getConfig() {
   const envLocal = loadEnvLocal();
@@ -390,14 +373,32 @@ async function main() {
   const receipt = await publicClient.waitForTransactionReceipt({ hash: buyTx });
   log(`Transaction confirmed: ${receipt.transactionHash}`);
 
-  // Read the new ticket
-  const ticketCount = await publicClient.readContract({
-    address: cfg.engineAddr,
-    abi: ENGINE_ABI,
-    functionName: "ticketCount",
-  });
+  let ticketId: number | null = null;
+  for (const logEntry of receipt.logs) {
+    if (logEntry.address.toLowerCase() !== cfg.engineAddr.toLowerCase()) continue;
+    try {
+      const decoded = decodeEventLog({
+        abi: ENGINE_ABI,
+        data: logEntry.data,
+        topics: logEntry.topics,
+      });
+      if (decoded.eventName === "TicketPurchased") {
+        const { ticketId: rawTicketId } = decoded.args as { ticketId: bigint };
+        if (rawTicketId > BigInt(Number.MAX_SAFE_INTEGER)) {
+          throw new Error("Ticket ID exceeds JS safe integer range");
+        }
+        ticketId = Number(rawTicketId);
+        break;
+      }
+    } catch {
+      // Skip non-matching logs
+    }
+  }
 
-  const ticketId = Number(ticketCount) - 1;
+  if (ticketId === null) {
+    throw new Error("TicketPurchased event not found in transaction receipt");
+  }
+
   const ticket = await publicClient.readContract({
     address: cfg.engineAddr,
     abi: ENGINE_ABI,

@@ -15,8 +15,6 @@
  *   POLL_INTERVAL_MS      -- defaults to 10000
  */
 
-import { readFileSync } from "fs";
-import { resolve } from "path";
 import {
   createPublicClient,
   createWalletClient,
@@ -29,6 +27,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry, baseSepolia } from "viem/chains";
+import { loadEnvLocal } from "./lib/env";
 
 // -- ABI fragments (only what we need) ------------------------------------
 
@@ -63,24 +62,6 @@ const STATUS_NAMES: Record<number, string> = {
 
 // -- Config ---------------------------------------------------------------
 
-function loadEnvLocal(): Record<string, string> {
-  const envPath = resolve(process.cwd(), "../../apps/web/.env.local");
-  try {
-    const content = readFileSync(envPath, "utf-8");
-    const vars: Record<string, string> = {};
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx === -1) continue;
-      vars[trimmed.slice(0, eqIdx)] = trimmed.slice(eqIdx + 1);
-    }
-    return vars;
-  } catch {
-    return {};
-  }
-}
-
 function getConfig() {
   const envLocal = loadEnvLocal();
 
@@ -108,6 +89,7 @@ function getConfig() {
 // -- Main loop ------------------------------------------------------------
 
 let running = true;
+let firstUnsettledId = 0;
 
 async function settle(
   publicClient: PublicClient,
@@ -124,12 +106,14 @@ async function settle(
   const count = Number(ticketCount);
   if (count === 0) {
     console.log(`[settler] No tickets yet`);
+    firstUnsettledId = 0;
     return;
   }
 
   let settled = 0;
+  let nextFirstUnsettled = count;
 
-  for (let id = 0; id < count; id++) {
+  for (let id = firstUnsettledId; id < count; id++) {
     if (!running) break;
 
     const ticket = await publicClient.readContract({
@@ -165,7 +149,10 @@ async function settle(
       }
     }
 
-    if (!allResolvable) continue;
+    if (!allResolvable) {
+      if (nextFirstUnsettled === count) nextFirstUnsettled = id;
+      continue;
+    }
 
     // All legs resolved -- settle the ticket
     console.log(`[settler] Settling ticket #${id} (${ticket.legIds.length} legs)...`);
@@ -194,13 +181,19 @@ async function settle(
       console.log(
         `[settler] Settled ticket #${id} -> ${statusName} (tx: ${receipt.transactionHash.slice(0, 10)}...)`,
       );
+      if (updated.status === TicketStatus.Active && nextFirstUnsettled === count) {
+        nextFirstUnsettled = id;
+      }
       settled++;
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       // Don't crash on individual ticket failures
       console.error(`[settler] Failed to settle ticket #${id}: ${msg.slice(0, 200)}`);
+      if (nextFirstUnsettled === count) nextFirstUnsettled = id;
     }
   }
+
+  firstUnsettledId = nextFirstUnsettled;
 
   if (settled > 0) {
     console.log(`[settler] Settled ${settled} ticket(s) this cycle`);
