@@ -83,13 +83,15 @@ function formatDate(d: Date): string {
   return d.toISOString().split("T")[0];
 }
 
-function getBDLSeason(): number {
-  // BDL uses the end year of the season: 2025-2026 season = 2026
+/**
+ * BDL uses the **start year** of the NBA season: 2025-26 season = 2025.
+ * Oct+ = current year starts a new season. Jan-Sep = season started previous year.
+ */
+export function getBDLSeason(): number {
   const now = new Date();
   const month = now.getMonth(); // 0-indexed
   const year = now.getFullYear();
-  // NBA season runs Oct-Jun. If we're Jul-Sep, it's the next season's preseason
-  return month >= 9 ? year + 1 : year;
+  return month >= 9 ? year : year - 1;
 }
 
 // ── Probability estimation ─────────────────────────────────────────────────

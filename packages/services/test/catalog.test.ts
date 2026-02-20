@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import request from "supertest";
 import app from "../src/index.js";
 import { SEED_MARKETS, MARKET_CATEGORIES } from "../src/catalog/seed.js";
-import { clearBDLCache } from "../src/catalog/bdl.js";
+import { clearBDLCache, getBDLSeason } from "../src/catalog/bdl.js";
 
 // Ensure no BDL key leaks from dev environment
 let savedBDLKey: string | undefined;
@@ -141,6 +141,18 @@ describe("GET /markets/:id", () => {
   });
 });
 
+describe("BDL season helper", () => {
+  it("returns start year of the NBA season", () => {
+    // Feb 2026 -> 2025-26 season -> start year 2025
+    const season = getBDLSeason();
+    const now = new Date();
+    const month = now.getMonth();
+    const year = now.getFullYear();
+    const expected = month >= 9 ? year : year - 1;
+    expect(season).toBe(expected);
+  });
+});
+
 describe("Seed data integrity", () => {
   it("has no duplicate leg IDs across all markets", () => {
     const allIds = new Set<number>();
@@ -158,7 +170,7 @@ describe("Seed data integrity", () => {
     expect(m1).toBeDefined();
     expect(m1!.category).toBe("crypto");
     expect(m1!.legs[0].id).toBe(1);
-    expect(m1!.legs[0].probabilityPPM).toBe(600_000);
+    expect(m1!.legs[0].probabilityPPM).toBe(550_000);
     expect(m1!.legs[1].id).toBe(2);
     expect(m1!.legs[2].id).toBe(3);
 

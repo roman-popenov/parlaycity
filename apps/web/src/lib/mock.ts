@@ -18,7 +18,7 @@ export const MOCK_LEGS: MockLeg[] = [
   {
     id: 0n,
     description: "Will ETH hit $5000 by end of March?",
-    odds: 2.86, // 350,000 PPM → 1/0.35
+    odds: 2.50, // ~400,000 PPM
     resolved: false,
     outcome: 0,
     expiresAt: Math.floor(Date.now() / 1000) + 86400,
@@ -26,7 +26,7 @@ export const MOCK_LEGS: MockLeg[] = [
   {
     id: 1n,
     description: "Will BTC hit $150k by end of March?",
-    odds: 4.0, // 250,000 PPM → 1/0.25
+    odds: 2.86, // ~350,000 PPM
     resolved: false,
     outcome: 0,
     expiresAt: Math.floor(Date.now() / 1000) + 86400,
@@ -34,7 +34,7 @@ export const MOCK_LEGS: MockLeg[] = [
   {
     id: 2n,
     description: "Will SOL hit $300 by end of March?",
-    odds: 5.0, // 200,000 PPM → 1/0.20
+    odds: 2.86, // ~350,000 PPM
     resolved: false,
     outcome: 0,
     expiresAt: Math.floor(Date.now() / 1000) + 86400,

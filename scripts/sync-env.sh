@@ -52,6 +52,7 @@ HOUSE_VAULT=$(get_addr "HouseVault")
 PARLAY_ENGINE=$(get_addr "ParlayEngine")
 LEG_REGISTRY=$(get_addr "LegRegistry")
 LOCK_VAULT=$(get_addr "LockVault")
+ADMIN_ORACLE=$(get_addr "AdminOracleAdapter")
 
 # Preserve WalletConnect project ID if it exists
 WC_ID=""
@@ -66,6 +67,7 @@ NEXT_PUBLIC_PARLAY_ENGINE_ADDRESS=$PARLAY_ENGINE
 NEXT_PUBLIC_LEG_REGISTRY_ADDRESS=$LEG_REGISTRY
 NEXT_PUBLIC_USDC_ADDRESS=$USDC
 NEXT_PUBLIC_LOCK_VAULT_ADDRESS=$LOCK_VAULT
+NEXT_PUBLIC_ADMIN_ORACLE_ADDRESS=$ADMIN_ORACLE
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=$WC_ID
 EOF
 
@@ -75,3 +77,4 @@ echo "  HouseVault:    $HOUSE_VAULT"
 echo "  ParlayEngine:  $PARLAY_ENGINE"
 echo "  LegRegistry:   $LEG_REGISTRY"
 echo "  LockVault:     $LOCK_VAULT"
+echo "  AdminOracle:   $ADMIN_ORACLE"

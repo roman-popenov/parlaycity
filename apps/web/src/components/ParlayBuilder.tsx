@@ -71,8 +71,8 @@ interface RiskAdviceData {
 
 // ── Constants ─────────────────────────────────────────────────────────────
 
-/** On-chain leg IDs (from Deploy.s.sol). Only these can be bought. */
-const ON_CHAIN_LEG_IDS = new Set([0n, 1n, 2n]);
+/** Fallback on-chain leg IDs (from Deploy.s.sol). Overridden by leg-mapping.json. */
+const DEFAULT_ON_CHAIN_LEG_IDS = new Set([0n, 1n, 2n]);
 
 const CATEGORY_LABELS: Record<string, string> = {
   all: "All",
@@ -113,7 +113,7 @@ function effectiveOdds(leg: DisplayLeg, outcome: number): number {
 }
 
 /** Transform API markets into DisplayLeg array. */
-function apiMarketsToLegs(markets: APIMarket[]): DisplayLeg[] {
+function apiMarketsToLegs(markets: APIMarket[], onChainIds: Set<bigint>): DisplayLeg[] {
   const legs: DisplayLeg[] = [];
   for (const market of markets) {
     for (const leg of market.legs) {
@@ -126,7 +126,7 @@ function apiMarketsToLegs(markets: APIMarket[]): DisplayLeg[] {
         expiresAt: leg.cutoffTime,
         category: market.category,
         marketTitle: market.title,
-        onChain: ON_CHAIN_LEG_IDS.has(BigInt(leg.id)),
+        onChain: onChainIds.has(BigInt(leg.id)),
       });
     }
   }
@@ -195,6 +195,10 @@ export function ParlayBuilder() {
   const [availableCategories, setAvailableCategories] = useState<string[]>(["crypto"]);
   const [activeCategory, setActiveCategory] = useSessionState<string>(SESSION_KEYS.category, "all");
 
+  // Dynamic on-chain leg mapping (from register-legs script output)
+  const [legMapping, setLegMapping] = useState<Record<string, number>>({});
+  const [onChainLegIds, setOnChainLegIds] = useState<Set<bigint>>(DEFAULT_ON_CHAIN_LEG_IDS);
+
   // ── Input state (persisted to sessionStorage) ──────────────────────────
 
   const [selectedLegs, setSelectedLegs] = useState<SelectedLeg[]>([]);
@@ -202,6 +206,24 @@ export function ParlayBuilder() {
   const [payoutMode, setPayoutMode] = useSessionState<0 | 1 | 2>(SESSION_KEYS.payoutMode, 0);
 
   const [mounted, setMounted] = useState(false);
+
+  // Fetch leg-mapping.json (from register-legs script) to know which catalog legs are on-chain
+  useEffect(() => {
+    fetch("/leg-mapping.json")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data?.legs && typeof data.legs === "object") {
+          setLegMapping(data.legs);
+          const ids = new Set<bigint>(
+            Object.values(data.legs as Record<string, number>).map((v) => BigInt(v)),
+          );
+          // Also include the default Deploy.s.sol IDs (0, 1, 2)
+          for (const id of DEFAULT_ON_CHAIN_LEG_IDS) ids.add(id);
+          setOnChainLegIds(ids);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Fetch markets from API (upgrades from MOCK_LEGS to full catalog)
   useEffect(() => {
@@ -215,7 +237,7 @@ export function ParlayBuilder() {
         const markets: APIMarket[] = await res.json();
         if (cancelled || !Array.isArray(markets)) return;
 
-        const legs = apiMarketsToLegs(markets);
+        const legs = apiMarketsToLegs(markets, onChainLegIds);
         if (legs.length > 0) {
           setAllLegs(legs);
           const cats = [...new Set(markets.map((m) => m.category))].sort();
@@ -242,7 +264,7 @@ export function ParlayBuilder() {
     }
 
     return () => { cancelled = true; };
-  }, []);
+  }, [onChainLegIds]);
 
   // Persist selectedLegs to sessionStorage on change
   useEffect(() => {
@@ -353,7 +375,12 @@ export function ParlayBuilder() {
 
   const handleBuy = async () => {
     if (!canBuy) return;
-    const legIds = selectedLegs.map((s) => s.leg.id);
+    // Translate catalog leg IDs to on-chain IDs via leg mapping
+    const legIds = selectedLegs.map((s) => {
+      const catalogId = s.leg.id.toString();
+      if (catalogId in legMapping) return BigInt(legMapping[catalogId]);
+      return s.leg.id; // Deploy.s.sol legs (0, 1, 2) already match
+    });
     const outcomes = selectedLegs.map((s) => s.outcomeChoice);
     const success = await buyTicket(legIds, outcomes, stakeNum, payoutMode);
     if (success) {
@@ -494,10 +521,10 @@ export function ParlayBuilder() {
           </span>
         </h2>
 
-        <div className={`space-y-6 ${vaultEmpty ? "pointer-events-none opacity-40" : ""}`}>
+        <div className={`space-y-4 ${vaultEmpty ? "pointer-events-none opacity-40" : ""}`}>
           {[...groupedByMarket.entries()].map(([title, legs]) => (
             <div key={title}>
-              <h3 className="mb-2 text-xs font-medium uppercase tracking-wider text-gray-500">
+              <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wider text-gray-500">
                 {title}
                 {legs[0] && !legs[0].onChain && (
                   <span className="ml-2 rounded bg-yellow-500/10 px-1.5 py-0.5 text-[10px] text-yellow-400">
@@ -505,50 +532,57 @@ export function ParlayBuilder() {
                   </span>
                 )}
               </h3>
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1">
                 {legs.map((leg) => {
                   const selected = selectedLegs.find((s) => s.leg.id === leg.id);
+                  const currentOdds = selected
+                    ? effectiveOdds(leg, selected.outcomeChoice)
+                    : effectiveOdds(leg, 1);
                   return (
                     <div
                       key={leg.id.toString()}
-                      className={`group rounded-xl border p-4 transition-all duration-200 ${
+                      className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 transition-all ${
                         selected
                           ? "border-accent-blue/50 bg-accent-blue/5"
-                          : leg.onChain
-                            ? "border-white/5 bg-gray-900/50 hover:border-white/10"
-                            : "border-white/5 bg-gray-900/30 hover:border-white/10"
+                          : "border-white/5 bg-gray-900/50 hover:border-white/10"
                       }`}
                     >
-                      <p className="mb-3 text-sm font-medium text-gray-200">
+                      <span className="min-w-0 flex-1 truncate text-sm text-gray-200">
                         {leg.description}
                         {!leg.onChain && (
                           <span className="ml-1 text-[10px] text-gray-500">(off-chain)</span>
                         )}
-                      </p>
-                      <div className="flex items-center gap-2">
+                      </span>
+                      <span className={`flex-shrink-0 tabular-nums text-xs font-semibold ${
+                        selected?.outcomeChoice === 1 ? "text-neon-green" :
+                        selected?.outcomeChoice === 2 ? "text-neon-red" :
+                        "text-gray-500"
+                      }`}>
+                        {currentOdds.toFixed(2)}x
+                      </span>
+                      {/* Dual-pill toggle */}
+                      <div className="flex flex-shrink-0 items-center rounded-full bg-white/5 p-0.5">
                         <button
                           disabled={vaultEmpty}
                           onClick={() => toggleLeg(leg, 1)}
-                          className={`flex flex-1 items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-all ${
                             selected?.outcomeChoice === 1
-                              ? "bg-neon-green/20 text-neon-green ring-1 ring-neon-green/30"
-                              : "bg-neon-green/5 text-neon-green/60 hover:bg-neon-green/10 hover:text-neon-green"
+                              ? "bg-neon-green/20 text-neon-green"
+                              : "text-gray-500 hover:text-gray-300"
                           }`}
                         >
-                          <span>Yes</span>
-                          <span className="ml-1 tabular-nums opacity-70">{effectiveOdds(leg, 1).toFixed(2)}x</span>
+                          Yes
                         </button>
                         <button
                           disabled={vaultEmpty}
                           onClick={() => toggleLeg(leg, 2)}
-                          className={`flex flex-1 items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold transition-all ${
+                          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-all ${
                             selected?.outcomeChoice === 2
-                              ? "bg-neon-red/20 text-neon-red ring-1 ring-neon-red/30"
-                              : "bg-neon-red/5 text-neon-red/60 hover:bg-neon-red/10 hover:text-neon-red"
+                              ? "bg-neon-red/20 text-neon-red"
+                              : "text-gray-500 hover:text-gray-300"
                           }`}
                         >
-                          <span>No</span>
-                          <span className="ml-1 tabular-nums opacity-70">{effectiveOdds(leg, 2).toFixed(2)}x</span>
+                          No
                         </button>
                       </div>
                     </div>

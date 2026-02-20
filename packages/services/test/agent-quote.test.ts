@@ -118,12 +118,12 @@ describe("Quote correctness", () => {
   it("quote probabilities are resolved from catalog", async () => {
     const res = await post(validBody);
     expect(res.status).toBe(200);
-    // Leg 1: 600_000 PPM, Leg 2: 450_000 PPM (from seed)
-    expect(res.body.quote.probabilities).toEqual([600_000, 450_000]);
+    // Leg 1: 550_000 PPM, Leg 2: 500_000 PPM (from seed)
+    expect(res.body.quote.probabilities).toEqual([550_000, 500_000]);
   });
 
   it("quote math matches shared computeQuote", async () => {
-    const probs = [600_000, 450_000];
+    const probs = [550_000, 500_000];
     const res = await post(validBody);
     expect(res.status).toBe(200);
 
@@ -162,7 +162,7 @@ describe("Risk assessment correctness", () => {
   });
 
   it("risk math matches shared math", async () => {
-    const probs = [600_000, 450_000];
+    const probs = [550_000, 500_000];
     const res = await post(validBody);
     expect(res.status).toBe(200);
 
@@ -180,8 +180,8 @@ describe("Risk assessment correctness", () => {
   it("win probability matches product of individual probabilities", async () => {
     const res = await post(validBody);
     expect(res.status).toBe(200);
-    // 600_000/1e6 * 450_000/1e6 = 0.6 * 0.45 = 0.27
-    expect(res.body.risk.winProbability).toBeCloseTo(0.27, 2);
+    // 550_000/1e6 * 500_000/1e6 = 0.55 * 0.50 = 0.275
+    expect(res.body.risk.winProbability).toBeCloseTo(0.275, 2);
   });
 
   it("expected value is negative with house edge", async () => {
@@ -374,8 +374,8 @@ describe("Agent-friendly: no probabilities required", () => {
       probabilities: [999_999, 999_999], // should be ignored
     });
     expect(res.status).toBe(200);
-    // Should use catalog values (600_000, 450_000), not the sent values
-    expect(res.body.quote.probabilities).toEqual([600_000, 450_000]);
+    // Should use catalog values (550_000, 500_000), not the sent values
+    expect(res.body.quote.probabilities).toEqual([550_000, 500_000]);
   });
 });
 
