@@ -11,9 +11,7 @@ import {
 } from "@/components/TicketCard";
 import { MultiplierClimb } from "@/components/MultiplierClimb";
 import { mapStatus, parseOutcomeChoice } from "@/lib/utils";
-const PPM = 1_000_000;
-const BPS = 10_000;
-const BASE_CASHOUT_PENALTY_BPS = 1_500;
+import { PPM, BASE_CASHOUT_PENALTY_BPS, computeClientCashoutValue } from "@/lib/cashout";
 
 export default function TicketPage() {
   const params = useParams();
@@ -104,20 +102,10 @@ export default function TicketPage() {
     };
   });
 
-  // Compute cashout value using integer math (mirrors shared/math.ts computeCashoutValue)
-  let cashoutValue: bigint | undefined;
-  if (onChainTicket.payoutMode === 2 && wonProbsPPM.length > 0 && unresolvedCount > 0 && effectiveStake > 0n) {
-    const ppm = BigInt(PPM);
-    let wonMultiplier = ppm;
-    for (const p of wonProbsPPM) {
-      if (p > 0 && p <= PPM) wonMultiplier = (wonMultiplier * ppm) / BigInt(p);
-    }
-    const fairValue = (effectiveStake * wonMultiplier) / ppm;
-    const scaledPenalty = (BigInt(penaltyBps) * BigInt(unresolvedCount)) / BigInt(legs.length);
-    let cv = (fairValue * (BigInt(BPS) - scaledPenalty)) / BigInt(BPS);
-    if (cv > onChainTicket.potentialPayout) cv = onChainTicket.potentialPayout;
-    cashoutValue = cv;
-  }
+  // Compute cashout value using shared integer math (mirrors ParlayMath.sol)
+  const cashoutValue = onChainTicket.payoutMode === 2
+    ? computeClientCashoutValue(effectiveStake, wonProbsPPM, unresolvedCount, legs.length, onChainTicket.potentialPayout, penaltyBps)
+    : undefined;
 
   const ticket: TicketData = {
     id: ticketId!,
@@ -133,24 +121,20 @@ export default function TicketPage() {
     cashoutValue,
   };
 
-  // Crash game loop: compute leg multipliers and resolution state (single pass)
-  const legMultipliers: number[] = [];
-  let resolvedWon = 0;
-  let crashed = false;
-  let liveMultiplier = 1;
-
-  for (const leg of ticket.legs) {
-    legMultipliers.push(leg.odds);
-    if (!leg.resolved || leg.result === 3) continue; // unresolved or voided -- skip
-    const isNoBet = leg.outcomeChoice === 2;
-    const isWon = (leg.result === 1 && !isNoBet) || (leg.result === 2 && isNoBet);
-    if (isWon) {
-      resolvedWon++;
-      liveMultiplier *= leg.odds;
-    } else {
-      crashed = true;
-    }
-  }
+  // Crash game loop: derive from already-computed leg data
+  const legMultipliers = legs.map((l) => l.odds);
+  const resolvedWon = wonProbsPPM.length;
+  const crashed = legs.some((l) => {
+    if (!l.resolved || l.result === 3) return false;
+    const isNoBet = l.outcomeChoice === 2;
+    return !((l.result === 1 && !isNoBet) || (l.result === 2 && isNoBet));
+  });
+  const liveMultiplier = crashed ? 0 : legs.reduce((m, l) => {
+    if (!l.resolved || l.result === 3) return m;
+    const isNoBet = l.outcomeChoice === 2;
+    const isWon = (l.result === 1 && !isNoBet) || (l.result === 2 && isNoBet);
+    return isWon ? m * l.odds : m;
+  }, 1);
 
   return (
     <div className="mx-auto max-w-lg space-y-6">
