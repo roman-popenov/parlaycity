@@ -106,7 +106,7 @@ export default function TicketPage() {
 
   // Compute cashout value using integer math (mirrors shared/math.ts computeCashoutValue)
   let cashoutValue: bigint | undefined;
-  if (wonProbsPPM.length > 0 && unresolvedCount > 0 && effectiveStake > 0n) {
+  if (onChainTicket.payoutMode === 2 && wonProbsPPM.length > 0 && unresolvedCount > 0 && effectiveStake > 0n) {
     const ppm = BigInt(PPM);
     let wonMultiplier = ppm;
     for (const p of wonProbsPPM) {
@@ -218,10 +218,10 @@ export default function TicketPage() {
             </div>
             <div className="text-center">
               <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">
-                {ticket.payoutMode === 2 ? "Cashout" : "Potential"}
+                {ticket.payoutMode === 2 && !crashed ? "Cashout" : "Potential"}
               </p>
               <p className="text-lg font-bold tabular-nums text-yellow-400">
-                {cashoutValue !== undefined
+                {cashoutValue !== undefined && !crashed
                   ? `$${Number(formatUnits(cashoutValue, 6)).toFixed(2)}`
                   : `$${Number(formatUnits(ticket.payout, 6)).toFixed(2)}`}
               </p>
