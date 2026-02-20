@@ -133,33 +133,23 @@ export default function TicketPage() {
     cashoutValue,
   };
 
-  // Crash game loop: compute leg multipliers and resolution state
+  // Crash game loop: compute leg multipliers and resolution state (single pass)
   const legMultipliers: number[] = [];
   let resolvedWon = 0;
   let crashed = false;
+  let liveMultiplier = 1;
 
   for (const leg of ticket.legs) {
     legMultipliers.push(leg.odds);
-    if (leg.resolved) {
-      const isWon =
-        (leg.result === 1 && leg.outcomeChoice === 1) ||
-        (leg.result === 2 && leg.outcomeChoice === 2);
-      const isLost =
-        (leg.result === 1 && leg.outcomeChoice === 2) ||
-        (leg.result === 2 && leg.outcomeChoice === 1);
-      if (isWon) resolvedWon++;
-      if (isLost) crashed = true;
+    if (!leg.resolved || leg.result === 3) continue; // unresolved or voided -- skip
+    const isNoBet = leg.outcomeChoice === 2;
+    const isWon = (leg.result === 1 && !isNoBet) || (leg.result === 2 && isNoBet);
+    if (isWon) {
+      resolvedWon++;
+      liveMultiplier *= leg.odds;
+    } else {
+      crashed = true;
     }
-  }
-
-  // Current live multiplier: product of won leg odds
-  let liveMultiplier = 1;
-  for (const leg of ticket.legs) {
-    if (!leg.resolved) continue;
-    const isWon =
-      (leg.result === 1 && leg.outcomeChoice === 1) ||
-      (leg.result === 2 && leg.outcomeChoice === 2);
-    if (isWon) liveMultiplier *= leg.odds;
   }
 
   return (
@@ -241,7 +231,7 @@ export default function TicketPage() {
       )}
 
       {/* Settled state -- show final multiplier visualization */}
-      {(ticket.status === "Won" || ticket.status === "Lost" || ticket.status === "Claimed") && (
+      {(ticket.status === "Won" || ticket.status === "Lost" || ticket.status === "Voided" || ticket.status === "Claimed") && (
         <MultiplierClimb
           legMultipliers={legMultipliers}
           crashed={crashed}
