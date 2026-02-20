@@ -84,10 +84,14 @@ router.post("/agent-quote", async (req, res) => {
       stake,
     });
 
+    let timeoutId: ReturnType<typeof setTimeout>;
     const inference = await Promise.race([
       runZGInference(prompt),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 5_000)),
+      new Promise<null>((resolve) => {
+        timeoutId = setTimeout(() => resolve(null), 5_000);
+      }),
     ]);
+    clearTimeout(timeoutId!);
 
     if (inference) {
       aiInsight = {

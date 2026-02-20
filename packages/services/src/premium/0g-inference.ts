@@ -22,6 +22,7 @@ interface CachedBroker {
 
 let cached: CachedBroker | null = null;
 let initInFlight: Promise<CachedBroker | null> | null = null;
+let disabled = false;
 
 const ZG_RPC = "https://evmrpc-testnet.0g.ai";
 const PREFERRED_MODELS = ["qwen-2.5-7b-instruct"];
@@ -33,12 +34,14 @@ const LEDGER_MIN_A0GI = 4;
 
 export async function getZGBroker(): Promise<CachedBroker | null> {
   if (cached) return cached;
+  if (disabled) return null;
   // Deduplicate concurrent init calls
   if (initInFlight) return initInFlight;
 
   const key = process.env.ZG_PRIVATE_KEY;
   if (!key) {
     console.log("[0g-inference] ZG_PRIVATE_KEY not set, AI insight disabled");
+    disabled = true;
     return null;
   }
 
@@ -58,8 +61,14 @@ export async function getZGBroker(): Promise<CachedBroker | null> {
       try {
         await broker.ledger.getLedger();
       } catch {
-        console.log("[0g-inference] No ledger found, adding", LEDGER_MIN_A0GI, "A0GI");
-        await broker.ledger.addLedger(LEDGER_MIN_A0GI);
+        const autoFund = process.env.ZG_AUTO_FUND_LEDGER === "true";
+        if (autoFund) {
+          console.log("[0g-inference] No ledger found, adding", LEDGER_MIN_A0GI, "A0GI (ZG_AUTO_FUND_LEDGER=true)");
+          await broker.ledger.addLedger(LEDGER_MIN_A0GI);
+        } else {
+          console.warn("[0g-inference] No ledger found and auto-funding disabled (set ZG_AUTO_FUND_LEDGER=true). Disabling.");
+          return null;
+        }
       }
 
       // Discover services (include unacknowledged so we can acknowledge)
@@ -181,10 +190,8 @@ export function buildRiskPrompt(data: {
     `Edge: ${data.edgeBps} bps | EV: ${data.expectedValue.toFixed(4)}`,
     `Kelly fraction: ${(data.kellyFraction * 100).toFixed(2)}% | Stake: ${data.stake} USDC`,
     `Risk tolerance: ${data.riskTolerance} | Action: ${data.action}`,
-    data.warnings.length > 0 ? `Warnings: ${data.warnings.join("; ")}` : "",
+    ...(data.warnings.length > 0 ? [`Warnings: ${data.warnings.join("; ")}`] : []),
     "",
     "Give a brief risk verdict: should the user proceed, reduce stake, or avoid? Why?",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  ].join("\n");
 }

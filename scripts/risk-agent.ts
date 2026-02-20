@@ -144,6 +144,16 @@ const PAYOUT_MODE_NAMES: Record<number, string> = {
 
 const YES_OUTCOME = "0x0000000000000000000000000000000000000000000000000000000000000001" as const;
 
+function safeParseNumber(raw: string | undefined, fallback: number, name: string): number {
+  if (raw === undefined) return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) {
+    console.warn(`[risk-agent] ${name}="${raw}" is not a valid number, using default ${fallback}`);
+    return fallback;
+  }
+  return n;
+}
+
 function getConfig() {
   const servicesUrl = process.env.SERVICES_URL ?? "http://localhost:3001";
   const riskTolerance = (process.env.RISK_TOLERANCE ?? "moderate") as
@@ -151,12 +161,12 @@ function getConfig() {
     | "moderate"
     | "aggressive";
   const dryRun = (process.env.DRY_RUN ?? "true").toLowerCase() !== "false";
-  const loopIntervalMs = Number(process.env.LOOP_INTERVAL_MS ?? "30000");
+  const loopIntervalMs = safeParseNumber(process.env.LOOP_INTERVAL_MS, 30000, "LOOP_INTERVAL_MS");
   const once = (process.env.ONCE ?? "false").toLowerCase() === "true" || loopIntervalMs === 0;
-  const maxStakeUsdc = Number(process.env.MAX_STAKE_USDC ?? "10");
-  const maxLegs = Math.min(Math.max(Number(process.env.MAX_LEGS ?? "3"), 2), 5);
-  const maxCandidates = Math.min(Math.max(Number(process.env.MAX_CANDIDATES ?? "5"), 1), 20);
-  const confidenceThreshold = Number(process.env.CONFIDENCE_THRESHOLD ?? "0.6");
+  const maxStakeUsdc = safeParseNumber(process.env.MAX_STAKE_USDC, 10, "MAX_STAKE_USDC");
+  const maxLegs = Math.min(Math.max(safeParseNumber(process.env.MAX_LEGS, 3, "MAX_LEGS"), 2), 5);
+  const maxCandidates = Math.min(Math.max(safeParseNumber(process.env.MAX_CANDIDATES, 5, "MAX_CANDIDATES"), 1), 20);
+  const confidenceThreshold = safeParseNumber(process.env.CONFIDENCE_THRESHOLD, 0.6, "CONFIDENCE_THRESHOLD");
   const bankroll = process.env.AGENT_BANKROLL ?? "1000";
   const payoutModeRaw = Number(process.env.AGENT_PAYOUT_MODE ?? "0");
   const payoutMode = [0, 1, 2].includes(payoutModeRaw) ? payoutModeRaw : 0;
@@ -473,9 +483,9 @@ async function runCycle(
   const candidates = buildCandidates(markets, cfg.maxLegs, cfg.maxCandidates);
   log(`Built ${candidates.length} candidate parlay(s)`);
 
-  // Convert stake/bankroll to raw USDC units (6 decimals)
-  const stakeRaw = String(BigInt(Math.round(cfg.maxStakeUsdc * 1e6)));
-  const bankrollRaw = String(BigInt(Math.round(Number(cfg.bankroll) * 1e6)));
+  // Use human-readable USDC units (strings) for API -- parseUSDC on server converts to raw
+  const stakeHuman = String(cfg.maxStakeUsdc);
+  const bankrollHuman = cfg.bankroll;
 
   // Step 3+4: Evaluate each candidate
   for (let i = 0; i < candidates.length; i++) {
@@ -489,8 +499,8 @@ async function runCycle(
       assessment = await getRiskAssessment(
         cfg.servicesUrl,
         candidate,
-        stakeRaw,
-        bankrollRaw,
+        stakeHuman,
+        bankrollHuman,
         cfg.riskTolerance,
       );
     } catch (err) {

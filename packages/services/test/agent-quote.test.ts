@@ -437,6 +437,22 @@ describe("Multi-leg scenarios", () => {
   });
 });
 
+// ── aiInsight field ──────────────────────────────────────────────────────
+describe("aiInsight field", () => {
+  it("omits aiInsight when ZG_PRIVATE_KEY is not set", async () => {
+    const res = await post(validBody);
+    expect(res.status).toBe(200);
+    // Without ZG_PRIVATE_KEY, 0G inference is disabled; aiInsight should be absent
+    expect(res.body.aiInsight).toBeUndefined();
+  });
+
+  it("response is valid without aiInsight (quote + risk only)", async () => {
+    const res = await post(validBody);
+    expect(res.status).toBe(200);
+    expect(Object.keys(res.body).sort()).toEqual(["quote", "risk"]);
+  });
+});
+
 // ── NaN/Infinity protection ───────────────────────────────────────────────
 describe("NaN and Infinity protection", () => {
   it("no NaN in any numeric field", async () => {
