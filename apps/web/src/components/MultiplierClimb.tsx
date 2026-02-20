@@ -251,8 +251,13 @@ export function MultiplierClimb({
     if (!animated || pathLength === 0 || points.length <= 1) return undefined;
     const totalSegments = points.length - 1;
     const revealedSegments = Math.min(animatedSegments, totalSegments);
-    const revealFraction = totalSegments > 0 ? revealedSegments / totalSegments : 0;
-    const revealLen = pathLength * revealFraction;
+    // Compute actual cumulative Euclidean length (segments vary with leg multipliers)
+    let revealLen = 0;
+    for (let i = 0; i < revealedSegments; i++) {
+      const dx = points[i + 1].x - points[i].x;
+      const dy = points[i + 1].y - points[i].y;
+      revealLen += Math.sqrt(dx * dx + dy * dy);
+    }
     return {
       strokeDasharray: `${pathLength}`,
       strokeDashoffset: `${pathLength - revealLen}`,
