@@ -104,6 +104,7 @@ export async function getZGBroker(): Promise<CachedBroker | null> {
       return cached;
     } catch (e) {
       console.error("[0g-inference] Init failed:", (e as Error).message);
+      disabled = true;
       return null;
     } finally {
       initInFlight = null;

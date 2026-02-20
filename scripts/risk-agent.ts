@@ -46,7 +46,7 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry, baseSepolia } from "viem/chains";
 
-import { loadEnvLocal, requireExplicitKeyForRemoteRpc, safeBigIntToNumber } from "./lib/env";
+import { loadEnvLocal, requireExplicitKeyForRemoteRpc, safeBigIntToNumber, safeParseNumber } from "./lib/env";
 
 // -- ABI fragments (on-chain, only used when DRY_RUN=false) -----------------
 
@@ -143,16 +143,6 @@ const PAYOUT_MODE_NAMES: Record<number, string> = {
 };
 
 const YES_OUTCOME = "0x0000000000000000000000000000000000000000000000000000000000000001" as const;
-
-function safeParseNumber(raw: string | undefined, fallback: number, name: string): number {
-  if (raw === undefined) return fallback;
-  const n = Number(raw);
-  if (!Number.isFinite(n)) {
-    console.warn(`[risk-agent] ${name}="${raw}" is not a valid number, using default ${fallback}`);
-    return fallback;
-  }
-  return n;
-}
 
 function getConfig() {
   const servicesUrl = process.env.SERVICES_URL ?? "http://localhost:3001";
@@ -277,7 +267,12 @@ function buildCandidates(
     for (const combo of combos) {
       if (candidates.length >= maxCandidates) break;
 
-      const legs = combo.map((cat) => legsByCategory.get(cat)![0]);
+      const legs = combo.map((cat) => {
+        const catLegs = legsByCategory.get(cat);
+        if (!catLegs || catLegs.length === 0) return null;
+        return catLegs[0];
+      }).filter((l): l is MarketLeg => l !== null);
+      if (legs.length !== combo.length) continue; // skip incomplete combos
       candidates.push({
         legIds: legs.map((l) => l.id),
         outcomes: legs.map(() => YES_OUTCOME),
