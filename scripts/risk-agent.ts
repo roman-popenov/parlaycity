@@ -21,10 +21,9 @@
  *   AGENT_BANKROLL        -- USDC bankroll for Kelly sizing (default: 1000)
  *   AGENT_RISK_TOLERANCE  -- conservative | moderate | aggressive (default: moderate)
  *   AGENT_STAKE           -- USDC stake per ticket (default: 5)
+ *   AGENT_PAYOUT_MODE     -- 0=CLASSIC, 1=PROGRESSIVE, 2=EARLY_CASHOUT (default: 0)
  */
 
-import { readFileSync } from "fs";
-import { resolve } from "path";
 import {
   createPublicClient,
   createWalletClient,
@@ -32,11 +31,14 @@ import {
   parseAbi,
   parseUnits,
   formatUnits,
+  decodeEventLog,
   type Address,
   type Chain,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry, baseSepolia } from "viem/chains";
+
+import { loadEnvLocal, requireExplicitKeyForRemoteRpc, safeBigIntToNumber } from "./lib/env";
 
 // -- ABI fragments --------------------------------------------------------
 
@@ -50,6 +52,7 @@ const ENGINE_ABI = parseAbi([
   "function buyTicketWithMode(uint256[] legIds, bytes32[] outcomes, uint256 stake, uint8 payoutMode) returns (uint256 ticketId)",
   "function getTicket(uint256 ticketId) view returns ((address buyer, uint256 stake, uint256[] legIds, bytes32[] outcomes, uint256 multiplierX1e6, uint256 potentialPayout, uint256 feePaid, uint8 mode, uint8 status, uint256 createdAt, uint8 payoutMode, uint256 claimedAmount, uint256 cashoutPenaltyBps))",
   "function ticketCount() view returns (uint256)",
+  "event TicketPurchased(uint256 indexed ticketId, address indexed buyer, uint256[] legIds, bytes32[] outcomes, uint256 stake, uint256 multiplierX1e6, uint256 potentialPayout, uint8 mode, uint8 payoutMode)",
 ]);
 
 // -- Types ----------------------------------------------------------------
@@ -94,28 +97,20 @@ interface AgentQuoteResponse {
 
 // -- Config ---------------------------------------------------------------
 
-function loadEnvLocal(): Record<string, string> {
-  const envPath = resolve(process.cwd(), "../../apps/web/.env.local");
-  try {
-    const content = readFileSync(envPath, "utf-8");
-    const vars: Record<string, string> = {};
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx === -1) continue;
-      vars[trimmed.slice(0, eqIdx)] = trimmed.slice(eqIdx + 1);
-    }
-    return vars;
-  } catch {
-    return {};
-  }
-}
+const PAYOUT_MODE_NAMES: Record<number, string> = {
+  0: "CLASSIC",
+  1: "PROGRESSIVE",
+  2: "EARLY_CASHOUT",
+};
 
 function getConfig() {
   const envLocal = loadEnvLocal();
 
   const rpcUrl = process.env.RPC_URL ?? "http://127.0.0.1:8545";
+
+  // Guard: refuse Anvil keys on remote networks
+  requireExplicitKeyForRemoteRpc(rpcUrl);
+
   // Default to Anvil account #1 (account #0 is the deployer/owner)
   const privateKey = (process.env.PRIVATE_KEY ??
     "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d") as `0x${string}`;
@@ -135,12 +130,15 @@ function getConfig() {
     | "aggressive";
   const stake = process.env.AGENT_STAKE ?? "5";
 
+  const payoutModeRaw = Number(process.env.AGENT_PAYOUT_MODE ?? "0");
+  const payoutMode = [0, 1, 2].includes(payoutModeRaw) ? payoutModeRaw : 0;
+
   if (!engineAddr) throw new Error("Missing PARLAY_ENGINE_ADDRESS");
   if (!usdcAddr) throw new Error("Missing USDC_ADDRESS");
 
   const chain: Chain = rpcUrl.includes("sepolia") ? baseSepolia : foundry;
 
-  return { rpcUrl, privateKey, engineAddr, usdcAddr, servicesUrl, bankroll, riskTolerance, stake, chain };
+  return { rpcUrl, privateKey, engineAddr, usdcAddr, servicesUrl, bankroll, riskTolerance, stake, payoutMode, chain };
 }
 
 // -- Helpers --------------------------------------------------------------
@@ -279,6 +277,7 @@ async function main() {
   log(`USDC: ${cfg.usdcAddr}`);
   log(`Services: ${cfg.servicesUrl}`);
   log(`Bankroll: $${cfg.bankroll} | Stake: $${cfg.stake} | Risk: ${cfg.riskTolerance}`);
+  log(`Payout mode: ${PAYOUT_MODE_NAMES[cfg.payoutMode] ?? cfg.payoutMode}`);
 
   const account = privateKeyToAccount(cfg.privateKey);
   log(`Account: ${account.address}`);
@@ -341,7 +340,7 @@ async function main() {
   const configuredNum = Number(cfg.stake);
   const finalStake = suggestedNum > 0 && suggestedNum < configuredNum ? risk.suggestedStake : cfg.stake;
 
-  log(`Decision: BUY with $${finalStake} USDC`);
+  log(`Decision: BUY with $${finalStake} USDC (${PAYOUT_MODE_NAMES[cfg.payoutMode]})`);
 
   // Step 5: Approve USDC + buy ticket on-chain
   const stakeRaw = parseUnits(finalStake, 6);
@@ -367,13 +366,13 @@ async function main() {
       functionName: "approve",
       args: [cfg.engineAddr, stakeRaw],
       chain: walletClient.chain,
-      account: walletClient.account!,
+      account,
     });
     await publicClient.waitForTransactionReceipt({ hash: approveTx });
     log("USDC approved.");
   }
 
-  // Buy ticket with CLASSIC mode (0)
+  // Buy ticket
   log("Buying parlay ticket on-chain...");
   const legIdsBigInt = legIds.map((id) => BigInt(id));
   const outcomeBytes = outcomes as `0x${string}`[];
@@ -382,36 +381,61 @@ async function main() {
     address: cfg.engineAddr,
     abi: ENGINE_ABI,
     functionName: "buyTicketWithMode",
-    args: [legIdsBigInt, outcomeBytes, stakeRaw, 0], // 0 = CLASSIC mode
+    args: [legIdsBigInt, outcomeBytes, stakeRaw, cfg.payoutMode],
     chain: walletClient.chain,
-    account: walletClient.account!,
+    account,
   });
 
   const receipt = await publicClient.waitForTransactionReceipt({ hash: buyTx });
   log(`Transaction confirmed: ${receipt.transactionHash}`);
 
-  // Read the new ticket
-  const ticketCount = await publicClient.readContract({
-    address: cfg.engineAddr,
-    abi: ENGINE_ABI,
-    functionName: "ticketCount",
-  });
+  // Parse TicketPurchased event from receipt logs instead of ticketCount()-1
+  let ticketId: bigint | undefined;
+  for (const logEntry of receipt.logs) {
+    try {
+      const decoded = decodeEventLog({
+        abi: ENGINE_ABI,
+        data: logEntry.data,
+        topics: logEntry.topics,
+      });
+      if (decoded.eventName === "TicketPurchased") {
+        ticketId = decoded.args.ticketId;
+        break;
+      }
+    } catch {
+      // Not our event, skip
+    }
+  }
 
-  const ticketId = Number(ticketCount) - 1;
+  if (ticketId === undefined) {
+    log("Warning: could not parse TicketPurchased event from receipt. Falling back to ticketCount.");
+    const ticketCount = await publicClient.readContract({
+      address: cfg.engineAddr,
+      abi: ENGINE_ABI,
+      functionName: "ticketCount",
+    });
+    ticketId = ticketCount - 1n;
+  }
+
+  const ticketIdNum = safeBigIntToNumber(ticketId, "ticketId");
+
   const ticket = await publicClient.readContract({
     address: cfg.engineAddr,
     abi: ENGINE_ABI,
     functionName: "getTicket",
-    args: [BigInt(ticketId)],
+    args: [ticketId],
   });
 
+  const multiplierDisplay = safeBigIntToNumber(ticket.multiplierX1e6, "multiplierX1e6") / 1_000_000;
+
   log("Ticket purchased successfully!");
-  log(`  Ticket ID: #${ticketId}`);
+  log(`  Ticket ID: #${ticketIdNum}`);
   log(`  Stake: ${formatUnits(ticket.stake, 6)} USDC`);
-  log(`  Multiplier: ${(Number(ticket.multiplierX1e6) / 1_000_000).toFixed(2)}x`);
+  log(`  Multiplier: ${multiplierDisplay.toFixed(2)}x`);
   log(`  Potential payout: ${formatUnits(ticket.potentialPayout, 6)} USDC`);
   log(`  Fee paid: ${formatUnits(ticket.feePaid, 6)} USDC`);
-  log(`  Legs: ${ticket.legIds.map(Number).join(", ")}`);
+  log(`  Legs: ${ticket.legIds.map((id) => safeBigIntToNumber(id, "legId")).join(", ")}`);
+  log(`  Payout mode: ${PAYOUT_MODE_NAMES[ticket.payoutMode] ?? ticket.payoutMode}`);
 
   log("Risk agent complete.");
 }

@@ -9,14 +9,12 @@
  *
  * Env vars (or reads from apps/web/.env.local):
  *   RPC_URL               -- defaults to http://127.0.0.1:8545
- *   PRIVATE_KEY           -- defaults to Anvil account #0
+ *   PRIVATE_KEY           -- defaults to Anvil account #0 (local only)
  *   PARLAY_ENGINE_ADDRESS -- overrides .env.local
  *   LEG_REGISTRY_ADDRESS  -- overrides .env.local
  *   POLL_INTERVAL_MS      -- defaults to 10000
  */
 
-import { readFileSync } from "fs";
-import { resolve } from "path";
 import {
   createPublicClient,
   createWalletClient,
@@ -29,6 +27,8 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { foundry, baseSepolia } from "viem/chains";
+
+import { loadEnvLocal, requireExplicitKeyForRemoteRpc, safeBigIntToNumber } from "./lib/env";
 
 // -- ABI fragments (only what we need) ------------------------------------
 
@@ -51,7 +51,6 @@ const REGISTRY_ABI = parseAbi([
 // -- Enums ----------------------------------------------------------------
 
 const TicketStatus = { Active: 0, Won: 1, Lost: 2, Voided: 3, Claimed: 4 } as const;
-const LegStatus = { Unresolved: 0, Won: 1, Lost: 2, Voided: 3 } as const;
 
 const STATUS_NAMES: Record<number, string> = {
   [TicketStatus.Active]: "Active",
@@ -63,28 +62,14 @@ const STATUS_NAMES: Record<number, string> = {
 
 // -- Config ---------------------------------------------------------------
 
-function loadEnvLocal(): Record<string, string> {
-  const envPath = resolve(process.cwd(), "../../apps/web/.env.local");
-  try {
-    const content = readFileSync(envPath, "utf-8");
-    const vars: Record<string, string> = {};
-    for (const line of content.split("\n")) {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith("#")) continue;
-      const eqIdx = trimmed.indexOf("=");
-      if (eqIdx === -1) continue;
-      vars[trimmed.slice(0, eqIdx)] = trimmed.slice(eqIdx + 1);
-    }
-    return vars;
-  } catch {
-    return {};
-  }
-}
-
 function getConfig() {
   const envLocal = loadEnvLocal();
 
   const rpcUrl = process.env.RPC_URL ?? "http://127.0.0.1:8545";
+
+  // Guard: refuse Anvil keys on remote networks
+  requireExplicitKeyForRemoteRpc(rpcUrl);
+
   const privateKey = (process.env.PRIVATE_KEY ??
     "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80") as `0x${string}`;
 
@@ -112,6 +97,7 @@ let running = true;
 async function settle(
   publicClient: PublicClient,
   walletClient: WalletClient,
+  account: ReturnType<typeof privateKeyToAccount>,
   engineAddr: Address,
   registryAddr: Address,
 ) {
@@ -121,7 +107,7 @@ async function settle(
     functionName: "ticketCount",
   });
 
-  const count = Number(ticketCount);
+  const count = safeBigIntToNumber(ticketCount, "ticketCount");
   if (count === 0) {
     console.log(`[settler] No tickets yet`);
     return;
@@ -177,7 +163,7 @@ async function settle(
         functionName: "settleTicket",
         args: [BigInt(id)],
         chain: walletClient.chain,
-        account: walletClient.account!,
+        account,
       });
 
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
@@ -241,7 +227,7 @@ async function main() {
 
   // Initial poll
   console.log("[settler] Running initial poll...");
-  await settle(publicClient, walletClient, cfg.engineAddr, cfg.registryAddr);
+  await settle(publicClient, walletClient, account, cfg.engineAddr, cfg.registryAddr);
 
   // Poll loop
   while (running) {
@@ -250,7 +236,7 @@ async function main() {
 
     const ts = new Date().toISOString();
     console.log(`[settler] [${ts}] Polling...`);
-    await settle(publicClient, walletClient, cfg.engineAddr, cfg.registryAddr);
+    await settle(publicClient, walletClient, account, cfg.engineAddr, cfg.registryAddr);
   }
 
   console.log("[settler] Stopped.");
