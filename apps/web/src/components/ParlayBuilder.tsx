@@ -65,8 +65,15 @@ interface RiskAdviceData {
   suggestedStake: string;
   kellyFraction: number;
   winProbability: number;
+  expectedValue: number;
+  confidence: number;
+  fairMultiplier: number;
+  netMultiplier: number;
+  edgeBps: number;
+  riskTolerance: string;
   reasoning: string;
   warnings: string[];
+  aiInsight?: { analysis: string; model: string; provider: string; verified: boolean };
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -170,20 +177,32 @@ function restoreSelections(stored: StoredSelection[], allLegs: DisplayLeg[]): Se
   return result;
 }
 
-/** Validate that a parsed risk response has the required shape. */
+/** Validate that a parsed risk response has the required shape (lesson #22: exhaustive). */
 function isValidRiskResponse(data: unknown): data is RiskAdviceData {
   if (!data || typeof data !== "object") return false;
   const d = data as Record<string, unknown>;
-  return (
+  const baseValid =
     typeof d.action === "string" &&
     typeof d.suggestedStake === "string" &&
     /^\d+(?:\.\d*)?$/.test(d.suggestedStake) &&
     typeof d.kellyFraction === "number" &&
     typeof d.winProbability === "number" &&
+    typeof d.expectedValue === "number" &&
+    typeof d.confidence === "number" &&
+    typeof d.fairMultiplier === "number" &&
+    typeof d.netMultiplier === "number" &&
+    typeof d.edgeBps === "number" &&
+    typeof d.riskTolerance === "string" &&
     typeof d.reasoning === "string" &&
     Array.isArray(d.warnings) &&
-    d.warnings.every((w: unknown) => typeof w === "string")
-  );
+    d.warnings.every((w: unknown) => typeof w === "string");
+  if (!baseValid) return false;
+  // aiInsight is optional; validate shape if present
+  if (d.aiInsight !== undefined && d.aiInsight !== null) {
+    const ai = d.aiInsight as Record<string, unknown>;
+    if (typeof ai.analysis !== "string" || typeof ai.model !== "string") return false;
+  }
+  return true;
 }
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -328,11 +347,14 @@ export function ParlayBuilder() {
   const [riskLoading, setRiskLoading] = useState(false);
   const [riskError, setRiskError] = useState<string | null>(null);
   const riskFetchIdRef = useRef(0);
+  const [aiInsightExpanded, setAiInsightExpanded] = useState(false);
 
+  // Clear stale risk data when inputs change
   useEffect(() => {
     setRiskAdvice(null);
     setRiskError(null);
     setRiskLoading(false);
+    setAiInsightExpanded(false);
     riskFetchIdRef.current++;
   }, [selectedLegs, stake, payoutMode]);
 
@@ -448,13 +470,7 @@ export function ParlayBuilder() {
     setRiskError(null);
 
     try {
-      const probabilities = selectedLegs.map((s) => {
-        const prob = 1 / effectiveOdds(s.leg, s.outcomeChoice);
-        const scaled = Math.round(prob * 1_000_000);
-        return Math.min(999_999, Math.max(1, scaled));
-      });
-
-      const res = await fetch(`${SERVICES_API_URL}/premium/risk-assess`, {
+      const res = await fetch(`${SERVICES_API_URL}/premium/agent-quote`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -464,7 +480,6 @@ export function ParlayBuilder() {
           legIds: selectedLegs.map((s) => Number(s.leg.id)),
           outcomes: selectedLegs.map((s) => (s.outcomeChoice === 1 ? "Yes" : "No")),
           stake,
-          probabilities,
           bankroll:
             usdcBalance !== undefined && usdcBalance > 0n
               ? formatUnits(usdcBalance, 6)
@@ -481,16 +496,27 @@ export function ParlayBuilder() {
         return;
       }
 
-      const data: unknown = await res.json();
+      const raw: unknown = await res.json();
       if (localFetchId !== riskFetchIdRef.current) return;
 
-      if (!isValidRiskResponse(data)) {
+      // Agent-quote returns { quote, risk, aiInsight? }
+      const envelope = raw as Record<string, unknown>;
+      const riskObj = envelope.risk;
+      if (!riskObj || typeof riskObj !== "object") {
         setRiskError("Invalid response from risk advisor");
         setRiskLoading(false);
         return;
       }
 
-      setRiskAdvice(data);
+      const merged = { ...(riskObj as Record<string, unknown>), ...(envelope.aiInsight ? { aiInsight: envelope.aiInsight } : {}) };
+
+      if (!isValidRiskResponse(merged)) {
+        setRiskError("Invalid response from risk advisor");
+        setRiskLoading(false);
+        return;
+      }
+
+      setRiskAdvice(merged);
     } catch {
       if (localFetchId === riskFetchIdRef.current) {
         setRiskError("Failed to connect to risk advisor");
@@ -499,6 +525,21 @@ export function ParlayBuilder() {
 
     if (localFetchId === riskFetchIdRef.current) setRiskLoading(false);
   }, [selectedLegs, stake, usdcBalance]);
+
+  // Stable ref for auto-trigger (avoids re-debouncing on usdcBalance polls)
+  const fetchRiskAdviceRef = useRef(fetchRiskAdvice);
+  fetchRiskAdviceRef.current = fetchRiskAdvice;
+
+  // Auto-trigger risk analysis when conditions are met (600ms debounce)
+  useEffect(() => {
+    if (selectedLegs.length < PARLAY_CONFIG.minLegs || !(parseFloat(stake) > 0)) return;
+    setRiskLoading(true);
+    const timer = setTimeout(() => {
+      fetchRiskAdviceRef.current();
+    }, 600);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLegs, stake]);
 
   // ── Derived display ────────────────────────────────────────────────────
 
@@ -804,46 +845,122 @@ export function ParlayBuilder() {
             </div>
           </div>
 
-          {/* Risk Advisor */}
+          {/* Kelly AI Risk Advisor */}
           {selectedLegs.length >= PARLAY_CONFIG.minLegs && stakeNum > 0 && (
-            <div className="space-y-2">
-              <button
-                onClick={fetchRiskAdvice}
-                disabled={riskLoading}
-                className="w-full rounded-lg border border-brand-purple-1/30 bg-brand-purple/10 py-2 text-xs font-semibold text-brand-purple-1 transition-all hover:bg-brand-purple/20 disabled:opacity-50"
-              >
-                {riskLoading ? "Analyzing..." : "AI Risk Analysis (x402)"}
-              </button>
-              {riskError && (
-                <div className="rounded-lg border border-neon-red/20 bg-neon-red/5 px-3 py-2 text-xs text-neon-red animate-fade-in">
-                  {riskError}
+            <div className="space-y-2" data-testid="risk-advisor">
+              {/* Loading skeleton */}
+              {riskLoading && (
+                <div className="space-y-2 rounded-lg border border-brand-purple-1/20 bg-brand-purple/5 p-3 animate-pulse" data-testid="risk-loading">
+                  <div className="flex items-center justify-between">
+                    <div className="h-4 w-24 rounded bg-white/10" />
+                    <div className="h-4 w-16 rounded bg-white/10" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="h-8 rounded bg-white/10" />
+                    <div className="h-8 rounded bg-white/10" />
+                    <div className="h-8 rounded bg-white/10" />
+                    <div className="h-8 rounded bg-white/10" />
+                  </div>
+                  <div className="h-3 w-3/4 rounded bg-white/5" />
                 </div>
               )}
-              {riskAdvice && (
-                <div className={`rounded-lg border px-3 py-2.5 text-xs animate-fade-in ${
-                  riskAdvice.action === "BUY" ? "border-neon-green/20 bg-neon-green/5 text-neon-green" :
-                  riskAdvice.action === "REDUCE_STAKE" ? "border-yellow-500/20 bg-yellow-500/5 text-yellow-400" :
-                  "border-neon-red/20 bg-neon-red/5 text-neon-red"
+
+              {/* Error with retry */}
+              {riskError && !riskLoading && (
+                <div className="rounded-lg border border-neon-red/20 bg-neon-red/5 px-3 py-2 text-xs text-neon-red animate-fade-in">
+                  {riskError}
+                  <button onClick={fetchRiskAdvice} className="ml-2 underline hover:no-underline">
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {/* Rich results card */}
+              {riskAdvice && !riskLoading && (
+                <div className={`rounded-lg border px-3 py-3 text-xs animate-fade-in ${
+                  riskAdvice.action === "BUY" ? "border-neon-green/20 bg-neon-green/5" :
+                  riskAdvice.action === "REDUCE_STAKE" ? "border-yellow-500/20 bg-yellow-500/5" :
+                  "border-neon-red/20 bg-neon-red/5"
                 }`}>
-                  <div className="mb-1 flex items-center justify-between">
-                    <span className="font-bold">{riskAdvice.action}</span>
-                    <span className="text-gray-400">Kelly: {(riskAdvice.kellyFraction * 100).toFixed(1)}%</span>
+                  {/* Header: action badge + refresh */}
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                      riskAdvice.action === "BUY" ? "bg-neon-green/20 text-neon-green" :
+                      riskAdvice.action === "REDUCE_STAKE" ? "bg-yellow-500/20 text-yellow-400" :
+                      "bg-neon-red/20 text-neon-red"
+                    }`}>
+                      {riskAdvice.action}
+                    </span>
+                    <button
+                      onClick={fetchRiskAdvice}
+                      disabled={riskLoading}
+                      className="text-[10px] text-gray-500 hover:text-gray-300 disabled:opacity-50"
+                    >
+                      Refresh
+                    </button>
                   </div>
-                  <p className="text-gray-300">{riskAdvice.reasoning}</p>
+
+                  {/* Stats grid */}
+                  <div className="mb-2 grid grid-cols-2 gap-x-4 gap-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Kelly</span>
+                      <span className="font-semibold text-white">{(riskAdvice.kellyFraction * 100).toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Win Prob</span>
+                      <span className="font-semibold text-white">{(riskAdvice.winProbability * 100).toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">EV</span>
+                      <span className={`font-semibold ${riskAdvice.expectedValue >= 0 ? "text-neon-green" : "text-neon-red"}`}>
+                        {riskAdvice.expectedValue >= 0 ? "+" : ""}{(riskAdvice.expectedValue * 100).toFixed(1)}%
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Edge</span>
+                      <span className="font-semibold text-white">{riskAdvice.edgeBps}bps</span>
+                    </div>
+                  </div>
+
+                  {/* Reasoning */}
+                  <p className="mb-1.5 text-gray-300">{riskAdvice.reasoning}</p>
+
+                  {/* Warnings */}
                   {riskAdvice.warnings.length > 0 && (
-                    <div className="mt-1.5 space-y-0.5">
+                    <div className="mb-1.5 space-y-0.5">
                       {riskAdvice.warnings.map((w, i) => (
                         <p key={i} className="text-yellow-400/80">! {w}</p>
                       ))}
                     </div>
                   )}
+
+                  {/* Suggested stake */}
                   {riskAdvice.suggestedStake && riskAdvice.suggestedStake !== stake && (
                     <button
                       onClick={() => setStake(sanitizeNumericInput(riskAdvice!.suggestedStake))}
-                      className="mt-1.5 rounded bg-brand-pink/20 px-2 py-0.5 text-brand-pink hover:bg-brand-pink/30"
+                      className="mb-1.5 rounded bg-brand-pink/20 px-2 py-0.5 text-brand-pink hover:bg-brand-pink/30"
                     >
                       Use suggested: ${riskAdvice.suggestedStake}
                     </button>
+                  )}
+
+                  {/* AI Insight (collapsible, from 0G) */}
+                  {riskAdvice.aiInsight && (
+                    <div className="mt-2 border-t border-white/5 pt-2">
+                      <button
+                        onClick={() => setAiInsightExpanded(!aiInsightExpanded)}
+                        className="flex w-full items-center justify-between text-[10px] text-gray-500 hover:text-gray-300"
+                        data-testid="ai-insight-toggle"
+                      >
+                        <span>AI Insight ({riskAdvice.aiInsight.provider})</span>
+                        <span>{aiInsightExpanded ? "\u2212" : "+"}</span>
+                      </button>
+                      {aiInsightExpanded && (
+                        <p className="mt-1 text-[11px] leading-relaxed text-gray-400" data-testid="ai-insight-content">
+                          {riskAdvice.aiInsight.analysis}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}

@@ -58,11 +58,22 @@
 2. One-click redirect to vault deposit
 3. LP earns edge on future parlays
 
+## Flow 6: Autonomous Agents (1 minute)
+
+1. Show the Market Discovery Agent: `ONCE=true make market-agent-sepolia`
+2. Agent discovers NBA games from BallDontLie API, registers them as bettable legs on LegRegistry
+3. Agent resolves completed games (moneyline + over/under) via AdminOracleAdapter
+4. Show the Settler Bot: `make settler-sepolia`
+5. Settler picks up resolved tickets and calls permissionless `settleTicket()`
+
+**Narrative**: "Agents handle the plumbing. They discover real-world events, bring them on-chain, and resolve outcomes. Humans make all betting decisions. The agents earn keeper fees and keep the protocol running autonomously."
+
 ## Key Talking Points
 
 - **Fully onchain**: tickets are NFTs, payouts are pull-based, math is transparent
 - **Multi-category markets**: crypto, sports, NBA (live data), ETHDenver, culture, tech, DeFi, memes -- all in one builder
 - **Live NBA data**: real games from BallDontLie API with team-stats-based probability estimation
+- **Agents serve humans**: Market Discovery Agent brings real events on-chain; Settler Bot handles settlement. Humans bet. No autonomous gambling.
 - **Hybrid settlement**: starts centralized for speed, upgrades to optimistic for trust
 - **House vault**: LPs earn the edge -- not a zero-sum PvP game
 - **Base-native**: fast confirmations, low gas, smart wallet ready

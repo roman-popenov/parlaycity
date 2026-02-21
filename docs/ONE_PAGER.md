@@ -62,7 +62,7 @@ No other protocol combines all four.
 |--------|-------|--------|
 | Track prizes (New France / Futurllama / Prosperia) | $6K | Narratives ready |
 | Kite AI x402 payment verification | $10K | Real verification implemented |
-| Base Agents (settler bot + risk agent) | $10K | In progress |
+| Base Agents (market discovery agent + settler bot) | $10K | Ready |
 | Uniswap API (swap-to-USDC onramp) | $5K | Not started |
 | ADI Open Project | $19K | Narrative ready |
 

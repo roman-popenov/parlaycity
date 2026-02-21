@@ -20,7 +20,7 @@ Express on port 3001. Rate-limited.
 The market catalog is a unified system merging multiple data sources:
 
 - `src/catalog/seed.ts` -- 7 hardcoded categories (crypto, sports, ethdenver-2026, culture, tech, defi, meme) with static probabilities
-- `src/catalog/bdl.ts` -- live NBA markets from BallDontLie API. Fetches upcoming games, team season averages, estimates moneyline/over-under probabilities. 5-min in-memory cache. Requires `BDL_API_KEY` env var (gracefully disabled if absent). NBA leg IDs start at offset 1000 (`NBA_LEG_ID_OFFSET + game.id * 2`) to avoid collisions with seed IDs.
+- `src/catalog/bdl.ts` -- live NBA markets from BallDontLie API. Fetches upcoming games, team season averages, estimates moneyline/over-under probabilities. 5-min in-memory cache. Requires `BDL_API_KEY` env var (gracefully disabled if absent). NBA leg IDs start at offset 1000 (`NBA_LEG_ID_OFFSET + game.id * 2`) to avoid collisions with seed IDs. Also exports `fetchCompletedGames(lookbackDays)` for resolution (no cache -- needs fresh data) and `BDLGameResult` type. Used by `scripts/market-agent.ts`.
 - `src/catalog/registry.ts` -- unified `getFullLegMap()` merging seed + BDL legs into a single `Map<number, Leg>`. Used by `/quote` and `/premium/agent-quote`. Also exposes `getSeedLegMap()` (sync, seed-only) and `getCategorySummary()`.
 
 When adding a new data source: create a new file in `src/catalog/`, export a `fetchXMarkets(): Promise<Market[]>` function, register it in `registry.ts`.

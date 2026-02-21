@@ -81,6 +81,13 @@ make register-legs-sepolia   # Register catalog legs on Base Sepolia
 make demo-seed-sepolia       # Seed demo data on Base Sepolia (small amounts)
 make create-pool-sepolia     # Create Uniswap V3 USDC/WETH pool on Base Sepolia
 make fund-deployer           # Print deployer address + funding instructions
+
+# -- Agents --
+make market-agent            # Market discovery agent (local, requires BDL_API_KEY)
+make market-agent-sepolia    # Market discovery agent on Base Sepolia
+make settler-sepolia         # Settler bot on Base Sepolia
+make agents-sepolia          # Both agents on Base Sepolia (background)
+make agents-stop             # Stop agent processes
 ```
 
 Dev logs written to `.pids/*.log` (anvil.log, deploy.log, services.log, web.log).
@@ -129,7 +136,7 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 - MockYieldAdapter + AaveYieldAdapter (not in default deploy)
 - Frontend: parlay builder (multi-category tabs, API-driven legs, on-chain/off-chain indicators), vault dashboard, tickets list, ticket detail, MultiplierClimb viz (animated rocket + crash), RehabCTA, RehabLocks (mock)
 - Services: multi-category market catalog (7 seeded categories + BDL NBA), category filtering, unified market registry, quote, exposure (mock), x402-gated premium/sim + risk-assess + agent-quote (with optional 0G AI insight), vault/health, vault/yield-report
-- Scripts: risk-agent (autonomous agent loop with 0G inference, Kelly sizing, multi-candidate selection), demo-autopilot (leg resolution + crash simulation), demo-seed, register-legs (on-chain leg registration from catalog with race-safe ID derivation)
+- Scripts: market-agent (autonomous NBA market discovery + on-chain registration + game result resolution via BDL API), settler-bot (permissionless ticket settlement), risk-agent (autonomous agent loop with 0G inference, Kelly sizing, multi-candidate selection), demo-autopilot (leg resolution + crash simulation), demo-seed, register-legs (on-chain leg registration from catalog with race-safe ID derivation)
 - Tests: unit, fuzz, invariant, integration (contracts), vitest (services + web), E2E integration (Anvil-backed, 20 tests across 5 suites: deploy, registration, API consistency, lifecycle, vault flow)
 - CI: GitHub Actions (3 jobs), Makefile quality gate, coverage thresholds enforced
 - Deploy script + sync-env

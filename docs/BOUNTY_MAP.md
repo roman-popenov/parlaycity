@@ -4,7 +4,7 @@
 
 | Our Previous Doc Says | Actual Bounty | Action |
 |---|---|---|
-| "Base ($10K) -- deploy + OnchainKit" | "Base Self-Sustaining **Autonomous Agents**" | Reframe: settler bot + risk agent |
+| "Base ($10K) -- deploy + OnchainKit" | "Base Self-Sustaining **Autonomous Agents**" | Reframe: market discovery agent + settler bot |
 | "ADI Paymaster ($3K) -- gasless UX" | "ERC-4337 Paymaster **Devtools**" | **DROP** -- wants devtools, not app |
 | "ADI Payments ($3K) -- cosmetics" | "Payments for **Merchants**" | **DROP** -- merchant-focused |
 | Missing | Uniswap Foundation ($5K) -- integrate API | **ADD** -- swap-to-USDC onramp |
@@ -19,7 +19,7 @@
 | 3 | Track: Futurllama | $2K | Novel mechanic + agent quoting | Crash-parlay + /quote API | HIGH | 1h | Narrative |
 | 4 | Track: Prosperia | $2K | Non-extractive, no owner sweep, social impact | 90/5/5 fee + rehab spec | MEDIUM | 1h | Narrative |
 | 5 | Uniswap API | $5K | Integrate Uniswap Trading API | Not started | MEDIUM | 6-8h | Swap-to-USDC |
-| 6 | Base Agents | $10K | Self-sustaining autonomous agents on Base | Settler bot + risk agent | MEDIUM | 6-8h | Agent + deploy |
+| 6 | Base Agents | $10K | Self-sustaining autonomous agents on Base | READY: market discovery agent + settler bot + Sepolia deploy + docs | HIGH | DONE | docs/BASE_AGENTS_BOUNTY.md |
 | 7 | ADI Open Project | $19K | Open-ended DeFi innovation on Base | Strong candidate | LOW | 2h | Narrative |
 | 8 | 0g Labs DeFAI | $7K | DeFi AI agent using 0g inference | Risk advisor fits | LOW-MED | 4-8h | Stretch |
 
@@ -38,7 +38,7 @@
 1. **Kite AI x402 ($10K)** -- real verification done, ship agent demo + docs
 2. **Track prizes ($6K)** -- already qualifying, polish narratives
 3. **Uniswap API ($5K)** -- swap-to-USDC onramp, needs API key
-4. **Base Agents ($10K)** -- settler bot + risk agent, deploy to Sepolia
+4. **Base Agents ($10K)** -- market discovery agent + settler bot, deploy to Sepolia
 5. **ADI Open Project ($19K)** -- high prize but low confidence, needs strong application
 6. **0g Labs DeFAI ($7K)** -- stretch goal, wrap risk advisor with 0g inference
 
@@ -54,9 +54,11 @@
 ### Base Agents ($10K)
 **What they want:** Self-sustaining autonomous agents on Base. Not just "deploy on Base" -- they want agents that can operate autonomously.
 
-**What we have:** ParlayEngine with permissionless `settleTicket()`. x402-gated risk advisor. Deploy script for Anvil.
+**What we have:** Two production-ready autonomous agents deployed on Base Sepolia:
+1. **Market Discovery Agent** -- discovers real NBA games from BallDontLie API, registers them as bettable legs on-chain, and auto-resolves completed games. Agents serve humans: brings real-world events on-chain so humans can bet on them.
+2. **Settler Bot** -- permissionless settlement keeper, polls for resolved tickets, calls `settleTicket()`. Keeps protocol healthy by releasing vault reserves.
 
-**What we need:** Settler bot (auto-settles resolved tickets). Risk advisor agent (pays x402, assesses, decides). Deploy to Base Sepolia. Frame as "self-sustaining" -- settler earns from x402 fees.
+**How to run:** `make agents-sepolia` (both agents) or `make market-agent-sepolia` / `make settler-sepolia` individually. Full narrative at `docs/BASE_AGENTS_BOUNTY.md`.
 
 ### Uniswap API ($5K)
 **What they want:** Projects integrating the Uniswap Trading API or Universal Router.

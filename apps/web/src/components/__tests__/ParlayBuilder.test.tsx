@@ -437,15 +437,44 @@ describe("ParlayBuilder", () => {
     });
   });
 
-  // --- Risk advisor fetch behavior ---
+  // --- Risk advisor (auto-trigger via agent-quote endpoint) ---
 
   describe("risk advisor", () => {
+    // Full valid risk data matching RiskAssessResponse shape
+    const fullRiskData = {
+      action: "BUY",
+      suggestedStake: "10",
+      kellyFraction: 0.05,
+      winProbability: 0.12,
+      expectedValue: 0.15,
+      confidence: 0.75,
+      fairMultiplier: 3.5,
+      netMultiplier: 3.2,
+      edgeBps: 150,
+      riskTolerance: "moderate",
+      reasoning: "Favorable odds",
+      warnings: ["High variance"],
+    };
+
+    /** Wrap risk data in agent-quote response envelope. */
+    function agentQuoteResponse(riskOverrides?: Record<string, unknown>, aiInsight?: unknown) {
+      return {
+        ok: true,
+        json: () => Promise.resolve({
+          quote: {},
+          risk: { ...fullRiskData, ...riskOverrides },
+          ...(aiInsight !== undefined ? { aiInsight } : {}),
+        }),
+      };
+    }
+
     beforeEach(() => {
       setupConnectedUser();
-      vi.stubGlobal("fetch", vi.fn());
+      vi.useFakeTimers();
     });
 
     afterEach(() => {
+      vi.useRealTimers();
       vi.unstubAllGlobals();
       // Re-stub sessionStorage since unstubAllGlobals removes it
       vi.stubGlobal("sessionStorage", {
@@ -458,335 +487,170 @@ describe("ParlayBuilder", () => {
       });
     });
 
-    it("shows risk button when 2+ legs selected and stake > 0", async () => {
+    /** Render, select legs, set stake, advance past 600ms debounce + flush. */
+    async function triggerAutoRisk(fetchMock: ReturnType<typeof vi.fn>) {
+      vi.stubGlobal("fetch", fetchMock);
       render(<ParlayBuilder />);
-      await waitFor(() => {
-        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
-      });
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
       selectLegs(2);
       setStakeInput("10");
-      expect(screen.getByText("AI Risk Analysis (x402)")).toBeInTheDocument();
+      await act(async () => { await vi.advanceTimersByTimeAsync(700); });
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+    }
+
+    it("shows risk loading skeleton when 2+ legs selected and stake > 0", async () => {
+      vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {}))); // never resolves
+      render(<ParlayBuilder />);
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      selectLegs(2);
+      setStakeInput("10");
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      expect(screen.getByTestId("risk-advisor")).toBeInTheDocument();
+      expect(screen.getByTestId("risk-loading")).toBeInTheDocument();
     });
 
-    it("does not show risk button when fewer than 2 legs selected", async () => {
+    it("does not show risk section when fewer than 2 legs selected", async () => {
+      vi.stubGlobal("fetch", vi.fn());
       render(<ParlayBuilder />);
-      await waitFor(() => {
-        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
-      });
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
       selectLegs(1);
       setStakeInput("10");
-      expect(screen.queryByText("AI Risk Analysis (x402)")).not.toBeInTheDocument();
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      expect(screen.queryByTestId("risk-advisor")).not.toBeInTheDocument();
     });
 
-    it("does not show risk button when stake is 0", async () => {
+    it("does not show risk section when stake is 0", async () => {
+      vi.stubGlobal("fetch", vi.fn());
       render(<ParlayBuilder />);
-      await waitFor(() => {
-        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
-      });
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
       selectLegs(2);
-      // No stake entered
-      expect(screen.queryByText("AI Risk Analysis (x402)")).not.toBeInTheDocument();
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      expect(screen.queryByTestId("risk-advisor")).not.toBeInTheDocument();
     });
 
     it("shows error UI when fetch fails", async () => {
       const mockFetch = vi.fn().mockRejectedValue(new Error("Network error"));
-      vi.stubGlobal("fetch", mockFetch);
-
-      render(<ParlayBuilder />);
-      await waitFor(() => {
-        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
-      });
-      selectLegs(2);
-      setStakeInput("10");
-
-      await act(async () => {
-        fireEvent.click(screen.getByText("AI Risk Analysis (x402)"));
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("Failed to connect to risk advisor")).toBeInTheDocument();
-      });
+      await triggerAutoRisk(mockFetch);
+      expect(screen.getByText("Failed to connect to risk advisor")).toBeInTheDocument();
     });
 
     it("shows error UI when response is not ok", async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: false,
-        status: 500,
-      });
-      vi.stubGlobal("fetch", mockFetch);
-
-      render(<ParlayBuilder />);
-      await waitFor(() => {
-        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
-      });
-      selectLegs(2);
-      setStakeInput("10");
-
-      await act(async () => {
-        fireEvent.click(screen.getByText("AI Risk Analysis (x402)"));
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("Risk analysis unavailable (500)")).toBeInTheDocument();
-      });
+      const mockFetch = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+      await triggerAutoRisk(mockFetch);
+      expect(screen.getByText("Risk analysis unavailable (500)")).toBeInTheDocument();
     });
 
     it("shows error UI when response has invalid shape", async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve({ invalid: "data" }),
+        json: () => Promise.resolve({ quote: {}, risk: { invalid: "data" } }),
       });
-      vi.stubGlobal("fetch", mockFetch);
-
-      render(<ParlayBuilder />);
-      await waitFor(() => {
-        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
-      });
-      selectLegs(2);
-      setStakeInput("10");
-
-      await act(async () => {
-        fireEvent.click(screen.getByText("AI Risk Analysis (x402)"));
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("Invalid response from risk advisor")).toBeInTheDocument();
-      });
+      await triggerAutoRisk(mockFetch);
+      expect(screen.getByText("Invalid response from risk advisor")).toBeInTheDocument();
     });
 
-    it("rejects response missing suggestedStake or winProbability", async () => {
+    it("rejects response missing required risk fields", async () => {
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
-          action: "BUY",
-          kellyFraction: 0.05,
-          reasoning: "Favorable",
-          warnings: [],
-          // missing suggestedStake and winProbability
+          quote: {},
+          risk: {
+            action: "BUY",
+            kellyFraction: 0.05,
+            reasoning: "Favorable",
+            warnings: [],
+          },
         }),
       });
-      vi.stubGlobal("fetch", mockFetch);
-
-      render(<ParlayBuilder />);
-      await waitFor(() => {
-        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
-      });
-      selectLegs(2);
-      setStakeInput("10");
-
-      await act(async () => {
-        fireEvent.click(screen.getByText("AI Risk Analysis (x402)"));
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("Invalid response from risk advisor")).toBeInTheDocument();
-      });
+      await triggerAutoRisk(mockFetch);
+      expect(screen.getByText("Invalid response from risk advisor")).toBeInTheDocument();
     });
 
-    it("displays valid risk advice", async () => {
-      const riskData = {
-        action: "BUY",
-        suggestedStake: "10",
-        kellyFraction: 0.05,
-        winProbability: 0.12,
-        reasoning: "Favorable odds",
-        warnings: ["High variance"],
-      };
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(riskData),
-      });
-      vi.stubGlobal("fetch", mockFetch);
-
-      render(<ParlayBuilder />);
-      await waitFor(() => {
-        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
-      });
-      selectLegs(2);
-      setStakeInput("10");
-
-      await act(async () => {
-        fireEvent.click(screen.getByText("AI Risk Analysis (x402)"));
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("BUY")).toBeInTheDocument();
-        expect(screen.getByText("Favorable odds")).toBeInTheDocument();
-        expect(screen.getByText("! High variance")).toBeInTheDocument();
-        expect(screen.getByText("Kelly: 5.0%")).toBeInTheDocument();
-      });
+    it("displays valid risk advice with all fields", async () => {
+      const mockFetch = vi.fn().mockResolvedValue(agentQuoteResponse());
+      await triggerAutoRisk(mockFetch);
+      expect(screen.getByText("BUY")).toBeInTheDocument();
+      expect(screen.getByText("Favorable odds")).toBeInTheDocument();
+      expect(screen.getByText("! High variance")).toBeInTheDocument();
+      expect(screen.getByText("5.0%")).toBeInTheDocument(); // Kelly
+      expect(screen.getByText("12.0%")).toBeInTheDocument(); // Win Prob
+      expect(screen.getByText("+15.0%")).toBeInTheDocument(); // EV
+      expect(screen.getByText("150bps")).toBeInTheDocument(); // Edge
     });
 
-    it("sends Number(legId) not string legIds in request body", async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({
-          action: "BUY",
-          suggestedStake: "10",
-          kellyFraction: 0.05,
-          winProbability: 0.12,
-          reasoning: "ok",
-          warnings: [],
-        }),
-      });
-      vi.stubGlobal("fetch", mockFetch);
-
-      render(<ParlayBuilder />);
-      await waitFor(() => {
-        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
-      });
-      selectLegs(2);
-      setStakeInput("10");
-
-      await act(async () => {
-        fireEvent.click(screen.getByText("AI Risk Analysis (x402)"));
-      });
-
-      await waitFor(() => {
-        // Find the risk-assess call (not the markets fetch)
-        const riskCall = mockFetch.mock.calls.find(
-          (c: unknown[]) => typeof c[0] === "string" && (c[0] as string).includes("risk-assess")
-        );
-        expect(riskCall).toBeDefined();
-
-        const body = JSON.parse(riskCall![1].body);
-        // legIds must be numbers (Number(BigInt)), not strings
-        expect(body.legIds).toEqual([0, 1]);
-        expect(typeof body.legIds[0]).toBe("number");
-      });
+    it("sends Number(legId) to agent-quote endpoint", async () => {
+      const mockFetch = vi.fn().mockResolvedValue(agentQuoteResponse());
+      await triggerAutoRisk(mockFetch);
+      const riskCall = mockFetch.mock.calls.find(
+        (c: unknown[]) => typeof c[0] === "string" && (c[0] as string).includes("agent-quote")
+      );
+      expect(riskCall).toBeDefined();
+      const body = JSON.parse(riskCall![1].body);
+      expect(body.legIds).toEqual([0, 1]);
+      expect(typeof body.legIds[0]).toBe("number");
+      expect(body.probabilities).toBeUndefined();
     });
 
     it("rejects suggestedStake with scientific notation via type guard", async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({
-          action: "BUY",
-          suggestedStake: "1e18", // scientific notation -- regex rejects
-          kellyFraction: 0.05,
-          winProbability: 0.12,
-          reasoning: "ok",
-          warnings: [],
-        }),
-      });
-      vi.stubGlobal("fetch", mockFetch);
-
-      render(<ParlayBuilder />);
-      await waitFor(() => {
-        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
-      });
-      selectLegs(2);
-      setStakeInput("10");
-
-      await act(async () => {
-        fireEvent.click(screen.getByText("AI Risk Analysis (x402)"));
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("Invalid response from risk advisor")).toBeInTheDocument();
-      });
+      const mockFetch = vi.fn().mockResolvedValue(
+        agentQuoteResponse({ suggestedStake: "1e18" })
+      );
+      await triggerAutoRisk(mockFetch);
+      expect(screen.getByText("Invalid response from risk advisor")).toBeInTheDocument();
     });
 
     it("rejects suggestedStake with negative value via type guard", async () => {
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve({
-          action: "BUY",
-          suggestedStake: "-100",
-          kellyFraction: 0.05,
-          winProbability: 0.12,
-          reasoning: "ok",
-          warnings: [],
-        }),
-      });
-      vi.stubGlobal("fetch", mockFetch);
-
-      render(<ParlayBuilder />);
-      await waitFor(() => {
-        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
-      });
-      selectLegs(2);
-      setStakeInput("10");
-
-      await act(async () => {
-        fireEvent.click(screen.getByText("AI Risk Analysis (x402)"));
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("Invalid response from risk advisor")).toBeInTheDocument();
-      });
+      const mockFetch = vi.fn().mockResolvedValue(
+        agentQuoteResponse({ suggestedStake: "-100" })
+      );
+      await triggerAutoRisk(mockFetch);
+      expect(screen.getByText("Invalid response from risk advisor")).toBeInTheDocument();
     });
 
     it("applies sanitizeNumericInput to suggestedStake on click", async () => {
-      const riskData = {
-        action: "REDUCE_STAKE",
-        suggestedStake: "5",
-        kellyFraction: 0.02,
-        winProbability: 0.08,
-        reasoning: "Reduce stake",
-        warnings: [],
-      };
-      const mockFetch = vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(riskData),
-      });
-      vi.stubGlobal("fetch", mockFetch);
-
-      render(<ParlayBuilder />);
-      await waitFor(() => {
-        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
-      });
-      selectLegs(2);
-      setStakeInput("10");
-
-      await act(async () => {
-        fireEvent.click(screen.getByText("AI Risk Analysis (x402)"));
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("Use suggested: $5")).toBeInTheDocument();
-      });
-
+      const mockFetch = vi.fn().mockResolvedValue(
+        agentQuoteResponse({ action: "REDUCE_STAKE", suggestedStake: "5", kellyFraction: 0.02, winProbability: 0.08 })
+      );
+      await triggerAutoRisk(mockFetch);
+      expect(screen.getByText("Use suggested: $5")).toBeInTheDocument();
       fireEvent.click(screen.getByText("Use suggested: $5"));
-
       const input = screen.getByPlaceholderText("Min 1 USDC") as HTMLInputElement;
       expect(input.value).toBe("5");
     });
 
     it("clears stale risk advice when inputs change", async () => {
-      const riskData = {
-        action: "BUY",
-        suggestedStake: "10",
-        kellyFraction: 0.05,
-        winProbability: 0.12,
-        reasoning: "Favorable odds",
-        warnings: [],
+      const mockFetch = vi.fn().mockResolvedValue(agentQuoteResponse());
+      await triggerAutoRisk(mockFetch);
+      expect(screen.getByText("BUY")).toBeInTheDocument();
+      setStakeInput("20");
+      await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+      expect(screen.queryByText("BUY")).not.toBeInTheDocument();
+    });
+
+    it("displays AI insight when present in response", async () => {
+      const aiInsight = {
+        analysis: "Market conditions suggest favorable entry",
+        model: "0g-risk-v1",
+        provider: "0G",
+        verified: true,
       };
       const mockFetch = vi.fn().mockResolvedValue({
         ok: true,
-        json: () => Promise.resolve(riskData),
+        json: () => Promise.resolve({ quote: {}, risk: fullRiskData, aiInsight }),
       });
-      vi.stubGlobal("fetch", mockFetch);
+      await triggerAutoRisk(mockFetch);
+      expect(screen.getByTestId("ai-insight-toggle")).toBeInTheDocument();
+      expect(screen.getByText("AI Insight (0G)")).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("ai-insight-toggle"));
+      expect(screen.getByTestId("ai-insight-content")).toBeInTheDocument();
+      expect(screen.getByText("Market conditions suggest favorable entry")).toBeInTheDocument();
+    });
 
-      render(<ParlayBuilder />);
-      await waitFor(() => {
-        expect(screen.queryByText("Connect Wallet")).not.toBeInTheDocument();
-      });
-      selectLegs(2);
-      setStakeInput("10");
-
-      await act(async () => {
-        fireEvent.click(screen.getByText("AI Risk Analysis (x402)"));
-      });
-
-      await waitFor(() => {
-        expect(screen.getByText("BUY")).toBeInTheDocument();
-      });
-
-      // Change stake -- risk advice should clear
-      setStakeInput("20");
-      await waitFor(() => {
-        expect(screen.queryByText("BUY")).not.toBeInTheDocument();
-      });
+    it("shows retry button on error", async () => {
+      const mockFetch = vi.fn().mockRejectedValue(new Error("Network error"));
+      await triggerAutoRisk(mockFetch);
+      expect(screen.getByText("Failed to connect to risk advisor")).toBeInTheDocument();
+      expect(screen.getByText("Retry")).toBeInTheDocument();
     });
   });
 

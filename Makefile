@@ -251,9 +251,69 @@ risk-agent:
 risk-agent-dry:
 	DRY_RUN=true pnpm --filter services exec tsx ../../scripts/risk-agent.ts
 
+## Market discovery agent (local)
+market-agent:
+	pnpm --filter services exec tsx ../../scripts/market-agent.ts
+
+## Read contract addresses from deployment record (single source of truth)
+SEPOLIA_ENGINE  = $(shell node -e "console.log(require('./deployments/base-sepolia.json').contracts.ParlayEngine)" 2>/dev/null)
+SEPOLIA_REGISTRY = $(shell node -e "console.log(require('./deployments/base-sepolia.json').contracts.LegRegistry)" 2>/dev/null)
+SEPOLIA_USDC    = $(shell node -e "console.log(require('./deployments/base-sepolia.json').contracts.MockUSDC)" 2>/dev/null)
+SEPOLIA_ORACLE  = $(shell node -e "console.log(require('./deployments/base-sepolia.json').contracts.AdminOracleAdapter)" 2>/dev/null)
+
+## Settler bot on Base Sepolia
+settler-sepolia:
+	$(eval RPC := $(or $(BASE_SEPOLIA_RPC_URL),https://sepolia.base.org))
+	RPC_URL=$(RPC) PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY \
+		PARLAY_ENGINE_ADDRESS=$(SEPOLIA_ENGINE) LEG_REGISTRY_ADDRESS=$(SEPOLIA_REGISTRY) \
+		pnpm --filter services exec tsx ../../scripts/settler-bot.ts
+
+## Risk agent on Base Sepolia
+risk-agent-sepolia:
+	$(eval RPC := $(or $(BASE_SEPOLIA_RPC_URL),https://sepolia.base.org))
+	RPC_URL=$(RPC) PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY SERVICES_URL=http://localhost:3001 \
+		PARLAY_ENGINE_ADDRESS=$(SEPOLIA_ENGINE) USDC_ADDRESS=$(SEPOLIA_USDC) DRY_RUN=false \
+		pnpm --filter services exec tsx ../../scripts/risk-agent.ts
+
+## Market discovery agent on Base Sepolia
+market-agent-sepolia:
+	$(eval RPC := $(or $(BASE_SEPOLIA_RPC_URL),https://sepolia.base.org))
+	RPC_URL=$(RPC) PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY \
+		LEG_REGISTRY_ADDRESS=$(SEPOLIA_REGISTRY) ADMIN_ORACLE_ADDRESS=$(SEPOLIA_ORACLE) \
+		BDL_API_KEY=$$BDL_API_KEY SERVICES_URL=http://localhost:3001 \
+		pnpm --filter services exec tsx ../../scripts/market-agent.ts
+
+## Both agents on Base Sepolia (market-agent + settler)
+agents-sepolia:
+	$(eval RPC := $(or $(BASE_SEPOLIA_RPC_URL),https://sepolia.base.org))
+	@mkdir -p $(PID_DIR)
+	@nohup env RPC_URL=$(RPC) PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY \
+		PARLAY_ENGINE_ADDRESS=$(SEPOLIA_ENGINE) LEG_REGISTRY_ADDRESS=$(SEPOLIA_REGISTRY) \
+		pnpm --filter services exec tsx ../../scripts/settler-bot.ts > $(PID_DIR)/settler.log 2>&1 & echo $$! > $(PID_DIR)/settler.pid
+	@echo "  Settler bot started (pid $$(cat $(PID_DIR)/settler.pid))"
+	@nohup env RPC_URL=$(RPC) PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY \
+		LEG_REGISTRY_ADDRESS=$(SEPOLIA_REGISTRY) ADMIN_ORACLE_ADDRESS=$(SEPOLIA_ORACLE) \
+		BDL_API_KEY=$$BDL_API_KEY SERVICES_URL=http://localhost:3001 \
+		pnpm --filter services exec tsx ../../scripts/market-agent.ts > $(PID_DIR)/market-agent.log 2>&1 & echo $$! > $(PID_DIR)/market-agent.pid
+	@echo "  Market agent started (pid $$(cat $(PID_DIR)/market-agent.pid))"
+	@echo ""
+	@echo "Agents running on Base Sepolia. Use 'make agents-stop' to shut down."
+	@echo "Logs: $(PID_DIR)/settler.log, $(PID_DIR)/market-agent.log"
+
+## Stop agent processes
+agents-stop:
+	@for name in settler market-agent risk-agent; do \
+		pidfile="$(PID_DIR)/$$name.pid"; \
+		if [ -f "$$pidfile" ]; then \
+			pid=$$(cat "$$pidfile"); \
+			kill $$pid 2>/dev/null && echo "Stopped $$name (pid $$pid)" || true; \
+			rm -f "$$pidfile"; \
+		fi; \
+	done
+
 # -- Cleanup --
 clean:
 	cd packages/contracts && forge clean
 	cd apps/web && rm -rf .next
 
-.PHONY: bootstrap setup chain deploy-local deploy-sepolia deploy-sepolia-full sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-web test-all test-e2e gate typecheck build-web build-contracts coverage coverage-contracts coverage-services coverage-web snapshot ci ci-contracts ci-services ci-web demo-seed demo-seed-sepolia demo-autopilot demo-autopilot-crash register-legs register-legs-sepolia create-pool-sepolia fund-deployer fund-wallet clean risk-agent risk-agent-dry
+.PHONY: bootstrap setup chain deploy-local deploy-sepolia deploy-sepolia-full sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-web test-all test-e2e gate typecheck build-web build-contracts coverage coverage-contracts coverage-services coverage-web snapshot ci ci-contracts ci-services ci-web demo-seed demo-seed-sepolia demo-autopilot demo-autopilot-crash register-legs register-legs-sepolia create-pool-sepolia fund-deployer fund-wallet clean risk-agent risk-agent-dry market-agent settler-sepolia risk-agent-sepolia market-agent-sepolia agents-sepolia agents-stop
