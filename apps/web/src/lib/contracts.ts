@@ -45,6 +45,16 @@ export const USDC_ABI = [
     inputs: [],
     outputs: [{ name: "", type: "uint8" }],
   },
+  {
+    name: "mint",
+    type: "function",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "to", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [],
+  },
 ] as const;
 
 export const HOUSE_VAULT_ABI = [
