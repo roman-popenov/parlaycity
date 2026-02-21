@@ -4,13 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Identity & Pitch
 
-ParlayCity -- the first Crash-Parlay AMM. On-chain parlay betting on Base (multi-chain possible). Built at ETHDenver 2026.
+ParlayVoo (protocol name: ParlayCity) -- the first Crash-Parlay AMM. On-chain parlay betting on Base (multi-chain possible). Built at ETHDenver 2026.
 
 **Core loop:** Buy ticket (2-5 legs) -> watch multiplier climb as legs resolve -> cash out before a leg crashes OR ride to full payout.
 
 This is NOT "parlays on Base." The differentiator is the Aviator-style game mechanic: tickets are live instruments with real-time cashout. The "plane" metaphor: multiplier climbs as each leg resolves favorably, crashes when a leg loses. Users choose their own exit point.
 
-**One-sentence pitch:** "Crash-Parlay AMM with non-extractive fee routing, live cashout, and unified vault liquidity."
+**One-sentence pitch:** "Crash-Parlay AMM with non-extractive fee routing, live cashout, MCP-enabled AI agents, and unified vault liquidity."
 
 **Token stack:** Users stake USDC. LPs deposit USDC into HouseVault, receive vUSDC shares. vUSDC can be locked in LockVault for boosted fee share. Tickets are ERC721 NFTs.
 
@@ -103,9 +103,11 @@ Per-package: `pnpm --filter web dev`, `pnpm --filter web test`, `pnpm --filter s
 
 **Contracts:** ERC4626-like HouseVault (USDC, vUSDC shares, 80% utilization cap, 5% max payout, 90/5/5 fee routing via `routeFees`). ParlayEngine (ERC721 tickets, baseFee=100bps + perLegFee=50bps). LegRegistry (admin-managed outcomes). LockVault (30/60/90 day locks, Synthetix-style rewards, fee income via `notifyFees` from HouseVault). ParlayMath (pure library mirrored in TS). Oracles: AdminOracleAdapter (bootstrap) + OptimisticOracleAdapter (production). Deploy order in `script/Deploy.s.sol`.
 
-**Frontend:** Next.js 14 pages: `/` (builder), `/vault`, `/tickets`, `/ticket/[id]`, `/about`. wagmi 2 + viem 2 + ConnectKit. Polling 5s/10s with stale-fetch guards. FTUE spotlight, demo banner, how-it-works onboarding components.
+**Frontend:** Next.js 14 pages: `/` (builder), `/vault`, `/tickets`, `/ticket/[id]`, `/about`. wagmi 2 + viem 2 + ConnectKit. Polling 5s/10s with stale-fetch guards. FTUE spotlight (two-phase onboarding), demo banner, how-it-works components. AI chat panel (Vercel AI SDK + Claude) with tool calling on all pages. Deployed to Vercel.
 
 **Services:** Express port 3001. Routes: `/markets` (category filter via `?category=`), `/markets/categories`, `/quote` (resolves legs from full catalog including NBA), `/exposure`, `/premium/sim` (x402-gated), `/premium/risk-assess` (x402-gated), `/premium/agent-quote` (x402-gated, combined quote + risk for autonomous agents), `/vault/health`, `/vault/yield-report`, `/health`. Catalog subsystem: `registry.ts` (unified leg map merging seed + BDL), `seed.ts` (7 hardcoded categories), `bdl.ts` (live NBA markets via BallDontLie API, 5-min cache, `BDL_API_KEY` env var, also exports `fetchCompletedGames`/`BDLGameResult` for resolution). x402 uses real verification in production, stub in dev/test.
+
+**MCP + AI Chat:** 6 MCP tools in `apps/web/src/lib/mcp/tools.ts` (list_markets, get_quote, assess_risk, get_vault_health, get_leg_status, get_protocol_config). JSON-RPC endpoint at `/api/mcp` for external AI agents. AI chat endpoint at `/api/chat` using same tools via Vercel AI SDK. Serverless market API at `/api/markets` and agent-quote at `/api/premium/agent-quote` (no Express dependency).
 
 **Agents:** `scripts/market-agent.ts` (autonomous NBA market discovery + on-chain registration + game result resolution via BDL API), `scripts/settler-bot.ts` (permissionless ticket settlement loop), `scripts/risk-agent.ts` (autonomous betting with 0G inference + Kelly sizing). Run via `make agents-sepolia` / `make agents-stop`.
 
@@ -139,9 +141,11 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 - ParlayMath: multiplier, edge, payout, progressive payout, cashout value -- supports Classic, Progressive, and EarlyCashout modes (Solidity + TypeScript mirror)
 - AdminOracleAdapter + OptimisticOracleAdapter
 - MockYieldAdapter + AaveYieldAdapter (not in default deploy)
-- Frontend: parlay builder (multi-category tabs, API-driven legs, on-chain/off-chain indicators), vault dashboard, tickets list, ticket detail, about page, MultiplierClimb viz (animated rocket + crash), RehabCTA, RehabLocks (mock), FTUESpotlight, DemoBanner, DemoHint, HowItWorks onboarding components
+- Frontend: parlay builder (multi-category tabs, API-driven legs, on-chain/off-chain indicators), vault dashboard, tickets list, ticket detail, about page, MultiplierClimb viz (animated rocket + crash), RehabCTA, RehabLocks (mock), FTUESpotlight (two-phase onboarding), DemoBanner (with mint error display), DemoHint, HowItWorks onboarding components, ChatPanel (AI chat with tool calling)
+- MCP: 6 protocol tools (list_markets, get_quote, assess_risk, get_vault_health, get_leg_status, get_protocol_config) in `apps/web/src/lib/mcp/tools.ts`. JSON-RPC endpoint at `/api/mcp`. AI chat at `/api/chat` (Vercel AI SDK + Claude). Serverless market + agent-quote API routes.
 - Services: multi-category market catalog (7 seeded categories + BDL NBA), category filtering, unified market registry, quote, exposure (mock), x402-gated premium/sim + risk-assess + agent-quote (with optional 0G AI insight), vault/health, vault/yield-report
 - Scripts: market-agent (autonomous NBA market discovery + on-chain registration + game result resolution via BDL API), settler-bot (permissionless ticket settlement), risk-agent (autonomous agent loop with 0G inference, Kelly sizing, multi-candidate selection), demo-autopilot (leg resolution + crash simulation), demo-seed, register-legs (on-chain leg registration from catalog with race-safe ID derivation)
+- Deployment: Vercel (frontend + API routes), Base Sepolia (contracts), vercel.json in apps/web
 - Tests: unit, fuzz, invariant, integration (contracts), vitest (services + web), E2E integration (Anvil-backed, 20 tests across 5 suites: deploy, registration, API consistency, lifecycle, vault flow)
 - CI: GitHub Actions (3 jobs), Makefile quality gate, coverage thresholds enforced
 - Deploy script + sync-env
@@ -165,7 +169,7 @@ See subdirectory `CLAUDE.md` files for detailed per-package rules and context.
 
 - This repo is a fork of `roman-popenov/parlaycity`. Push branches to `origin` (stragitech), open PRs against the upstream with `gh pr create --repo roman-popenov/parlaycity`.
 - Small PRs against `main`. Main stays green.
-- Merged: PR #24 (cashout math parity), PR #25 (crash UX + rehab flow + demo scripts), PR #26 (0G risk agent + AI insight), PR #27 (README), PR #28 (multi-category markets + BDL NBA integration + E2E tests + register-legs script), PR #29 (UI overhaul + FTUE spotlight + demo banner + about page + market-agent + settler-bot + chain-pinning fix). Remaining: Uniswap LP, SafetyModule, loss distribution, paymaster, dynamic pricing.
+- Merged: PR #24 (cashout math parity), PR #25 (crash UX + rehab flow + demo scripts), PR #26 (0G risk agent + AI insight), PR #27 (README), PR #28 (multi-category markets + BDL NBA integration + E2E tests + register-legs script), PR #29 (UI overhaul + FTUE spotlight + demo banner + about page + market-agent + settler-bot + chain-pinning fix + MCP tools + AI chat + Vercel deploy). Remaining: Uniswap LP, SafetyModule, loss distribution, paymaster, dynamic pricing.
 - Every PR must pass `make gate` before merge.
 - Contract PRs must include tests AND a security note.
 

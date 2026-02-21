@@ -110,12 +110,39 @@ Addresses (Base Sepolia):
 - Uniswap V3 NonfungiblePositionManager: `0x27F971cb582BF9E50F397e4d29a5C7A34f11faA2`
 - Uniswap V3 SwapRouter: `0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4`
 
-## Frontend Deployment
+## Frontend Deployment (Vercel)
+
+The frontend is deployed to Vercel. Configuration is in `apps/web/vercel.json`.
+
+### Deploy via CLI
+
+```bash
+cd apps/web && npx vercel
+```
+
+### Required Vercel Environment Variables
+
+Set via `vercel env add` or the Vercel dashboard:
+
+| Variable | Required | Description |
+|---|---|---|
+| `NEXT_PUBLIC_CHAIN_ID` | Yes | Chain ID (84532 for Base Sepolia) |
+| `NEXT_PUBLIC_LEG_REGISTRY_ADDRESS` | Yes | LegRegistry contract address |
+| `NEXT_PUBLIC_PARLAY_ENGINE_ADDRESS` | Yes | ParlayEngine contract address |
+| `NEXT_PUBLIC_HOUSE_VAULT_ADDRESS` | Yes | HouseVault contract address |
+| `NEXT_PUBLIC_LOCK_VAULT_ADDRESS` | Yes | LockVault contract address |
+| `NEXT_PUBLIC_ADMIN_ORACLE_ADDRESS` | Yes | AdminOracleAdapter address |
+| `NEXT_PUBLIC_USDC_ADDRESS` | Yes | USDC token address |
+| `NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID` | Yes | WalletConnect project ID |
+| `ANTHROPIC_API_KEY` | For chat | Enables AI chat panel |
+| `BASE_SEPOLIA_RPC_URL` | For vault health | Alchemy RPC for on-chain reads |
+| `BDL_API_KEY` | For NBA | BallDontLie API key for live NBA markets |
+
+### Local build
 
 ```bash
 cd apps/web
 pnpm build
-# Deploy to Vercel, Netlify, or any static host
 ```
 
 Set `NEXT_PUBLIC_*` env vars on your hosting platform (values are in `apps/web/.env.local` after deploy).

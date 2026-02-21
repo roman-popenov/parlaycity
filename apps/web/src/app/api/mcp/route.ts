@@ -13,7 +13,7 @@ const TOOL_DEFINITIONS = [
   {
     name: "list_markets",
     description:
-      "List available ParlayCity betting markets. Optionally filter by category.",
+      "List available ParlayVoo betting markets. Optionally filter by category.",
     inputSchema: {
       type: "object",
       properties: {
@@ -179,10 +179,10 @@ export async function POST(req: Request) {
 // GET for discoverability
 export async function GET() {
   return NextResponse.json({
-    name: "parlaycity-mcp",
+    name: "parlayvoo-mcp",
     version: "1.0.0",
     description:
-      "ParlayCity MCP server -- crash-parlay AMM on Base. Provides market discovery, quotes, risk assessment, and on-chain state.",
+      "ParlayVoo MCP server -- crash-parlay AMM on Base. Provides market discovery, quotes, risk assessment, and on-chain state.",
     tools: TOOL_DEFINITIONS.map((t) => t.name),
     protocol: "MCP JSON-RPC",
     usage: "POST with { jsonrpc: '2.0', method: 'tools/list' | 'tools/call', params: { name, arguments } }",

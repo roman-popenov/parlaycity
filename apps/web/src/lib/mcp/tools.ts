@@ -14,6 +14,7 @@ import {
 } from "@parlaycity/shared";
 import type { RiskProfile, Market, Leg } from "@parlaycity/shared";
 import { HOUSE_VAULT_ABI, LEG_REGISTRY_ABI, PARLAY_ENGINE_ABI } from "../contracts";
+import { fetchNBAMarkets } from "../bdl";
 
 // ---------------------------------------------------------------------------
 // Chain client
@@ -122,11 +123,21 @@ export const SEED_MARKETS: Market[] = [
   },
 ];
 
-// Build a leg lookup map
+// Build a leg lookup map (seed legs are static, NBA legs are added lazily)
 export const LEG_MAP = new Map<number, Leg & { category: string }>();
 for (const m of SEED_MARKETS) {
   for (const leg of m.legs) {
     LEG_MAP.set(leg.id, { ...leg, category: m.category });
+  }
+}
+
+/** Refresh LEG_MAP with NBA legs from BDL. Call before tool execution. */
+async function refreshLegMap(): Promise<void> {
+  const nbaMarkets = await fetchNBAMarkets();
+  for (const m of nbaMarkets) {
+    for (const leg of m.legs) {
+      LEG_MAP.set(leg.id, { ...leg, category: m.category });
+    }
   }
 }
 
@@ -154,7 +165,8 @@ export async function listMarkets(input: { category?: string }): Promise<{
   }>;
   totalLegs: number;
 }> {
-  let markets = SEED_MARKETS;
+  const nbaMarkets = await fetchNBAMarkets();
+  let markets: Market[] = [...SEED_MARKETS, ...nbaMarkets];
   if (input.category) {
     markets = markets.filter((m) => m.category === input.category);
   }
@@ -190,6 +202,7 @@ export async function getQuote(input: {
   legs: Array<{ id: number; question: string; probabilityPPM: number }>;
   error?: string;
 }> {
+  await refreshLegMap();
   const legs: Array<{ id: number; question: string; probabilityPPM: number }> = [];
   const probs: number[] = [];
 
@@ -318,6 +331,7 @@ export async function getLegStatus(input: { legId: number }): Promise<{
   onChain: boolean;
   error?: string;
 }> {
+  await refreshLegMap();
   const seedLeg = LEG_MAP.get(input.legId);
 
   if (!addr.legRegistry) {
@@ -388,6 +402,7 @@ export async function assessRisk(input: {
   multiplier: string;
   edgeBps: number;
 }> {
+  await refreshLegMap();
   const probs: number[] = [];
   const categories: string[] = [];
 
@@ -434,7 +449,7 @@ export async function assessRisk(input: {
     };
   }
 
-  if (fairMultiplierX1e6 > BigInt(Number.MAX_SAFE_INTEGER)) {
+  if (fairMultiplierX1e6 > 9007199254740991n) {
     return {
       action: RiskAction.AVOID,
       suggestedStake: "0.00",

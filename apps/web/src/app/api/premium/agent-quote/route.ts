@@ -11,6 +11,7 @@ import {
 } from "@parlaycity/shared";
 import type { RiskProfile } from "@parlaycity/shared";
 import { LEG_MAP } from "@/lib/mcp/tools";
+import { fetchNBAMarkets } from "@/lib/bdl";
 
 const RISK_CAPS: Record<
   RiskProfile,
@@ -37,6 +38,14 @@ export async function POST(req: Request) {
       bankroll: string;
       riskTolerance: string;
     };
+
+    // Refresh LEG_MAP with NBA legs
+    const nbaMarkets = await fetchNBAMarkets();
+    for (const m of nbaMarkets) {
+      for (const leg of m.legs) {
+        LEG_MAP.set(leg.id, { ...leg, category: m.category });
+      }
+    }
 
     // Validate inputs
     if (!Array.isArray(legIds) || legIds.length < 2 || legIds.length > 5) {
@@ -105,7 +114,7 @@ export async function POST(req: Request) {
     const numLegs = probs.length;
 
     // BigInt overflow guard
-    if (fairMultiplierX1e6 > BigInt(Number.MAX_SAFE_INTEGER)) {
+    if (fairMultiplierX1e6 > 9007199254740991n) {
       return NextResponse.json({
         quote,
         risk: {

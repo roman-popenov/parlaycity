@@ -67,7 +67,7 @@ export function ChatPanel() {
       <div className="flex items-center justify-between border-b border-white/10 bg-surface-2 px-4 py-3">
         <div className="flex items-center gap-2">
           <div className="h-2 w-2 rounded-full bg-green-400" />
-          <span className="text-sm font-semibold text-white">ParlayCity AI</span>
+          <span className="text-sm font-semibold text-white">ParlayVoo AI</span>
         </div>
         <button
           onClick={() => setOpen(false)}

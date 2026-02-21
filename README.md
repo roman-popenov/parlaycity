@@ -1,8 +1,8 @@
-# ParlayCity
+# ParlayVoo
 
 **Crash-Parlay AMM on Base.**
 
-Combine multiple prediction outcomes into high-multiplier parlay tickets, backed by a permissionless LP vault. Watch your multiplier climb as each leg resolves -- cash out before the crash, or ride to full payout. Built at ETHDenver 2026.
+Combine multiple prediction outcomes into high-multiplier parlay tickets, backed by a permissionless LP vault. Watch your multiplier climb as each leg resolves -- cash out before the crash, or ride to full payout. AI agents discover markets, assess risk, and check protocol health via MCP tools. Built at ETHDenver 2026.
 
 ---
 
@@ -309,12 +309,14 @@ The settlement mode is set at ticket purchase time based on `bootstrapEndsAt`:
 
 ```
 parlaycity/
-├── apps/web/                    # Next.js 14 frontend
+├── apps/web/                    # Next.js 14 frontend (Vercel-deployed)
 │   └── src/
-│       ├── app/                 # Pages: /, /vault, /tickets, /ticket/[id]
-│       ├── components/          # ParlayBuilder, MultiplierClimb,
-│       │                        # VaultDashboard, TicketCard, RehabCTA
+│       ├── app/                 # Pages: /, /vault, /tickets, /ticket/[id], /about
+│       │   └── api/             # Chat (/api/chat), MCP (/api/mcp), Markets, Agent-Quote
+│       ├── components/          # ParlayBuilder, MultiplierClimb, ChatPanel,
+│       │                        # VaultDashboard, TicketCard, FTUESpotlight, RehabCTA
 │       └── lib/                 # wagmi config, hooks, ABIs, contracts, cashout
+│           └── mcp/             # MCP tool implementations (6 tools)
 ├── packages/
 │   ├── contracts/               # Foundry (Solidity)
 │   │   ├── src/core/            # HouseVault, ParlayEngine, LegRegistry, LockVault
@@ -344,7 +346,8 @@ parlaycity/
 | Frontend | Next.js 14, React 18, TypeScript, Tailwind CSS |
 | Wallet | wagmi 2, viem 2, ConnectKit |
 | API | Express.js, Zod, x402 payment protocol |
-| AI | 0G Compute Network (verifiable inference), OpenAI SDK |
+| AI Chat | Vercel AI SDK, Claude (Anthropic), MCP JSON-RPC |
+| AI Inference | 0G Compute Network (verifiable inference), OpenAI SDK |
 | Testing | Forge (unit/fuzz/invariant), Vitest, Testing Library |
 | Chain | Base (Anvil for local, Base Sepolia for testnet) |
 | Workspace | pnpm 8 workspaces |
@@ -352,6 +355,8 @@ parlaycity/
 ---
 
 ## API Endpoints
+
+### Express.js Services (port 3001)
 
 | Route | Auth | Description |
 |---|---|---|
@@ -366,6 +371,28 @@ parlaycity/
 | `GET /health` | Public | Service health check |
 
 x402 endpoints require an `X-402-Payment` header. In dev/test, any non-empty value is accepted.
+
+### Next.js API Routes (Vercel-deployed)
+
+| Route | Auth | Description |
+|---|---|---|
+| `POST /api/chat` | API key | AI chat endpoint (Vercel AI SDK + Claude) |
+| `GET/POST /api/mcp` | Public | MCP JSON-RPC endpoint (tools/list, tools/call) |
+| `GET /api/markets` | Public | Market catalog (serverless, no Express dependency) |
+| `POST /api/premium/agent-quote` | Public | Agent quote + risk assessment (serverless) |
+
+### MCP Tools
+
+Six protocol tools exposed via the `/api/mcp` endpoint for AI agent consumption:
+
+| Tool | Description |
+|---|---|
+| `list_markets` | List available betting markets, optionally filter by category |
+| `get_quote` | Get parlay quote -- multiplier, payout, fees for given legs and stake |
+| `assess_risk` | Kelly criterion risk assessment with BUY/REDUCE_STAKE/AVOID recommendation |
+| `get_vault_health` | Vault TVL, reserved exposure, free liquidity, utilization % |
+| `get_leg_status` | Status of a specific betting leg by ID |
+| `get_protocol_config` | Fee structure, limits, contract addresses, chain info |
 
 ---
 

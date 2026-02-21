@@ -2,7 +2,7 @@
 
 ## Stack
 
-Next.js 14 (App Router), React 18, TypeScript, Tailwind 3. Wallet: wagmi 2, viem 2, ConnectKit.
+Next.js 14 (App Router), React 18, TypeScript, Tailwind 3. Wallet: wagmi 2, viem 2, ConnectKit. AI: Vercel AI SDK + Claude. Deployed to Vercel.
 
 ## Pages
 
@@ -12,14 +12,23 @@ Next.js 14 (App Router), React 18, TypeScript, Tailwind 3. Wallet: wagmi 2, viem
 - `/ticket/[id]` -- ticket detail + settle/claim
 - `/about` -- project overview, architecture, team info
 
+## API Routes
+
+- `/api/chat` -- AI chat endpoint (Vercel AI SDK + Claude, streaming, tool calling)
+- `/api/mcp` -- MCP JSON-RPC endpoint for external AI agents (tools/list, tools/call)
+- `/api/markets` -- Serverless market catalog (no Express dependency)
+- `/api/premium/agent-quote` -- Serverless agent quote + risk assessment
+
 ## Key Files
 
 - `lib/config.ts` -- chain config, contract addresses from env vars, `PARLAY_CONFIG` constants
 - `lib/contracts.ts` -- inline ABIs + `contractAddresses` object
 - `lib/hooks.ts` -- all wagmi hooks. Write hooks: `isPending -> isConfirming -> isSuccess` pattern
 - `lib/wagmi.ts` -- wagmi config via ConnectKit, supports `foundry` + `baseSepolia` chains
-- `components/FTUESpotlight.tsx` -- first-time user experience spotlight overlay
-- `components/DemoBanner.tsx` -- hackathon demo status banner
+- `lib/mcp/tools.ts` -- 6 MCP tool implementations (list_markets, get_quote, assess_risk, get_vault_health, get_leg_status, get_protocol_config). Shared by both MCP endpoint and AI chat.
+- `components/ChatPanel.tsx` -- floating AI chat panel (bottom-right, all pages)
+- `components/FTUESpotlight.tsx` -- two-phase first-time user experience spotlight overlay
+- `components/DemoBanner.tsx` -- hackathon demo status banner (with mint error display)
 - `components/DemoHint.tsx` -- contextual demo hints for judges
 - `components/HowItWorks.tsx` -- crash-parlay explainer (onboarding)
 
@@ -62,3 +71,5 @@ Every key action needs a clear button:
 - Buy ticket / Cash out / Settle / Claim
 - Deposit / Withdraw vault
 - Lock / Unlock + claim rewards
+- AI chat (floating panel, quick prompts)
+- MCP discovery (GET /api/mcp returns tool list)

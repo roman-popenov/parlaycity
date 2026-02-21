@@ -192,7 +192,15 @@ export function FTUESpotlight() {
       return;
     }
 
+    let frameCount = 0;
     function measure() {
+      // Throttle: measure every 10th frame (~6fps) instead of every frame (60fps)
+      frameCount++;
+      if (frameCount % 10 !== 1) {
+        rafRef.current = requestAnimationFrame(measure);
+        return;
+      }
+
       const el = document.getElementById(currentStep!.targetId);
       if (el) {
         setTargetExists(true);
