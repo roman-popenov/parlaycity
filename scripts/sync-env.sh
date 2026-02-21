@@ -47,7 +47,20 @@ print('')
 "
 }
 
-USDC=$(get_addr "MockUSDC")
+# USDC: prefer env var (required for Sepolia where we use Circle USDC, not MockUSDC)
+if [ -n "${USDC_ADDRESS:-}" ]; then
+  USDC="$USDC_ADDRESS"
+  echo "Using USDC_ADDRESS from env: $USDC"
+else
+  USDC=$(get_addr "MockUSDC")
+  if [ -z "$USDC" ]; then
+    echo "ERROR: No USDC_ADDRESS env var set and no MockUSDC found in broadcast."
+    echo "For Sepolia, set USDC_ADDRESS to the Circle USDC contract."
+    echo "For local, ensure MockUSDC was deployed."
+    exit 1
+  fi
+fi
+
 HOUSE_VAULT=$(get_addr "HouseVault")
 PARLAY_ENGINE=$(get_addr "ParlayEngine")
 LEG_REGISTRY=$(get_addr "LegRegistry")

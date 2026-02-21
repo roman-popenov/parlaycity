@@ -19,8 +19,8 @@
  *   ADMIN_ORACLE_ADDRESS  -- overrides .env.local
  */
 
-import { writeFileSync } from "fs";
-import { resolve } from "path";
+import { mkdirSync, writeFileSync } from "fs";
+import { dirname, resolve } from "path";
 import {
   createPublicClient,
   createWalletClient,
@@ -178,6 +178,12 @@ async function main() {
   const nowSec = Math.floor(Date.now() / 1000);
   const sevenDaysFromNow = nowSec + 7 * 24 * 3600;
 
+  // Explicitly manage nonce to avoid "nonce too low" / "replacement transaction
+  // underpriced" errors on real networks where RPC propagation lags behind
+  // waitForTransactionReceipt.
+  let nonce = await publicClient.getTransactionCount({ address: account.address });
+  console.log(`[register-legs] Starting nonce: ${nonce}`);
+
   for (const leg of catalogLegs) {
     const normalizedQ = normalize(leg.question);
 
@@ -192,7 +198,7 @@ async function main() {
     const cutoff = leg.cutoffTime > nowSec ? leg.cutoffTime : sevenDaysFromNow;
     const earliest = leg.earliestResolve > cutoff ? leg.earliestResolve : cutoff + 3600;
 
-    console.log(`[register-legs] Creating leg: "${leg.question.slice(0, 60)}..." (PPM: ${leg.probabilityPPM})`);
+    console.log(`[register-legs] Creating leg #${nonce}: "${leg.question.slice(0, 60)}..." (PPM: ${leg.probabilityPPM})`);
 
     const hash = await walletClient.writeContract({
       address: cfg.registryAddr,
@@ -206,9 +212,12 @@ async function main() {
         cfg.adminOracleAddr,
         BigInt(leg.probabilityPPM),
       ],
+      nonce,
       chain: cfg.chain,
       account,
     });
+
+    nonce++; // Increment locally before waiting -- we know the next nonce
 
     await publicClient.waitForTransactionReceipt({ hash });
 
@@ -238,6 +247,7 @@ async function main() {
     legs: mapping,
   };
 
+  mkdirSync(dirname(outputPath), { recursive: true });
   writeFileSync(outputPath, JSON.stringify(output, null, 2) + "\n");
   console.log(`[register-legs] Wrote mapping to ${outputPath}`);
   console.log("[register-legs] Done.");
