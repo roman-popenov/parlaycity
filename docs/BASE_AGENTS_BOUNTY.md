@@ -56,11 +56,12 @@ flowchart TB
     MA_R -->|x402 payment| AQ
     AQ -->|A0GI tokens| ZG
     MA_R -->|resolve| OA
-    OA --> LR
     HU -->|buyTicket| PE
     HU --> MK
     HU -.->|optional x402| AQ
     PE --> HV
+    PE -->|getLeg| LR
+    LR -->|adapter ref| OA
     SB -->|settleTicket| PE
     SB -->|canResolve| OA
 ```
