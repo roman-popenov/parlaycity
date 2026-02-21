@@ -2,8 +2,7 @@ import { NextResponse } from "next/server";
 import { createPublicClient, http } from "viem";
 import { baseSepolia, foundry } from "viem/chains";
 import { LEG_REGISTRY_ABI } from "@/lib/contracts";
-
-const NBA_LEG_ID_OFFSET = 1000;
+import { NBA_LEG_ID_OFFSET } from "@/lib/bdl";
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
 
 const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? "84532");
@@ -74,6 +73,8 @@ export async function GET() {
       } else if (ouMatch) {
         const gameId = parseInt(ouMatch[1]);
         mapping[String(NBA_LEG_ID_OFFSET + gameId * 2 + 1)] = i;
+      } else {
+        console.warn(`[leg-mapping] Unrecognized sourceRef for leg ${i}: "${leg.sourceRef}"`);
       }
     }
 

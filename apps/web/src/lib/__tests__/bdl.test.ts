@@ -57,9 +57,11 @@ describe("BDL NBA Markets", () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn().mockRejectedValue(new Error("Network error"));
 
-    const markets = await bdlModule.fetchNBAMarkets();
-    expect(markets).toEqual([]);
-
-    globalThis.fetch = originalFetch;
+    try {
+      const markets = await bdlModule.fetchNBAMarkets();
+      expect(markets).toEqual([]);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });
