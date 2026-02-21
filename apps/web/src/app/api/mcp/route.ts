@@ -20,7 +20,7 @@ const TOOL_DEFINITIONS = [
         category: {
           type: "string",
           description:
-            "Filter by category: crypto, defi, nft, policy, economics, trivia, ethdenver",
+            "Filter by category: crypto, defi, nft, policy, economics, trivia, ethdenver, nba",
         },
       },
     },

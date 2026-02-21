@@ -159,7 +159,7 @@ function gameToMarket(
   const { line, overPPM } = estimateOverUnder(homeStats.avgPts, awayStats.avgPts);
 
   const gameDate = new Date(game.date);
-  const dateStr = gameDate.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const dateStr = gameDate.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
   const cutoffTime = Math.floor(gameDate.getTime() / 1000);
   const earliestResolve = cutoffTime + 4 * 3600;
 
