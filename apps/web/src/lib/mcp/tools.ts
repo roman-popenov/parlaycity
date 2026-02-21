@@ -14,7 +14,7 @@ import {
 } from "@parlaycity/shared";
 import type { RiskProfile, Market, Leg } from "@parlaycity/shared";
 import { HOUSE_VAULT_ABI, LEG_REGISTRY_ABI, PARLAY_ENGINE_ABI } from "../contracts";
-import { fetchNBAMarkets } from "../bdl";
+import { fetchNBAMarkets, NBA_LEG_ID_OFFSET } from "../bdl";
 
 // ---------------------------------------------------------------------------
 // Chain client
@@ -131,8 +131,13 @@ for (const m of SEED_MARKETS) {
   }
 }
 
-/** Refresh LEG_MAP with NBA legs from BDL. Call before tool execution. */
-async function refreshLegMap(): Promise<void> {
+/** Refresh LEG_MAP with NBA legs from BDL. Call before tool execution.
+ *  Clears stale NBA legs (>= NBA_LEG_ID_OFFSET) before repopulating. */
+export async function refreshLegMap(): Promise<void> {
+  // Remove stale NBA entries to prevent unbounded growth (lesson #36-adjacent)
+  for (const id of LEG_MAP.keys()) {
+    if (id >= NBA_LEG_ID_OFFSET) LEG_MAP.delete(id);
+  }
   const nbaMarkets = await fetchNBAMarkets();
   for (const m of nbaMarkets) {
     for (const leg of m.legs) {

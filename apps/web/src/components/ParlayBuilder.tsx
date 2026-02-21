@@ -232,11 +232,16 @@ export function ParlayBuilder() {
   const [payoutMode, setPayoutMode] = useSessionState<0 | 1 | 2>(SESSION_KEYS.payoutMode, 0);
   const [mounted, setMounted] = useState(false);
 
-  // Fetch leg-mapping.json
+  // Fetch leg mapping (dynamic API, falls back to static file)
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch("/leg-mapping.json");
+        // Try dynamic API first (auto-discovers newly registered legs)
+        let r = await fetch("/api/leg-mapping");
+        if (!r?.ok) {
+          // Fall back to static file
+          r = await fetch("/leg-mapping.json");
+        }
         if (!r?.ok) return;
         const data = await r.json();
         if (data?.legs && typeof data.legs === "object") {
@@ -252,7 +257,7 @@ export function ParlayBuilder() {
           setOnChainLegIds(catalogIds);
         }
       } catch {
-        /* leg-mapping.json not available */
+        /* leg-mapping not available */
       }
     })();
   }, []);
