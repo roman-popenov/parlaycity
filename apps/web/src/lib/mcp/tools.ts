@@ -132,7 +132,7 @@ for (const m of SEED_MARKETS) {
 }
 
 /** Refresh LEG_MAP with NBA legs from BDL. Call before tool execution. */
-async function refreshLegMap(): Promise<void> {
+export async function refreshLegMap(): Promise<void> {
   const nbaMarkets = await fetchNBAMarkets();
   for (const m of nbaMarkets) {
     for (const leg of m.legs) {

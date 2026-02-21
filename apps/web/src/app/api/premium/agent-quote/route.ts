@@ -10,8 +10,7 @@ import {
   RiskAction,
 } from "@parlaycity/shared";
 import type { RiskProfile } from "@parlaycity/shared";
-import { LEG_MAP } from "@/lib/mcp/tools";
-import { fetchNBAMarkets } from "@/lib/bdl";
+import { LEG_MAP, refreshLegMap } from "@/lib/mcp/tools";
 
 const RISK_CAPS: Record<
   RiskProfile,
@@ -39,13 +38,7 @@ export async function POST(req: Request) {
       riskTolerance: string;
     };
 
-    // Refresh LEG_MAP with NBA legs
-    const nbaMarkets = await fetchNBAMarkets();
-    for (const m of nbaMarkets) {
-      for (const leg of m.legs) {
-        LEG_MAP.set(leg.id, { ...leg, category: m.category });
-      }
-    }
+    await refreshLegMap();
 
     // Validate inputs
     if (!Array.isArray(legIds) || legIds.length < 2 || legIds.length > 5) {

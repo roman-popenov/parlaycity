@@ -33,7 +33,7 @@ USDC amounts are in 6-decimal format on-chain but display as human-readable doll
     tools: {
       list_markets: tool({
         description:
-          "List available betting markets. Optionally filter by category (crypto, defi, nft, policy, economics, trivia, ethdenver).",
+          "List available betting markets. Optionally filter by category (crypto, defi, nft, policy, economics, trivia, ethdenver, nba).",
         parameters: z.object({
           category: z
             .string()
