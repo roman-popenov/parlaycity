@@ -772,6 +772,9 @@ export function ParlayBuilder() {
                   )}
                 </span>
               )}
+              {mintHook.error && (
+                <p className="text-xs text-red-400">{mintHook.error}</p>
+              )}
             </div>
             <div className="relative">
               <input
@@ -913,7 +916,7 @@ export function ParlayBuilder() {
                     <div className="flex justify-between">
                       <span className="text-gray-500">EV</span>
                       <span className={`font-semibold ${riskAdvice.expectedValue >= 0 ? "text-neon-green" : "text-neon-red"}`}>
-                        {riskAdvice.expectedValue >= 0 ? "+" : ""}{(riskAdvice.expectedValue * 100).toFixed(1)}%
+                        {riskAdvice.expectedValue >= 0 ? "+" : ""}{riskAdvice.expectedValue.toFixed(2)} USDC
                       </span>
                     </div>
                     <div className="flex justify-between">

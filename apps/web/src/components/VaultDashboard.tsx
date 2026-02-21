@@ -413,6 +413,9 @@ export function VaultDashboard() {
                   )}
                 </div>
               </div>
+              {mintHook.error && (
+                <p className="text-center text-xs text-red-400">{mintHook.error}</p>
+              )}
               <div className="relative">
                 <input
                   type="text"

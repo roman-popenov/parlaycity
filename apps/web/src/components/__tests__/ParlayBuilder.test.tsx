@@ -574,7 +574,7 @@ describe("ParlayBuilder", () => {
       expect(screen.getByText("! High variance")).toBeInTheDocument();
       expect(screen.getByText("5.0%")).toBeInTheDocument(); // Kelly
       expect(screen.getByText("12.0%")).toBeInTheDocument(); // Win Prob
-      expect(screen.getByText("+15.0%")).toBeInTheDocument(); // EV
+      expect(screen.getByText("+0.15 USDC")).toBeInTheDocument(); // EV
       expect(screen.getByText("150bps")).toBeInTheDocument(); // Edge
     });
 
