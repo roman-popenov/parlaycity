@@ -29,6 +29,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { foundry, baseSepolia } from "viem/chains";
 
 import { loadEnvLocal, requireExplicitKeyForRemoteRpc, safeBigIntToNumber } from "./lib/env";
+import { BUILDER_SUFFIX } from "./lib/builder-code";
 
 // -- ABI fragments (only what we need) ------------------------------------
 
@@ -162,6 +163,7 @@ async function settle(
         abi: ENGINE_ABI,
         functionName: "settleTicket",
         args: [BigInt(id)],
+        dataSuffix: BUILDER_SUFFIX,
         chain: walletClient.chain,
         account,
       });
