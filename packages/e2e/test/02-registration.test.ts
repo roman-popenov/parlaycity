@@ -27,8 +27,8 @@ describe("Leg registration", () => {
       abi: REGISTRY_ABI,
       functionName: "legCount",
     });
-    // 3 from Deploy.s.sol + 21 from seed catalog = 24 minimum
-    expect(count).toBeGreaterThanOrEqual(24n);
+    // 21 seed catalog legs minimum (Deploy.s.sol no longer creates sample legs)
+    expect(count).toBeGreaterThanOrEqual(21n);
   });
 
   it("each registered seed leg has valid data", async () => {
@@ -38,8 +38,8 @@ describe("Leg registration", () => {
       functionName: "legCount",
     });
 
-    // Check legs 3 onward (seed legs start after deploy's 3)
-    for (let i = 3n; i < count; i++) {
+    // Check all legs (Deploy.s.sol no longer creates sample legs)
+    for (let i = 0n; i < count; i++) {
       const leg = await pub.readContract({
         address: addrs.LegRegistry,
         abi: REGISTRY_ABI,
@@ -90,8 +90,8 @@ describe("Leg registration", () => {
       functionName: "legCount",
     });
 
-    // Verify seed legs (IDs 3+) have non-zero cutoffs
-    for (let i = 3n; i < count; i++) {
+    // Verify all legs have non-zero cutoffs
+    for (let i = 0n; i < count; i++) {
       const leg = await pub.readContract({
         address: addrs.LegRegistry,
         abi: REGISTRY_ABI,

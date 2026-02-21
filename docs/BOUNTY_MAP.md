@@ -14,7 +14,7 @@
 
 | # | Bounty | Prize | Requirements | Our Position | Confidence | Hours | Owner |
 |---|--------|-------|-------------|--------------|------------|-------|-------|
-| 1 | Kite AI x402 | $10K | Real x402 payment, agent-consumable API | x402 real verification implemented | HIGH | 4-6h | Agent demo PR |
+| 1 | Kite AI x402 | $10K | Real x402 payment, agent-consumable API | READY: x402 verification + agent-quote + demo script + submission docs | HIGH | DONE | docs/KITE_AI_BOUNTY.md |
 | 2 | Track: New France | $2K | On-chain prediction + vault | Already qualifies | HIGH | 1h | Narrative |
 | 3 | Track: Futurllama | $2K | Novel mechanic + agent quoting | Crash-parlay + /quote API | HIGH | 1h | Narrative |
 | 4 | Track: Prosperia | $2K | Non-extractive, no owner sweep, social impact | 90/5/5 fee + rehab spec | MEDIUM | 1h | Narrative |
@@ -49,7 +49,7 @@
 
 **What we have:** `packages/services/src/premium/x402.ts` -- real x402 verification using `@x402/express` `paymentMiddleware` with `ExactEvmScheme`. Production mode verifies USDC payments on Base via facilitator. Dev/test mode falls back to stub. Configurable via env vars (`X402_RECIPIENT_WALLET`, `X402_NETWORK`, `X402_FACILITATOR_URL`, `X402_PRICE`). Two x402-gated endpoints: `/premium/sim` and `/premium/risk-assess`.
 
-**What we need:** Agent demo script showing autonomous market discovery -> x402 payment -> risk assessment -> buy/skip decision loop. Agent docs for submission.
+**What we built:** Agent demo script (`scripts/agent-demo.ts`) showing autonomous market discovery -> x402 payment -> risk assessment -> buy/skip decision loop. Submission docs at `docs/KITE_AI_BOUNTY.md`. Full x402 handshake (402 -> payment -> 200) demonstrated across 5 rounds with 3 different risk tolerance profiles.
 
 ### Base Agents ($10K)
 **What they want:** Self-sustaining autonomous agents on Base. Not just "deploy on Base" -- they want agents that can operate autonomously.

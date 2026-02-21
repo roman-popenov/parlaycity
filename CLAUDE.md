@@ -66,6 +66,9 @@ make clean             # forge clean + .next
 
 make register-legs     # Register seed legs on-chain from catalog (requires Anvil + deploy)
 make sync-env          # re-run sync-env.sh without redeploying
+make fund-wallet WALLET=0x...  # Mint 10,000 MockUSDC to any wallet on Base Sepolia
+make fund-wallet WALLET=0x... AMOUNT=5000  # Custom amount (max 10,000 per call)
+make fund-deployer     # Print deployer address + ETH/USDC faucet links
 make ci                # run full CI locally via act
 make ci-contracts      # run contracts CI job via act
 make ci-services       # run services CI job via act

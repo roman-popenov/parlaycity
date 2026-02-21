@@ -81,6 +81,21 @@ fund-deployer:
 	@echo "   https://faucet.circle.com/"
 	@echo "   Select 'Base Sepolia' and paste your deployer address"
 
+## Mint MockUSDC to any wallet on Base Sepolia (10,000 per call, no access control)
+## Usage: make fund-wallet WALLET=0x... [AMOUNT=10000] [RPC=https://sepolia.base.org]
+fund-wallet:
+	$(eval RPC := $(or $(BASE_SEPOLIA_RPC_URL),https://sepolia.base.org))
+	$(eval USDC := $(shell grep NEXT_PUBLIC_USDC_ADDRESS apps/web/.env.local 2>/dev/null | cut -d= -f2))
+	$(eval AMT_USDC := $(or $(AMOUNT),10000))
+	$(eval AMT_RAW := $(shell echo "$(AMT_USDC) * 1000000" | bc))
+	@test -n "$(WALLET)" || (echo "Usage: make fund-wallet WALLET=0x..." && exit 1)
+	@test -n "$(USDC)" || (echo "Error: USDC address not found. Run 'make deploy-sepolia' first." && exit 1)
+	@echo "Minting $(AMT_USDC) MockUSDC to $(WALLET) on Base Sepolia..."
+	@cast send $(USDC) "mint(address,uint256)" $(WALLET) $(AMT_RAW) \
+		--rpc-url $(RPC) --private-key $(DEPLOYER_PRIVATE_KEY)
+	@echo ""
+	@echo "Balance: $$(cast call $(USDC) 'balanceOf(address)(uint256)' $(WALLET) --rpc-url $(RPC) | awk '{printf "%.2f MockUSDC\n", $$1/1000000}')"
+
 sync-env:
 	./scripts/sync-env.sh
 
@@ -241,4 +256,4 @@ clean:
 	cd packages/contracts && forge clean
 	cd apps/web && rm -rf .next
 
-.PHONY: bootstrap setup chain deploy-local deploy-sepolia deploy-sepolia-full sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-web test-all test-e2e gate typecheck build-web build-contracts coverage coverage-contracts coverage-services coverage-web snapshot ci ci-contracts ci-services ci-web demo-seed demo-seed-sepolia demo-autopilot demo-autopilot-crash register-legs register-legs-sepolia create-pool-sepolia fund-deployer clean risk-agent risk-agent-dry
+.PHONY: bootstrap setup chain deploy-local deploy-sepolia deploy-sepolia-full sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-web test-all test-e2e gate typecheck build-web build-contracts coverage coverage-contracts coverage-services coverage-web snapshot ci ci-contracts ci-services ci-web demo-seed demo-seed-sepolia demo-autopilot demo-autopilot-crash register-legs register-legs-sepolia create-pool-sepolia fund-deployer fund-wallet clean risk-agent risk-agent-dry
