@@ -3,6 +3,7 @@ import { Providers } from "@/components/providers";
 import { Header } from "@/components/Header";
 import { DemoBanner } from "@/components/DemoBanner";
 import { FTUESpotlight, FTUEProvider } from "@/components/FTUESpotlight";
+import { ChatPanel } from "@/components/ChatPanel";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -36,6 +37,7 @@ export default function RootLayout({
               </main>
             </div>
           </FTUEProvider>
+          <ChatPanel />
         </Providers>
       </body>
     </html>
