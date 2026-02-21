@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useAccount } from "wagmi";
 import { formatUnits } from "viem";
 import { useModal } from "connectkit";
-import { PARLAY_CONFIG, SERVICES_API_URL } from "@/lib/config";
+import { PARLAY_CONFIG } from "@/lib/config";
 import {
   sanitizeNumericInput,
   blockNonNumericKeys,
@@ -281,7 +281,7 @@ export function ParlayBuilder() {
 
     async function fetchMarkets() {
       try {
-        const res = await fetch(`${SERVICES_API_URL}/markets`);
+        const res = await fetch("/api/markets");
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const markets: APIMarket[] = await res.json();
         if (cancelled || !Array.isArray(markets)) return;
@@ -475,7 +475,7 @@ export function ParlayBuilder() {
     setRiskError(null);
 
     try {
-      const res = await fetch(`${SERVICES_API_URL}/premium/agent-quote`, {
+      const res = await fetch("/api/premium/agent-quote", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
