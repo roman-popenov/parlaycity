@@ -55,6 +55,7 @@ vi.mock("@/lib/hooks", () => ({
   useUSDCBalance: () => mockUseUSDCBalance(),
   useVaultStats: () => mockUseVaultStats(),
   useParlayConfig: () => mockUseParlayConfig(),
+  useMintTestUSDC: () => ({ mint: vi.fn(), isPending: false, isConfirming: false, isSuccess: false }),
 }));
 
 // Mock MultiplierClimb
@@ -185,9 +186,11 @@ describe("ParlayBuilder", () => {
   });
 
   it("updates leg count when selecting legs", () => {
-    render(<ParlayBuilder />);
+    const { container } = render(<ParlayBuilder />);
     selectLegs(2);
-    expect(screen.getByText("(2/5)")).toBeInTheDocument();
+    // Leg counter is now numbered squares (rounded-md + gradient-bg when filled)
+    const filledDots = container.querySelectorAll(".rounded-md.gradient-bg");
+    expect(filledDots.length).toBe(2);
   });
 
   // --- Vault empty state ---
@@ -391,9 +394,11 @@ describe("ParlayBuilder", () => {
         { legId: "0", outcomeChoice: 1 },
         { legId: "1", outcomeChoice: 1 },
       ]);
-      render(<ParlayBuilder />);
+      const { container } = render(<ParlayBuilder />);
       await waitFor(() => {
-        expect(screen.getByText("(2/5)")).toBeInTheDocument();
+        // Leg counter squares (rounded-md + gradient-bg) = filled slots
+        const filledDots = container.querySelectorAll(".rounded-md.gradient-bg");
+        expect(filledDots.length).toBe(2);
       });
     });
 
@@ -799,7 +804,7 @@ describe("ParlayBuilder", () => {
       render(<ParlayBuilder />);
       // Classic should have the active styling (ring class)
       const classicBtn = screen.getByText("Classic").closest("button")!;
-      expect(classicBtn.className).toContain("accent-blue");
+      expect(classicBtn.className).toContain("brand-purple");
     });
   });
 
@@ -918,24 +923,24 @@ describe("ParlayBuilder", () => {
 
   describe("leg toggle", () => {
     it("toggles a leg off when clicking the same outcome again", () => {
-      render(<ParlayBuilder />);
+      const { container } = render(<ParlayBuilder />);
       const yesButtons = screen.getAllByText("Yes");
       fireEvent.click(yesButtons[0]);
-      expect(screen.getByText("(1/5)")).toBeInTheDocument();
+      expect(container.querySelectorAll(".rounded-md.gradient-bg").length).toBe(1);
       // Click same leg/outcome again -> deselect
       fireEvent.click(yesButtons[0]);
-      expect(screen.getByText("(0/5)")).toBeInTheDocument();
+      expect(container.querySelectorAll(".rounded-md.gradient-bg").length).toBe(0);
     });
 
     it("switches outcome when clicking No on a Yes-selected leg", () => {
-      render(<ParlayBuilder />);
+      const { container } = render(<ParlayBuilder />);
       const yesButtons = screen.getAllByText("Yes");
       const noButtons = screen.getAllByText("No");
       fireEvent.click(yesButtons[0]); // Select first leg Yes
       expect(screen.getByText("YES")).toBeInTheDocument();
       fireEvent.click(noButtons[0]); // Switch to No
       expect(screen.getByText("NO")).toBeInTheDocument();
-      expect(screen.getByText("(1/5)")).toBeInTheDocument(); // Still 1 leg
+      expect(container.querySelectorAll(".rounded-md.gradient-bg").length).toBe(1); // Still 1 leg
     });
 
     it("enforces max legs limit", () => {
@@ -947,12 +952,14 @@ describe("ParlayBuilder", () => {
         isLoading: false,
         refetch: vi.fn(),
       });
-      render(<ParlayBuilder />);
+      const { container } = render(<ParlayBuilder />);
       const yesButtons = screen.getAllByText("Yes");
       fireEvent.click(yesButtons[0]);
       fireEvent.click(yesButtons[1]);
       fireEvent.click(yesButtons[2]); // Should be ignored (max 2)
-      expect(screen.getByText("(2/2)")).toBeInTheDocument();
+      // With maxLegs=2, there are 2 numbered squares, both filled
+      const filledDots = container.querySelectorAll(".rounded-md.gradient-bg");
+      expect(filledDots.length).toBe(2);
     });
   });
 

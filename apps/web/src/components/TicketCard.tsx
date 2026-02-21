@@ -11,7 +11,7 @@ export interface TicketLeg {
   outcomeChoice: number; // 1 = yes, 2 = no, 0 = unknown
   resolved: boolean;
   result: number; // 0 = unresolved, 1 = Won, 2 = Lost, 3 = Voided (oracle LegStatus)
-  probabilityPPM?: number; // raw integer PPM from LegRegistry (avoids lossy float round-trip)
+  probabilityPPM?: number;
 }
 
 export interface TicketData {
@@ -25,24 +25,24 @@ export interface TicketData {
   payoutMode?: number; // 0=Classic, 1=Progressive, 2=EarlyCashout
   claimedAmount?: bigint;
   cashoutPenaltyBps?: number;
-  cashoutValue?: bigint; // pre-computed client-side cashout estimate (effectiveStake-based)
+  cashoutValue?: bigint;
 }
 
 const STATUS_STYLES: Record<TicketStatus, string> = {
-  Active: "bg-accent-blue/20 text-accent-blue border-accent-blue/30",
-  Won: "bg-neon-green/20 text-neon-green border-neon-green/30",
+  Active: "bg-brand-pink/15 text-brand-pink border-brand-pink/30",
+  Won: "bg-brand-green/20 text-brand-green border-brand-green/30",
   Lost: "bg-neon-red/20 text-neon-red border-neon-red/30",
-  Voided: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-  Claimed: "bg-accent-purple/20 text-accent-purple border-accent-purple/30",
+  Voided: "bg-brand-amber/20 text-brand-amber border-brand-amber/30",
+  Claimed: "bg-brand-purple/15 text-brand-purple-1 border-brand-purple/30",
 };
 
 const LEG_STATUS_CONFIG: Record<
   "win" | "loss" | "voided" | "pending",
   { label: string; tooltip: string; style: string }
 > = {
-  win: { label: "W", tooltip: "Won", style: "bg-neon-green/20 text-neon-green" },
+  win: { label: "W", tooltip: "Won", style: "bg-brand-green/20 text-brand-green" },
   loss: { label: "L", tooltip: "Lost", style: "bg-neon-red/20 text-neon-red" },
-  voided: { label: "X", tooltip: "Voided", style: "bg-yellow-500/20 text-yellow-400" },
+  voided: { label: "X", tooltip: "Voided", style: "bg-brand-amber/20 text-brand-amber" },
   pending: { label: "P", tooltip: "Pending", style: "bg-white/10 text-gray-400" },
 };
 
@@ -58,8 +58,8 @@ function getLegStatus(leg: TicketLeg): "win" | "loss" | "voided" | "pending" {
 
 const PAYOUT_MODE_LABELS: Record<number, { label: string; style: string }> = {
   0: { label: "Classic", style: "text-gray-400" },
-  1: { label: "Progressive", style: "text-accent-purple" },
-  2: { label: "Cashout", style: "text-yellow-400" },
+  1: { label: "Progressive", style: "text-brand-purple-1" },
+  2: { label: "Cashout", style: "text-brand-amber" },
 };
 
 export function TicketCard({ ticket }: { ticket: TicketData }) {
@@ -79,7 +79,7 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
   const canCashout = ticket.status === "Active" && ticket.payoutMode === 2 && hasWonLegs && hasUnresolved && !hasLostLeg;
 
   return (
-    <div className="overflow-hidden rounded-2xl border border-white/5 bg-gradient-to-br from-gray-900 to-gray-950">
+    <div className="glass-card overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between border-b border-white/5 px-6 py-4">
         <div>
@@ -131,7 +131,9 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
                 </p>
                 <p className="text-xs text-gray-500">
                   {leg.odds.toFixed(1)}x &middot;{" "}
-                  {leg.outcomeChoice === 1 ? "YES" : leg.outcomeChoice === 2 ? "NO" : "?"}
+                  <span className={leg.outcomeChoice === 1 ? "text-brand-green" : leg.outcomeChoice === 2 ? "text-brand-amber" : ""}>
+                    {leg.outcomeChoice === 1 ? "YES" : leg.outcomeChoice === 2 ? "NO" : "?"}
+                  </span>
                 </p>
               </div>
             </div>
@@ -150,13 +152,13 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
           </div>
           <div>
             <p className="text-xs text-gray-500">Multiplier</p>
-            <p className="font-bold text-accent-purple">
+            <p className="gradient-text-gold text-glow-gold font-bold">
               {multiplier.toFixed(2)}x
             </p>
           </div>
           <div>
             <p className="text-xs text-gray-500">Payout</p>
-            <p className="font-bold text-neon-green">
+            <p className="font-bold text-brand-green">
               ${Number(formatUnits(ticket.payout, 6)).toFixed(2)}
             </p>
           </div>
@@ -167,7 +169,7 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
             <button
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); settle(ticket.id); }}
               disabled={isSettling}
-              className="flex-1 rounded-xl border border-accent-blue/30 bg-accent-blue/10 py-2.5 text-sm font-semibold text-accent-blue transition-all hover:bg-accent-blue/20 disabled:opacity-50"
+              className="flex-1 rounded-xl border border-brand-pink/30 bg-brand-pink/10 py-2.5 text-sm font-semibold text-brand-pink transition-all hover:bg-brand-pink/20 disabled:opacity-50"
             >
               {isSettling ? "Settling..." : "Settle"}
             </button>
@@ -176,7 +178,7 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
             <button
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); claim(ticket.id); }}
               disabled={isClaiming}
-              className="flex-1 rounded-xl bg-gradient-to-r from-neon-green/80 to-neon-green py-2.5 text-sm font-bold text-black transition-all hover:shadow-lg hover:shadow-neon-green/20 disabled:opacity-50"
+              className="flex-1 rounded-xl bg-gradient-to-r from-brand-green/80 to-brand-green py-2.5 text-sm font-bold text-black transition-all hover:shadow-lg hover:shadow-brand-green/20 disabled:opacity-50"
             >
               {isClaiming ? "Claiming..." : "Claim Payout"}
             </button>
@@ -185,7 +187,7 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
             <button
               onClick={(e) => { e.preventDefault(); e.stopPropagation(); claimProgressive(ticket.id); }}
               disabled={isClaimingProgressive}
-              className="flex-1 rounded-xl border border-accent-purple/30 bg-accent-purple/10 py-2.5 text-sm font-semibold text-accent-purple transition-all hover:bg-accent-purple/20 disabled:opacity-50"
+              className="flex-1 rounded-xl border border-brand-purple/30 bg-brand-purple/10 py-2.5 text-sm font-semibold text-brand-purple-1 transition-all hover:bg-brand-purple/20 disabled:opacity-50"
             >
               {isClaimingProgressive ? "Claiming..." : "Claim Progressive"}
             </button>
@@ -198,7 +200,7 @@ export function TicketCard({ ticket }: { ticket: TicketData }) {
                 cashoutEarly(ticket.id, minOut);
               }}
               disabled={isCashingOut}
-              className="flex-1 rounded-xl border border-yellow-500/30 bg-yellow-500/10 py-2.5 text-sm font-semibold text-yellow-400 transition-all hover:bg-yellow-500/20 disabled:opacity-50"
+              className="flex-1 rounded-xl border border-brand-amber/30 bg-brand-amber/10 py-2.5 text-sm font-semibold text-brand-amber transition-all hover:bg-brand-amber/20 disabled:opacity-50"
             >
               {isCashingOut ? "Cashing out..." : ticket.cashoutValue
                 ? `Cash Out ~$${Number(formatUnits(ticket.cashoutValue, 6)).toFixed(2)}`

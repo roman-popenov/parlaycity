@@ -12,7 +12,7 @@ import {
   useSessionState,
 } from "@/lib/utils";
 import { MOCK_LEGS } from "@/lib/mock";
-import { useBuyTicket, useParlayConfig, useUSDCBalance, useVaultStats } from "@/lib/hooks";
+import { useBuyTicket, useParlayConfig, useUSDCBalance, useVaultStats, useMintTestUSDC } from "@/lib/hooks";
 import { MultiplierClimb } from "./MultiplierClimb";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -81,6 +81,17 @@ const CATEGORY_LABELS: Record<string, string> = {
   trivia: "Trivia",
   ethdenver: "ETHDenver",
   nba: "NBA",
+};
+
+const CATEGORY_COLORS: Record<string, string> = {
+  crypto: "bg-brand-purple/15 text-brand-purple-1 border-brand-purple/30",
+  defi: "bg-brand-blue/15 text-brand-blue border-brand-blue/30",
+  nft: "bg-brand-pink/15 text-brand-pink border-brand-pink/30",
+  policy: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+  economics: "bg-neon-green/15 text-neon-green border-neon-green/30",
+  trivia: "bg-brand-amber/15 text-brand-amber border-brand-amber/30",
+  ethdenver: "bg-brand-pink/15 text-brand-pink border-brand-pink/30",
+  nba: "bg-brand-amber/15 text-brand-amber border-brand-amber/30",
 };
 
 // ── Session storage keys ─────────────────────────────────────────────────
@@ -182,20 +193,16 @@ export function ParlayBuilder() {
   const { setOpen: openConnectModal } = useModal();
   const { buyTicket, resetSuccess, isPending, isConfirming, isSuccess, error, lastTicketId } = useBuyTicket();
   const { balance: usdcBalance } = useUSDCBalance();
+  const mintHook = useMintTestUSDC();
   const { freeLiquidity, maxPayout } = useVaultStats();
   const { baseFeeBps, perLegFeeBps, maxLegs, minStakeUSDC } = useParlayConfig();
 
   // ── Market data state ───────────────────────────────────────────────────
-  // Initialize with MOCK_LEGS as default -- tests and first render always
-  // see these immediately. API fetch upgrades to full catalog if available.
 
   const [allLegs, setAllLegs] = useState<DisplayLeg[]>(mockToDisplayLegs);
   const [availableCategories, setAvailableCategories] = useState<string[]>(["crypto"]);
   const [activeCategory, setActiveCategory] = useSessionState<string>(SESSION_KEYS.category, "all");
 
-  // Dynamic on-chain leg mapping (from register-legs script output)
-  // legMapping: catalog leg ID (string) -> on-chain contract leg ID (number)
-  // onChainLegIds: set of CATALOG IDs that have on-chain mappings
   const [legMapping, setLegMapping] = useState<Record<string, number>>({});
   const [onChainLegIds, setOnChainLegIds] = useState<Set<bigint>>(new Set());
 
@@ -204,10 +211,9 @@ export function ParlayBuilder() {
   const [selectedLegs, setSelectedLegs] = useState<SelectedLeg[]>([]);
   const [stake, setStake] = useSessionState<string>(SESSION_KEYS.stake, "");
   const [payoutMode, setPayoutMode] = useSessionState<0 | 1 | 2>(SESSION_KEYS.payoutMode, 0);
-
   const [mounted, setMounted] = useState(false);
 
-  // Fetch leg-mapping.json (from register-legs script) to know which catalog legs are on-chain
+  // Fetch leg-mapping.json
   useEffect(() => {
     (async () => {
       try {
@@ -215,37 +221,33 @@ export function ParlayBuilder() {
         if (!r?.ok) return;
         const data = await r.json();
         if (data?.legs && typeof data.legs === "object") {
-          // Validate chainId matches current app chain to prevent stale mapping
           const expectedChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? "31337");
           if (data.chainId && data.chainId !== expectedChainId) {
             console.warn(`[leg-mapping] Chain mismatch: mapping=${data.chainId}, app=${expectedChainId}. Ignoring.`);
             return;
           }
           setLegMapping(data.legs);
-          // Keys are catalog leg IDs; values are on-chain contract IDs
           const catalogIds = new Set<bigint>(
             Object.keys(data.legs as Record<string, number>).map((k) => BigInt(k)),
           );
           setOnChainLegIds(catalogIds);
         }
       } catch {
-        /* leg-mapping.json not available -- all API legs remain off-chain */
+        /* leg-mapping.json not available */
       }
     })();
   }, []);
 
-  // Fetch markets from API (upgrades from MOCK_LEGS to full catalog)
+  // Fetch markets from API
   useEffect(() => {
     setMounted(true);
     let cancelled = false;
 
-    // Parse stored selections early so we can re-restore after API legs load
     let storedSelections: StoredSelection[] | null = null;
     try {
       const raw = sessionStorage.getItem(SESSION_KEYS.legs);
       if (raw) {
         storedSelections = JSON.parse(raw);
-        // Immediate restore against MOCK_LEGS (IDs 0, 1, 2)
         const restored = restoreSelections(storedSelections!, mockToDisplayLegs());
         if (restored.length > 0) setSelectedLegs(restored);
       }
@@ -266,14 +268,13 @@ export function ParlayBuilder() {
           const cats = [...new Set(markets.map((m) => m.category))].sort();
           setAvailableCategories(cats);
 
-          // Re-restore selections against full catalog to recover picks from new categories
           if (storedSelections && storedSelections.length > 0) {
             const restored = restoreSelections(storedSelections, legs);
             if (restored.length > 0) setSelectedLegs(restored);
           }
         }
       } catch {
-        // Keep initial MOCK_LEGS data -- no change needed
+        // Keep initial MOCK_LEGS data
       }
     }
 
@@ -283,8 +284,7 @@ export function ParlayBuilder() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reconcile selectedLegs when allLegs changes (e.g., API fetch replaces mock data)
-  // so stale mock leg references (with wrong onChain flag) are replaced with current objects.
+  // Reconcile selectedLegs when allLegs changes
   useEffect(() => {
     setSelectedLegs((prev) => {
       if (prev.length === 0) return prev;
@@ -301,14 +301,14 @@ export function ParlayBuilder() {
             reconciled.push(s);
           }
         } else {
-          changed = true; // leg no longer in catalog, drop it
+          changed = true;
         }
       }
       return changed ? reconciled : prev;
     });
   }, [allLegs]);
 
-  // Persist selectedLegs to sessionStorage on change
+  // Persist selectedLegs to sessionStorage
   useEffect(() => {
     if (!mounted) return;
     try {
@@ -329,7 +329,6 @@ export function ParlayBuilder() {
   const [riskError, setRiskError] = useState<string | null>(null);
   const riskFetchIdRef = useRef(0);
 
-  // Clear stale risk advice, reset loading, and invalidate in-flight fetches
   useEffect(() => {
     setRiskAdvice(null);
     setRiskError(null);
@@ -345,13 +344,11 @@ export function ParlayBuilder() {
   const effectiveBaseFee = baseFeeBps ?? PARLAY_CONFIG.baseFee;
   const effectivePerLegFee = perLegFeeBps ?? PARLAY_CONFIG.perLegFee;
 
-  /** Legs filtered by active category. */
   const filteredLegs = useMemo(() => {
     if (activeCategory === "all") return allLegs;
     return allLegs.filter((l) => l.category === activeCategory);
   }, [allLegs, activeCategory]);
 
-  // Reset activeCategory if persisted value no longer matches any legs
   useEffect(() => {
     if (
       activeCategory !== "all" &&
@@ -362,7 +359,6 @@ export function ParlayBuilder() {
     }
   }, [activeCategory, allLegs.length, filteredLegs.length, setActiveCategory]);
 
-  /** Group filtered legs by market title for display. */
   const groupedByMarket = useMemo(() => {
     const groups = new Map<string, DisplayLeg[]>();
     for (const leg of filteredLegs) {
@@ -388,8 +384,6 @@ export function ParlayBuilder() {
   const usdcBalanceNum = usdcBalance !== undefined ? parseFloat(formatUnits(usdcBalance, 6)) : 0;
   const insufficientBalance = stakeNum > 0 && usdcBalance !== undefined && stakeNum > usdcBalanceNum;
 
-  /** All selected legs must be on-chain to enable buying.
-   *  MOCK_LEGS have onChain=true (Deploy.s.sol). API legs use live onChainLegIds (from leg-mapping). */
   const allSelectedOnChain = selectedLegs.every(
     (s) => s.leg.onChain || onChainLegIds.has(s.leg.id),
   );
@@ -431,9 +425,6 @@ export function ParlayBuilder() {
 
   const handleBuy = async () => {
     if (!canBuy) return;
-    // Translate catalog leg IDs to on-chain IDs via leg mapping.
-    // Mock/Deploy.s.sol legs (onChain=true) already have correct IDs — skip mapping
-    // to avoid collision with catalog IDs that share the same numeric range.
     const legIds = selectedLegs.map((s) => {
       if (s.leg.onChain) return s.leg.id;
       const catalogId = s.leg.id.toString();
@@ -536,7 +527,7 @@ export function ParlayBuilder() {
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <div className={`grid gap-8 lg:grid-cols-5 ${mounted ? "" : "pointer-events-none opacity-0"}`}>
+    <div id="ftue-builder" className={`grid gap-8 lg:grid-cols-5 ${mounted ? "" : "pointer-events-none opacity-0"}`}>
       {/* Leg selector */}
       <div className="space-y-4 lg:col-span-3">
         {vaultEmpty && (
@@ -551,7 +542,7 @@ export function ParlayBuilder() {
             onClick={() => setActiveCategory("all")}
             className={`rounded-full px-3 py-1 text-xs font-semibold transition-all ${
               activeCategory === "all"
-                ? "bg-accent-blue/20 text-accent-blue ring-1 ring-accent-blue/30"
+                ? "gradient-bg text-white shadow-lg shadow-brand-pink/20"
                 : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200"
             }`}
           >
@@ -563,36 +554,64 @@ export function ParlayBuilder() {
               onClick={() => setActiveCategory(cat)}
               className={`rounded-full px-3 py-1 text-xs font-semibold transition-all ${
                 activeCategory === cat
-                  ? "bg-accent-blue/20 text-accent-blue ring-1 ring-accent-blue/30"
+                  ? "gradient-bg text-white shadow-lg shadow-brand-pink/20"
                   : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200"
               }`}
             >
               {CATEGORY_LABELS[cat] ?? cat}
-              {cat === "nba" && <span className="ml-1 text-[10px] opacity-60">LIVE</span>}
+              {cat === "nba" && (
+                <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-neon-green/15 px-1.5 py-0.5 text-[10px] font-bold text-neon-green">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-neon-green" />
+                  LIVE
+                </span>
+              )}
             </button>
           ))}
         </div>
 
-        <h2 className="text-lg font-semibold text-gray-300">
-          Pick Your Legs{" "}
-          <span className="text-sm text-gray-500">
-            ({selectedLegs.length}/{effectiveMaxLegs})
-          </span>
-        </h2>
+        {/* Leg counter: visual dot indicators */}
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-gray-300">
+            Pick Your Legs
+          </h2>
+          <div className="flex gap-1">
+            {Array.from({ length: effectiveMaxLegs }, (_, i) => (
+              <div
+                key={i}
+                className={`flex h-6 w-6 items-center justify-center rounded-md text-[10px] font-bold transition-all ${
+                  i < selectedLegs.length
+                    ? "gradient-bg text-white shadow-sm"
+                    : "bg-white/5 text-gray-600"
+                }`}
+              >
+                {i + 1}
+              </div>
+            ))}
+          </div>
+        </div>
 
         <div className={`space-y-4 ${vaultEmpty ? "pointer-events-none opacity-40" : ""}`}>
           {[...groupedByMarket.entries()].map(([title, legs]) => (
-            <div key={title}>
-              <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wider text-gray-500">
-                {title}
+            <div key={title} className="space-y-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-medium uppercase tracking-wider text-gray-500">
+                  {title}
+                </h3>
+                {legs[0] && (
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                    CATEGORY_COLORS[legs[0].category] ?? "bg-white/10 text-gray-400 border-white/10"
+                  }`}>
+                    {CATEGORY_LABELS[legs[0].category] ?? legs[0].category}
+                  </span>
+                )}
                 {legs[0] && !legs[0].onChain && !onChainLegIds.has(legs[0].id) && (
-                  <span className="ml-2 rounded bg-yellow-500/10 px-1.5 py-0.5 text-[10px] text-yellow-400">
+                  <span className="rounded-full bg-yellow-500/10 px-2 py-0.5 text-[10px] text-yellow-400">
                     Analysis Only
                   </span>
                 )}
-              </h3>
-              <div className="space-y-1">
-                {legs.map((leg) => {
+              </div>
+              <div className="space-y-2">
+                {legs.map((leg, legIdx) => {
                   const selected = selectedLegs.find((s) => s.leg.id === leg.id);
                   const currentOdds = selected
                     ? effectiveOdds(leg, selected.outcomeChoice)
@@ -600,34 +619,36 @@ export function ParlayBuilder() {
                   return (
                     <div
                       key={leg.id.toString()}
-                      className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 transition-all ${
+                      id={legIdx === 0 ? "ftue-market-card" : undefined}
+                      className={`animate-market-card-enter glass-card overflow-hidden transition-all ${
                         selected
-                          ? "border-accent-blue/50 bg-accent-blue/5"
-                          : "border-white/5 bg-gray-900/50 hover:border-white/10"
+                          ? selected.outcomeChoice === 1
+                            ? "border-brand-green/40 shadow-[0_0_15px_rgba(34,197,94,0.1)]"
+                            : "border-brand-amber/40 shadow-[0_0_15px_rgba(245,158,11,0.1)]"
+                          : "hover:border-white/10"
                       }`}
+                      style={{ animationDelay: `${legIdx * 50}ms` }}
                     >
-                      <span className="min-w-0 flex-1 truncate text-sm text-gray-200">
-                        {leg.description}
-                        {!leg.onChain && !onChainLegIds.has(leg.id) && (
-                          <span className="ml-1 text-[10px] text-gray-500">(off-chain)</span>
-                        )}
-                      </span>
-                      <span className={`flex-shrink-0 tabular-nums text-xs font-semibold ${
-                        selected?.outcomeChoice === 1 ? "text-neon-green" :
-                        selected?.outcomeChoice === 2 ? "text-neon-red" :
-                        "text-gray-500"
-                      }`}>
-                        {currentOdds.toFixed(2)}x
-                      </span>
-                      {/* Dual-pill toggle */}
-                      <div className="flex flex-shrink-0 items-center rounded-full bg-white/5 p-0.5">
+                      <div className="flex items-center gap-3 px-4 py-3">
+                        <span className="min-w-0 flex-1 text-sm text-gray-200">
+                          {leg.description}
+                          {!leg.onChain && !onChainLegIds.has(leg.id) && (
+                            <span className="ml-1 text-[10px] text-gray-500">(off-chain)</span>
+                          )}
+                        </span>
+                        <span className="flex-shrink-0 rounded-full bg-white/5 px-2 py-0.5 text-xs font-bold tabular-nums text-brand-gold">
+                          {currentOdds.toFixed(2)}x
+                        </span>
+                      </div>
+                      {/* Full-width YES/NO buttons */}
+                      <div className="grid grid-cols-2">
                         <button
                           disabled={vaultEmpty}
                           onClick={() => toggleLeg(leg, 1)}
-                          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-all ${
+                          className={`py-2 text-xs font-bold uppercase tracking-wider transition-all ${
                             selected?.outcomeChoice === 1
-                              ? "bg-neon-green/20 text-neon-green"
-                              : "text-gray-500 hover:text-gray-300"
+                              ? "bg-brand-green/20 text-brand-green"
+                              : "bg-white/[0.02] text-gray-500 hover:bg-brand-green/10 hover:text-brand-green/70"
                           }`}
                         >
                           Yes
@@ -635,10 +656,10 @@ export function ParlayBuilder() {
                         <button
                           disabled={vaultEmpty}
                           onClick={() => toggleLeg(leg, 2)}
-                          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-all ${
+                          className={`border-l border-white/5 py-2 text-xs font-bold uppercase tracking-wider transition-all ${
                             selected?.outcomeChoice === 2
-                              ? "bg-neon-red/20 text-neon-red"
-                              : "text-gray-500 hover:text-gray-300"
+                              ? "bg-brand-amber/20 text-brand-amber"
+                              : "bg-white/[0.02] text-gray-500 hover:bg-brand-amber/10 hover:text-brand-amber/70"
                           }`}
                         >
                           No
@@ -654,28 +675,33 @@ export function ParlayBuilder() {
       </div>
 
       {/* Ticket builder / summary panel */}
-      <div className="lg:col-span-2">
-        <div className="sticky top-20 space-y-6 rounded-2xl border border-white/5 bg-gray-900/60 p-6 backdrop-blur">
+      <div className="lg:col-span-2" id="parlay-panel">
+        <div className="glass-card-glow sticky top-20 space-y-6 p-6">
           {/* Multiplier climb */}
-          <MultiplierClimb
-            legMultipliers={selectedLegs.map((s) => effectiveOdds(s.leg, s.outcomeChoice))}
-          />
+          <div id="parlay-multiplier">
+            <MultiplierClimb
+              legMultipliers={selectedLegs.map((s) => effectiveOdds(s.leg, s.outcomeChoice))}
+              animated
+            />
+          </div>
 
-          {/* Selected legs summary */}
+          {/* Selected legs summary with numbered badges */}
           {selectedLegs.length > 0 && (
             <div className="space-y-2">
               {selectedLegs.map((s, i) => (
                 <div
                   key={s.leg.id.toString()}
-                  className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2 text-sm animate-fade-in"
+                  className="flex items-center gap-3 rounded-lg bg-white/5 px-3 py-2 text-sm animate-fade-in"
                 >
-                  <span className="truncate text-gray-300">
-                    <span className="mr-2 text-gray-500">#{i + 1}</span>
+                  <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full gradient-bg text-[10px] font-bold text-white">
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-gray-300">
                     {s.leg.description}
                   </span>
                   <span
                     className={`ml-2 flex-shrink-0 text-xs font-bold ${
-                      s.outcomeChoice === 1 ? "text-neon-green" : "text-neon-red"
+                      s.outcomeChoice === 1 ? "text-brand-green" : "text-brand-amber"
                     }`}
                   >
                     {s.outcomeChoice === 1 ? "YES" : "NO"}
@@ -686,14 +712,23 @@ export function ParlayBuilder() {
           )}
 
           {/* Stake input */}
-          <div>
+          <div id="stake-input">
             <div className="mb-1.5 flex items-center justify-between">
               <label className="text-xs font-medium uppercase tracking-wider text-gray-500">
                 Stake (USDC)
               </label>
               {usdcBalance !== undefined && (
-                <span className="text-xs text-gray-500">
+                <span className="flex items-center gap-2 text-xs text-gray-500">
                   Balance: {parseFloat(formatUnits(usdcBalance, 6)).toFixed(2)}
+                  {isConnected && (
+                    <button
+                      onClick={() => mintHook.mint()}
+                      disabled={mintHook.isPending || mintHook.isConfirming}
+                      className="rounded-md bg-brand-pink/20 px-1.5 py-0.5 text-[10px] font-semibold text-brand-pink transition-colors hover:bg-brand-pink/30 disabled:opacity-50"
+                    >
+                      {mintHook.isPending ? "..." : mintHook.isConfirming ? "Minting" : mintHook.isSuccess ? "Done!" : "+ Mint"}
+                    </button>
+                  )}
                 </span>
               )}
             </div>
@@ -705,14 +740,14 @@ export function ParlayBuilder() {
                 onKeyDown={blockNonNumericKeys}
                 onChange={(e) => { resetSuccess(); setStake(sanitizeNumericInput(e.target.value)); }}
                 placeholder={`Min ${effectiveMinStake} USDC`}
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-24 text-lg font-semibold text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-blue/50"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-24 text-lg font-semibold text-white placeholder-gray-600 outline-none transition-colors focus:border-brand-pink/50"
               />
               <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2">
                 {usdcBalance !== undefined && usdcBalance > 0n && (
                   <button
                     type="button"
                     onClick={() => setStake(formatUnits(usdcBalance!, 6))}
-                    className="rounded-md bg-accent-blue/20 px-2 py-0.5 text-xs font-semibold text-accent-blue transition-colors hover:bg-accent-blue/30"
+                    className="rounded-md bg-brand-pink/20 px-2 py-0.5 text-xs font-semibold text-brand-pink transition-colors hover:bg-brand-pink/30"
                   >
                     MAX
                   </button>
@@ -738,7 +773,7 @@ export function ParlayBuilder() {
                   onClick={() => { resetSuccess(); setPayoutMode(value); }}
                   className={`rounded-lg px-2 py-2 text-center transition-all ${
                     payoutMode === value
-                      ? "bg-accent-blue/20 text-accent-blue ring-1 ring-accent-blue/30"
+                      ? "bg-brand-purple/15 text-brand-purple-1 ring-1 ring-brand-purple/30"
                       : "text-gray-400 hover:text-gray-200"
                   }`}
                 >
@@ -763,17 +798,7 @@ export function ParlayBuilder() {
             </div>
             <div className="flex justify-between text-gray-400">
               <span>Combined Odds</span>
-              <span
-                className="font-bold"
-                style={{
-                  color:
-                    selectedLegs.length <= 2
-                      ? "#22c55e"
-                      : selectedLegs.length <= 3
-                        ? "#eab308"
-                        : "#ef4444",
-                }}
-              >
+              <span className="gradient-text-gold text-glow-gold font-bold">
                 {multiplier.toFixed(2)}x
               </span>
             </div>
@@ -785,7 +810,7 @@ export function ParlayBuilder() {
               <button
                 onClick={fetchRiskAdvice}
                 disabled={riskLoading}
-                className="w-full rounded-lg border border-accent-purple/30 bg-accent-purple/10 py-2 text-xs font-semibold text-accent-purple transition-all hover:bg-accent-purple/20 disabled:opacity-50"
+                className="w-full rounded-lg border border-brand-purple-1/30 bg-brand-purple/10 py-2 text-xs font-semibold text-brand-purple-1 transition-all hover:bg-brand-purple/20 disabled:opacity-50"
               >
                 {riskLoading ? "Analyzing..." : "AI Risk Analysis (x402)"}
               </button>
@@ -815,7 +840,7 @@ export function ParlayBuilder() {
                   {riskAdvice.suggestedStake && riskAdvice.suggestedStake !== stake && (
                     <button
                       onClick={() => setStake(sanitizeNumericInput(riskAdvice!.suggestedStake))}
-                      className="mt-1.5 rounded bg-accent-blue/20 px-2 py-0.5 text-accent-blue hover:bg-accent-blue/30"
+                      className="mt-1.5 rounded bg-brand-pink/20 px-2 py-0.5 text-brand-pink hover:bg-brand-pink/30"
                     >
                       Use suggested: ${riskAdvice.suggestedStake}
                     </button>
@@ -836,12 +861,12 @@ export function ParlayBuilder() {
           <button
             onClick={!mounted || !isConnected ? () => openConnectModal(true) : handleBuy}
             disabled={mounted && isConnected && (!canBuy || vaultEmpty || isPending || isConfirming)}
-            className={`w-full rounded-xl py-3.5 text-sm font-bold uppercase tracking-wider transition-all ${
+            className={`btn-gradient w-full rounded-xl py-3.5 text-sm font-bold uppercase tracking-wider text-white transition-all ${
               !mounted || !isConnected
-                ? "bg-gradient-to-r from-accent-blue to-accent-purple text-white shadow-lg shadow-accent-purple/20 hover:shadow-accent-purple/40"
+                ? ""
                 : canBuy && !vaultEmpty && !isPending && !isConfirming
-                  ? "bg-gradient-to-r from-accent-blue to-accent-purple text-white shadow-lg shadow-accent-purple/20 hover:shadow-accent-purple/40"
-                  : "cursor-not-allowed bg-gray-800 text-gray-500"
+                  ? ""
+                  : "!bg-none !bg-gray-800 !text-gray-500 cursor-not-allowed !shadow-none"
             }`}
           >
             {buyButtonLabel()}
@@ -853,7 +878,7 @@ export function ParlayBuilder() {
               className={`rounded-lg px-4 py-2.5 text-center text-sm font-medium animate-fade-in ${
                 txState === "confirmed"
                   ? "bg-neon-green/10 text-neon-green"
-                  : "bg-accent-blue/10 text-accent-blue"
+                  : "bg-brand-purple/10 text-brand-purple-1"
               }`}
             >
               {txState === "pending" && "Transaction submitted..."}

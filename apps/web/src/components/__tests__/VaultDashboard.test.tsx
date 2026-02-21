@@ -58,6 +58,12 @@ vi.mock("@/lib/hooks", () => ({
     pendingRewards: 0n,
     refetch: vi.fn(),
   })),
+  useMintTestUSDC: vi.fn(() => ({
+    mint: vi.fn(),
+    isPending: false,
+    isConfirming: false,
+    isSuccess: false,
+  })),
 }));
 
 // Mock contracts
@@ -144,7 +150,7 @@ describe("VaultDashboard", () => {
   it("switches to lock tab and shows tier selector", () => {
     render(<VaultDashboard />);
     fireEvent.click(screen.getByText("Lock"));
-    expect(screen.getByText("Lock vUSDC Shares")).toBeInTheDocument();
+    expect(screen.getByText(/Lock your vault shares/)).toBeInTheDocument();
     expect(screen.getByText("1.1x")).toBeInTheDocument();
     expect(screen.getByText("1.25x")).toBeInTheDocument();
     expect(screen.getByText("1.5x")).toBeInTheDocument();
