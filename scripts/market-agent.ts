@@ -163,6 +163,7 @@ async function discover(
   registryAddr: Address,
   adminOracleAddr: Address,
   questionMap: Map<string, number>,
+  sourceRefMap: Map<string, number>,
   cycle: number,
   dryRun: boolean,
   chain: Chain,
@@ -198,8 +199,8 @@ async function discover(
     for (const leg of market.legs) {
       const normalizedQ = normalize(leg.question);
 
-      // Already registered
-      if (questionMap.has(normalizedQ)) {
+      // Already registered (check both question and sourceRef to avoid false dedup)
+      if (questionMap.has(normalizedQ) || sourceRefMap.has(leg.sourceRef)) {
         emitLog({
           timestamp: new Date().toISOString(),
           cycle,
@@ -620,7 +621,7 @@ async function runCycle(
   await discover(
     publicClient, walletClient, account,
     cfg.registryAddr, cfg.adminOracleAddr,
-    questionMap, cycle, cfg.dryRun, cfg.chain,
+    questionMap, sourceRefMap, cycle, cfg.dryRun, cfg.chain,
   );
 
   // Rebuild sourceRefMap after registration (new legs may have been added)

@@ -175,7 +175,7 @@ function gameToMarket(
     },
     {
       id: legIdBase + 1,
-      question: `Will total score be over ${line}?`,
+      question: `Will ${away.abbreviation} @ ${home.abbreviation} total score be over ${line}?`,
       sourceRef: `bdl:game:${game.id}:ou`,
       cutoffTime,
       earliestResolve,
