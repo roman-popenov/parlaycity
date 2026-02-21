@@ -9,16 +9,29 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        bg: "#0a0a0f",
+        bg: "#080812",
+        card: "hsl(260 18% 7%)",
+        brand: {
+          pink: "#ff1a8c",
+          "pink-glow": "#ff55b8",
+          purple: "#9200e1",
+          "purple-1": "#b75fff",
+          "purple-2": "#cb8aff",
+          gold: "#ffb800",
+          green: "#22c55e",
+          amber: "#f59e0b",
+          blue: "#4a90e2",
+        },
         accent: {
-          blue: "#3b82f6",
-          purple: "#8b5cf6",
+          blue: "#4a90e2",
+          purple: "#b75fff",
         },
         neon: {
           green: "#22c55e",
           red: "#ef4444",
           yellow: "#eab308",
         },
+        "muted-foreground": "hsl(260 10% 50%)",
       },
       animation: {
         "climb": "climb 0.6s ease-out forwards",
@@ -34,6 +47,11 @@ const config: Config = {
         "particle-ring": "particleRing 0.8s ease-out forwards",
         "fade-in-up": "fadeInUp 0.5s ease-out forwards",
         "leg-pop": "legPop 0.4s ease-out forwards",
+        "market-card-in": "marketCardIn 0.4s ease both",
+        "multiplier-pulse": "multiplierPulse 0.4s ease",
+        "glow-pulse-pink": "glowPulsePink 2s ease-in-out infinite",
+        "slide-in-right": "slideInRight 0.4s ease-out forwards",
+        "market-card-enter": "marketCardEnter 0.35s ease both",
       },
       keyframes: {
         climb: {
@@ -91,6 +109,27 @@ const config: Config = {
           "0%": { transform: "scale(0.6)", opacity: "0" },
           "60%": { transform: "scale(1.2)" },
           "100%": { transform: "scale(1)", opacity: "1" },
+        },
+        marketCardIn: {
+          "0%": { opacity: "0", transform: "translateY(16px) scale(0.97)" },
+          "100%": { opacity: "1", transform: "translateY(0) scale(1)" },
+        },
+        multiplierPulse: {
+          "0%": { transform: "scale(1)" },
+          "30%": { transform: "scale(1.06)", filter: "brightness(1.3)" },
+          "100%": { transform: "scale(1)" },
+        },
+        glowPulsePink: {
+          "0%, 100%": { boxShadow: "0 0 20px rgba(255, 26, 140, 0.3)" },
+          "50%": { boxShadow: "0 0 50px rgba(255, 26, 140, 0.7), 0 0 80px rgba(146, 0, 225, 0.3)" },
+        },
+        slideInRight: {
+          "0%": { opacity: "0", transform: "translateX(40px)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
+        },
+        marketCardEnter: {
+          "0%": { opacity: "0", transform: "translateY(12px) scale(0.98)" },
+          "100%": { opacity: "1", transform: "translateY(0) scale(1)" },
         },
       },
     },
