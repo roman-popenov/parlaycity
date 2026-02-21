@@ -121,6 +121,7 @@ export async function GET() {
         status: string;
         result: Array<{
           hash: string;
+          from: string;
           input: string;
           gasUsed: string;
           gasPrice: string;
@@ -131,7 +132,12 @@ export async function GET() {
       };
 
       if (json.status === "1" && Array.isArray(json.result)) {
-        recentTxs = json.result.slice(0, 20).map((tx) => {
+        // Only include txs sent BY the agent (not incoming transfers)
+        const agentTxs = json.result.filter(
+          (tx) => tx.from.toLowerCase() === AGENT_WALLET.toLowerCase(),
+        );
+
+        recentTxs = agentTxs.slice(0, 20).map((tx) => {
           const gasUsed = BigInt(tx.gasUsed);
           const gasPrice = BigInt(tx.gasPrice);
           const gasCost = gasUsed * gasPrice;
@@ -146,7 +152,7 @@ export async function GET() {
           };
         });
 
-        totalGasSpent = json.result.reduce((sum: bigint, tx) => {
+        totalGasSpent = agentTxs.reduce((sum: bigint, tx) => {
           return sum + BigInt(tx.gasUsed) * BigInt(tx.gasPrice);
         }, 0n);
       }
