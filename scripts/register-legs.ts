@@ -198,7 +198,7 @@ async function main() {
     const cutoff = leg.cutoffTime > nowSec ? leg.cutoffTime : sevenDaysFromNow;
     const earliest = leg.earliestResolve > cutoff ? leg.earliestResolve : cutoff + 3600;
 
-    console.log(`[register-legs] Creating leg #${nonce}: "${leg.question.slice(0, 60)}..." (PPM: ${leg.probabilityPPM})`);
+    console.log(`[register-legs] Creating leg ${created + 1} (nonce ${nonce}): "${leg.question.slice(0, 60)}..." (PPM: ${leg.probabilityPPM})`);
 
     const hash = await walletClient.writeContract({
       address: cfg.registryAddr,

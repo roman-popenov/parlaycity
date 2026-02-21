@@ -202,11 +202,11 @@ export function FTUESpotlight() {
         const left = r.left - pad;
         const width = r.width + pad * 2;
         const height = r.height + pad * 2;
-        const prev = prevRectRef.current;
-        if (!prev || prev.top !== top || prev.left !== left || prev.width !== width || prev.height !== height) {
-          const next = { top, left, width, height };
-          prevRectRef.current = next;
-          setRect(next);
+        const prevRect = prevRectRef.current;
+        if (!prevRect || prevRect.top !== top || prevRect.left !== left || prevRect.width !== width || prevRect.height !== height) {
+          const nextRect = { top, left, width, height };
+          prevRectRef.current = nextRect;
+          setRect(nextRect);
         }
       } else {
         setTargetExists(false);

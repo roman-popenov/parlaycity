@@ -22,6 +22,7 @@ const mockUseMintTestUSDC = vi.fn(() => ({
   isPending: false,
   isConfirming: false,
   isSuccess: false,
+  error: null as string | null,
 }));
 
 vi.mock("@/lib/hooks", () => ({
@@ -54,6 +55,7 @@ afterEach(() => {
     isPending: false,
     isConfirming: false,
     isSuccess: false,
+    error: null,
   });
 });
 
@@ -103,6 +105,7 @@ describe("DemoBanner", () => {
       isPending: true,
       isConfirming: false,
       isSuccess: false,
+      error: null,
     });
     render(<DemoBanner />);
     expect(screen.getByText("Signing...")).toBeInTheDocument();
@@ -116,6 +119,7 @@ describe("DemoBanner", () => {
       isPending: false,
       isConfirming: true,
       isSuccess: false,
+      error: null,
     });
     render(<DemoBanner />);
     expect(screen.getByText("Minting...")).toBeInTheDocument();
@@ -148,6 +152,7 @@ describe("DemoBanner", () => {
       isPending: true,
       isConfirming: false,
       isSuccess: false,
+      error: null,
     });
     render(<DemoBanner />);
     expect(screen.getByText("Signing...").closest("button")).toBeDisabled();
@@ -161,8 +166,24 @@ describe("DemoBanner", () => {
       isPending: false,
       isConfirming: true,
       isSuccess: false,
+      error: null,
     });
     render(<DemoBanner />);
     expect(screen.getByText("Minting...").closest("button")).toBeDisabled();
+  });
+
+  it("renders error message when mint fails", () => {
+    mockUseAccount.mockReturnValue({ isConnected: true, address: "0x1234" });
+    mockUseUSDCBalance.mockReturnValue({ balance: 0n, refetch: vi.fn() });
+    mockUseMintTestUSDC.mockReturnValue({
+      mint: mockMint,
+      isPending: false,
+      isConfirming: false,
+      isSuccess: false,
+      error: "Mint failed -- token may not be mintable",
+    });
+    render(<DemoBanner />);
+    expect(screen.getByTestId("demo-banner-error")).toBeInTheDocument();
+    expect(screen.getByText("Mint failed -- token may not be mintable")).toBeInTheDocument();
   });
 });

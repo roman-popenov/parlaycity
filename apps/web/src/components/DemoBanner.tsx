@@ -7,7 +7,7 @@ import { useUSDCBalance, useMintTestUSDC } from "@/lib/hooks";
 export function DemoBanner() {
   const { isConnected } = useAccount();
   const { balance } = useUSDCBalance();
-  const { mint, isPending, isConfirming, isSuccess } = useMintTestUSDC();
+  const { mint, isPending, isConfirming, isSuccess, error } = useMintTestUSDC();
 
   const [dismissed, setDismissed] = useState(false);
   const [hydrated, setHydrated] = useState(false);
@@ -75,6 +75,11 @@ export function DemoBanner() {
           </svg>
         </button>
       </div>
+      {error && (
+        <p data-testid="demo-banner-error" className="mt-1 px-4 text-xs text-red-400">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

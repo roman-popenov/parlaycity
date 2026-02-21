@@ -31,11 +31,11 @@ deploy-sepolia:
 	$(eval VERIFY_FLAG := $(if $(BASESCAN_API_KEY),--verify --etherscan-api-key $(BASESCAN_API_KEY) --verifier-url https://api-sepolia.basescan.org/api,))
 	cd packages/contracts && \
 		PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY \
-		USDC_ADDRESS=$(USDC_ADDRESS) \
+		$(if $(USDC_ADDRESS),USDC_ADDRESS=$(USDC_ADDRESS)) \
 		BOOTSTRAP_DAYS=30 \
 		forge script script/Deploy.s.sol \
 			--broadcast --rpc-url $(RPC) $(VERIFY_FLAG) --slow
-	USDC_ADDRESS=$(USDC_ADDRESS) ./scripts/sync-env.sh sepolia
+	$(if $(USDC_ADDRESS),USDC_ADDRESS=$(USDC_ADDRESS)) ./scripts/sync-env.sh sepolia
 
 ## Full Sepolia pipeline: deploy + register legs + seed demo data
 deploy-sepolia-full: deploy-sepolia register-legs-sepolia demo-seed-sepolia
