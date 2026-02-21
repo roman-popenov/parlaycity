@@ -1,0 +1,39 @@
+{
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "deployedAt": "2026-02-20",
+  "deployer": "0x1214ACab3De95D9C72354562D223f45e16a80389",
+  "rpcUrl": "https://sepolia.base.org",
+  "blockExplorer": "https://sepolia.basescan.org",
+  "contracts": {
+    "MockUSDC": "0xBf68FAa69faA3b42FFDEA2C033dF795706F6362b",
+    "HouseVault": "0xeF9334cA8C7cb7F081e4A53005020CD2F939A979",
+    "ParlayEngine": "0x8463CF3D7EE71Be38dDD10f83BA64689033eFDd2",
+    "LegRegistry": "0x2244D0f74469BD0ef8C47e7E5f7631E529D4c3bc",
+    "LockVault": "0x75457799813D894078FEbec6Fed6602938635435",
+    "AdminOracleAdapter": "0x4d2a37b47C5950Fa314E2cd6620CD01161B5eF22",
+    "OptimisticOracleAdapter": "0xaB07986A968B5F8E70ebc5d5ce7f47E117Bbd8d5",
+    "MockYieldAdapter": "0x995223C4763eA63cB6F46D79514a3020c42F5D53"
+  },
+  "uniswap": {
+    "pool_USDC_WETH_005": "0xcd32e3536406aC7f41DD677DB152ce462680701a",
+    "poolFee": 500,
+    "lpNftTokenId": 78037,
+    "initialLiquidity": {
+      "weth": "0.1",
+      "usdc": "280"
+    }
+  },
+  "external": {
+    "WETH": "0x4200000000000000000000000000000000000006",
+    "UniswapV3Factory": "0x4752ba5DBc23f44D87826276BF6Fd6b1C372aD24",
+    "UniswapV3NFPM": "0x27F971cb582BF9E50F397e4d29a5C7A34f11faA2",
+    "UniswapV3SwapRouter": "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4",
+    "UniswapV3QuoterV2": "0xC5290058841028F1614F3A6F0F5816cAd0df5E27"
+  },
+  "legRegistry": {
+    "legCount": 47,
+    "mappingFile": "apps/web/public/leg-mapping.json"
+  },
+  "notes": "Redeployed with MockUSDC (mintable, 10k max per call). Deployer funded with ETH. Pool at 0.05% fee tier, correctly priced at ~$2800/ETH."
+}

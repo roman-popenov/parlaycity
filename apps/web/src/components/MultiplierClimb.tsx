@@ -246,8 +246,13 @@ export function MultiplierClimb({
     }
   }, [pathD]);
 
+  // Builder preview mode: animated=true but no resolvedUpTo (not watching live resolution)
+  const isBuilderPreview = animated && resolvedUpTo === undefined;
+
   // For animated mode: compute stroke-dasharray/offset to reveal segments progressively
   const dashStyle = useMemo(() => {
+    // Builder preview: show full path (no dash animation)
+    if (isBuilderPreview) return undefined;
     if (!animated || pathLength === 0 || points.length <= 1) return undefined;
     const totalSegments = points.length - 1;
     const revealedSegments = Math.min(animatedSegments, totalSegments);
@@ -262,22 +267,29 @@ export function MultiplierClimb({
       strokeDasharray: `${pathLength}`,
       strokeDashoffset: `${pathLength - revealLen}`,
     };
-  }, [animated, animatedSegments, points, pathLength]);
+  }, [animated, isBuilderPreview, animatedSegments, points, pathLength]);
 
-  // Rocket tip position
+  // Rocket tip position -- always show rocket at baseline (bottom) when idle
   const rocketPos = useMemo(() => {
-    if (!animated || points.length <= 1) return null;
+    if (!animated) return null;
+    // No legs selected: rocket sits at the 1x baseline (bottom-left)
+    if (points.length <= 1) return points[0];
+    // Builder preview: rocket at the tip of the full path
+    if (isBuilderPreview) return points[points.length - 1];
     const resolved = resolvedUpTo ?? 0;
     const idx = Math.min(resolved, points.length - 1);
     return idx > 0 ? points[idx] : points[0];
-  }, [animated, points, resolvedUpTo]);
+  }, [animated, isBuilderPreview, points, resolvedUpTo]);
 
   // Display value: animated counter vs static
-  const displayValue = animated
-    ? crashed
-      ? 0
-      : displayedMultiplier
-    : runningMultiplier;
+  // Builder preview uses running multiplier (no resolution counter to animate)
+  const displayValue = isBuilderPreview
+    ? runningMultiplier
+    : animated
+      ? crashed
+        ? 0
+        : displayedMultiplier
+      : runningMultiplier;
 
   const displayColor = animated && (crashed || showCrash) ? "#ef4444" : color;
 
@@ -323,7 +335,7 @@ export function MultiplierClimb({
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-all ${
               !isLog
-                ? "bg-accent-blue/20 text-accent-blue"
+                ? "bg-brand-pink/15 text-brand-pink"
                 : "text-gray-600"
             }`}
           >
@@ -332,7 +344,7 @@ export function MultiplierClimb({
           <span
             className={`rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider transition-all ${
               isLog
-                ? "bg-accent-purple/20 text-accent-purple"
+                ? "bg-brand-purple/15 text-brand-purple-1"
                 : "text-gray-600"
             }`}
           >
@@ -414,54 +426,8 @@ export function MultiplierClimb({
                 style={dashStyle}
               />
 
-              {/* Rocket at tip (animated) or pulsing dot (static) */}
-              {animated && rocketPos && !crashed ? (
-                <g className="animate-rocket-climb">
-                  <text
-                    x={rocketPos.x}
-                    y={rocketPos.y - 3}
-                    textAnchor="middle"
-                    fontSize="8"
-                    className="select-none"
-                    vectorEffect="non-scaling-stroke"
-                  >
-                    🚀
-                  </text>
-                </g>
-              ) : animated && crashed && rocketPos ? (
-                // Explosion at crash point
-                <g>
-                  <circle
-                    cx={rocketPos.x}
-                    cy={rocketPos.y}
-                    r="2"
-                    fill="#ef4444"
-                    className="animate-explode"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                  <circle
-                    cx={rocketPos.x}
-                    cy={rocketPos.y}
-                    r="3"
-                    fill="none"
-                    stroke="#ef4444"
-                    strokeWidth="1"
-                    className="animate-particle-ring"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                  <circle
-                    cx={rocketPos.x}
-                    cy={rocketPos.y}
-                    r="2"
-                    fill="none"
-                    stroke="#ff6b6b"
-                    strokeWidth="0.5"
-                    className="animate-particle-ring"
-                    style={{ animationDelay: "0.15s" }}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                </g>
-              ) : !animated && points.length > 1 ? (
+              {/* Pulsing dot at tip (static/non-animated mode) */}
+              {!animated && points.length > 1 && (
                 <circle
                   cx={points[points.length - 1].x}
                   cy={points[points.length - 1].y}
@@ -470,9 +436,57 @@ export function MultiplierClimb({
                   className="animate-pulse-neon"
                   vectorEffect="non-scaling-stroke"
                 />
-              ) : null}
+              )}
             </>
           )}
+
+          {/* Rocket (animated mode) -- rendered outside pathD guard so it shows at baseline with 0 legs */}
+          {animated && rocketPos && !crashed ? (
+            <g className="animate-rocket-climb">
+              <text
+                x={rocketPos.x}
+                y={rocketPos.y - 3}
+                textAnchor="middle"
+                fontSize="8"
+                className="select-none"
+                vectorEffect="non-scaling-stroke"
+              >
+                🚀
+              </text>
+            </g>
+          ) : animated && crashed && rocketPos ? (
+            <g>
+              <circle
+                cx={rocketPos.x}
+                cy={rocketPos.y}
+                r="2"
+                fill="#ef4444"
+                className="animate-explode"
+                vectorEffect="non-scaling-stroke"
+              />
+              <circle
+                cx={rocketPos.x}
+                cy={rocketPos.y}
+                r="3"
+                fill="none"
+                stroke="#ef4444"
+                strokeWidth="1"
+                className="animate-particle-ring"
+                vectorEffect="non-scaling-stroke"
+              />
+              <circle
+                cx={rocketPos.x}
+                cy={rocketPos.y}
+                r="2"
+                fill="none"
+                stroke="#ff6b6b"
+                strokeWidth="0.5"
+                className="animate-particle-ring"
+                style={{ animationDelay: "0.15s" }}
+                vectorEffect="non-scaling-stroke"
+              />
+            </g>
+          ) : null}
         </svg>
 
         {/* Leg markers */}

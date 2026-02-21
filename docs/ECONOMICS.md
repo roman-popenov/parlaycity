@@ -257,14 +257,14 @@ The LP side rewards financial judgment too. Choosing when to deposit (low utiliz
 | Component | Status | What Exists |
 |-----------|--------|-------------|
 | HouseVault (ERC-4626) | Deployed | deposit, withdraw, reserve/release/pay, yield adapter, safety caps |
-| ParlayEngine (ERC-721) | Deployed | buyTicket, settleTicket, claimPayout, partial void |
+| ParlayEngine (ERC-721) | Deployed | buyTicket, settleTicket, claimPayout, claimProgressive, cashoutEarly, partial void |
 | LockVault (staking) | Deployed | lock/unlock/earlyWithdraw, Synthetix-style accumulator, tier weights |
 | Fee calculation | Deployed | ParlayMath.sol + TypeScript mirror, exact parity |
-| Fee routing (90/5/5) | Not built | Fees currently stay passively in vault |
+| Fee routing (90/5/5) | Deployed | HouseVault.routeFees -> LockVault.notifyFees (90/5/5 split) |
+| Cashout mechanism | Deployed | cashoutEarly with slippage protection, Classic/Progressive/EarlyCashout modes |
+| Autonomous agents | Deployed | Market Discovery Agent (BDL -> LegRegistry), Settler Bot (permissionless settlement) |
 | Loss distribution (80/10/10) | Not built | Losses currently 100% to vault |
 | SafetyModule | Not built | Contract does not exist yet |
-| Cashout mechanism | Not built | MultiplierClimb UI exists, no on-chain cashout |
-| Automatic fee distribution | Deployed | HouseVault.routeFees → LockVault.notifyFees (90/5/5 split) |
 | Penalty redistribution | Not built | sweepPenaltyShares is owner-discretionary |
 
 See root `CLAUDE.md` gap analysis for the full EXISTS / NEEDS BUILDING / DISCONNECTED inventory.

@@ -10,7 +10,7 @@ import type { Market, Leg } from "@parlaycity/shared";
 
 const BDL_BASE = "https://api.balldontlie.io/v1";
 const CACHE_TTL_MS = 5 * 60 * 1000; // 5 minutes
-const NBA_LEG_ID_OFFSET = 1000; // NBA legs start at 1000 to avoid seed collisions
+export const NBA_LEG_ID_OFFSET = 1000; // NBA legs start at 1000 to avoid seed collisions
 
 // ── BDL API types ──────────────────────────────────────────────────────────
 
@@ -294,6 +294,60 @@ export async function fetchNBAMarkets(): Promise<Market[]> {
     console.warn("[bdl] Failed to fetch NBA markets:", (e as Error).message);
     // Return stale cache if available, otherwise empty
     return cachedMarkets ?? [];
+  }
+}
+
+// ── Resolution helpers ────────────────────────────────────────────────────
+
+export type { BDLGame };
+
+export interface BDLGameResult {
+  gameId: number;
+  homeTeam: string;
+  awayTeam: string;
+  homeScore: number;
+  awayScore: number;
+  sourceRefMoneyline: string;
+  sourceRefOU: string;
+  catalogLegIdMoneyline: number;
+  catalogLegIdOU: number;
+}
+
+/**
+ * Fetch completed ("Final") NBA games from the past N days.
+ * No caching -- resolution needs fresh data every call.
+ * Returns empty array if BDL is disabled or API fails.
+ */
+export async function fetchCompletedGames(lookbackDays = 3): Promise<BDLGameResult[]> {
+  if (!isBDLEnabled()) return [];
+
+  try {
+    const today = new Date();
+    const startDate = new Date(today);
+    startDate.setDate(today.getDate() - lookbackDays);
+
+    const data = await bdlFetch<{ data: BDLGame[] }>("/games", {
+      "start_date": formatDate(startDate),
+      "end_date": formatDate(today),
+      per_page: "100",
+    });
+
+    return data.data
+      .filter((g) => g.status === "Final")
+      .map((g) => ({
+        gameId: g.id,
+        homeTeam: g.home_team.full_name,
+        awayTeam: g.visitor_team.full_name,
+        homeScore: g.home_team_score,
+        awayScore: g.visitor_team_score,
+        sourceRefMoneyline: `bdl:game:${g.id}`,
+        sourceRefOU: `bdl:game:${g.id}:ou`,
+        catalogLegIdMoneyline: NBA_LEG_ID_OFFSET + g.id * 2,
+        catalogLegIdOU: NBA_LEG_ID_OFFSET + g.id * 2 + 1,
+      }));
+  } catch (e) {
+    console.warn("[bdl] Failed to fetch completed games:", (e as Error).message);
+    return [];
   }
 }
 

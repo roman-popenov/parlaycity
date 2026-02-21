@@ -13,6 +13,16 @@ import {
   contractAddresses,
 } from "./contracts";
 
+/**
+ * Returns a public client pinned to the chain where contracts are deployed
+ * (from NEXT_PUBLIC_CHAIN_ID). Falls back to wallet chain if env not set.
+ * This prevents "returned no data" errors when the wallet is on a different chain.
+ */
+function useContractClient() {
+  const chainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID);
+  return usePublicClient({ chainId: chainId || undefined });
+}
+
 // ---- Read hooks ----
 
 export interface LegInfo {
@@ -27,7 +37,7 @@ export interface LegInfo {
 
 /** Fetches leg details from LegRegistry for an array of leg IDs */
 export function useLegDescriptions(legIds: readonly bigint[]) {
-  const publicClient = usePublicClient();
+  const publicClient = useContractClient();
   const [legs, setLegs] = useState<Map<string, LegInfo>>(new Map());
 
   const legIdsKey = JSON.stringify(legIds.map(String));
@@ -73,7 +83,7 @@ export function useLegStatuses(
   legMap: Map<string, LegInfo>,
   pollIntervalMs = 5000,
 ) {
-  const publicClient = usePublicClient();
+  const publicClient = useContractClient();
   const [statuses, setStatuses] = useState<Map<string, LegOracleResult>>(new Map());
 
   const legIdsKey = JSON.stringify(legIds.map(String));
@@ -296,7 +306,7 @@ export function useTicket(ticketId: bigint | undefined) {
 
 export function useUserTickets() {
   const { address } = useAccount();
-  const publicClient = usePublicClient();
+  const publicClient = useContractClient();
   const [tickets, setTickets] = useState<{ id: bigint; ticket: OnChainTicket }[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -388,8 +398,52 @@ export function useUserTickets() {
 
 // ---- Write hooks ----
 
+/** Mint MockUSDC to the connected wallet (testnet only, 10k max per call). */
+export function useMintTestUSDC() {
+  const publicClient = useContractClient();
+  const { address } = useAccount();
+  const { writeContractAsync } = useWriteContract();
+  const [isPending, setIsPending] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const mint = async (amount: bigint = parseUnits("1000", 6)) => {
+    if (!address || !publicClient) return;
+    setIsPending(true);
+    setIsConfirming(false);
+    setIsSuccess(false);
+    setError(null);
+    try {
+      const hash = await writeContractAsync({
+        address: contractAddresses.usdc,
+        abi: USDC_ABI,
+        functionName: "mint",
+        args: [address, amount],
+      });
+      setIsPending(false);
+      setIsConfirming(true);
+      await publicClient.waitForTransactionReceipt({ hash });
+      setIsConfirming(false);
+      setIsSuccess(true);
+      clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setIsSuccess(false), 3000);
+    } catch (err) {
+      setIsPending(false);
+      setIsConfirming(false);
+      setError(err instanceof Error ? err.message : "Mint failed -- token may not be mintable");
+    }
+  };
+
+  // Cleanup timeout on unmount
+  useEffect(() => () => clearTimeout(successTimerRef.current), []);
+
+  return { mint, isPending, isConfirming, isSuccess, error };
+}
+
 export function useBuyTicket() {
-  const publicClient = usePublicClient();
+  const publicClient = useContractClient();
   const { address } = useAccount();
   const { writeContractAsync } = useWriteContract();
   const [isPending, setIsPending] = useState(false);
@@ -503,7 +557,7 @@ export function useBuyTicket() {
 
 export function useDepositVault() {
   const { address } = useAccount();
-  const publicClient = usePublicClient();
+  const publicClient = useContractClient();
   const { writeContractAsync } = useWriteContract();
   const [isPending, setIsPending] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -567,7 +621,7 @@ export function useDepositVault() {
 
 export function useWithdrawVault() {
   const { address } = useAccount();
-  const publicClient = usePublicClient();
+  const publicClient = useContractClient();
   const { writeContractAsync } = useWriteContract();
   const [isPending, setIsPending] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -617,7 +671,7 @@ export function useWithdrawVault() {
 }
 
 export function useSettleTicket() {
-  const publicClient = usePublicClient();
+  const publicClient = useContractClient();
   const { writeContractAsync } = useWriteContract();
   const [hash, setHash] = useState<`0x${string}` | undefined>(undefined);
   const [isPending, setIsPending] = useState(false);
@@ -667,7 +721,7 @@ export function useSettleTicket() {
 }
 
 export function useClaimPayout() {
-  const publicClient = usePublicClient();
+  const publicClient = useContractClient();
   const { writeContractAsync } = useWriteContract();
   const [hash, setHash] = useState<`0x${string}` | undefined>(undefined);
   const [isPending, setIsPending] = useState(false);
@@ -717,7 +771,7 @@ export function useClaimPayout() {
 }
 
 export function useClaimProgressive() {
-  const publicClient = usePublicClient();
+  const publicClient = useContractClient();
   const { writeContractAsync } = useWriteContract();
   const [hash, setHash] = useState<`0x${string}` | undefined>(undefined);
   const [isPending, setIsPending] = useState(false);
@@ -767,7 +821,7 @@ export function useClaimProgressive() {
 }
 
 export function useCashoutEarly() {
-  const publicClient = usePublicClient();
+  const publicClient = useContractClient();
   const { writeContractAsync } = useWriteContract();
   const [hash, setHash] = useState<`0x${string}` | undefined>(undefined);
   const [isPending, setIsPending] = useState(false);
@@ -830,7 +884,7 @@ export interface LockPosition {
 
 export function useLockVault() {
   const { address } = useAccount();
-  const publicClient = usePublicClient();
+  const publicClient = useContractClient();
   const { writeContractAsync } = useWriteContract();
   const [isPending, setIsPending] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -889,7 +943,7 @@ export function useLockVault() {
 }
 
 export function useUnlockVault() {
-  const publicClient = usePublicClient();
+  const publicClient = useContractClient();
   const { writeContractAsync } = useWriteContract();
   const [isPending, setIsPending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -926,7 +980,7 @@ export function useUnlockVault() {
 }
 
 export function useEarlyWithdraw() {
-  const publicClient = usePublicClient();
+  const publicClient = useContractClient();
   const { writeContractAsync } = useWriteContract();
   const [isPending, setIsPending] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
@@ -964,7 +1018,7 @@ export function useEarlyWithdraw() {
 
 export function useLockPositions() {
   const { address } = useAccount();
-  const publicClient = usePublicClient();
+  const publicClient = useContractClient();
   const [positions, setPositions] = useState<{ id: bigint; position: LockPosition }[]>([]);
   const [userTotalLocked, setUserTotalLocked] = useState(0n);
   const [isLoading, setIsLoading] = useState(true);

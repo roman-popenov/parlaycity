@@ -162,14 +162,16 @@ export async function setup(): Promise<void> {
   await waitForAnvil(anvilProcess);
   console.log("[e2e-setup] Anvil ready");
 
-  // 2. Deploy contracts
+  // 2. Deploy contracts (unset USDC_ADDRESS so MockUSDC is deployed locally)
   console.log("[e2e-setup] Deploying contracts...");
+  const deployEnv = { ...process.env, PRIVATE_KEY: DEPLOYER_KEY };
+  delete deployEnv.USDC_ADDRESS; // Force MockUSDC deployment for E2E
   execSync(
     `forge script script/Deploy.s.sol --broadcast --rpc-url ${RPC_URL}`,
     {
       cwd: CONTRACTS_DIR,
       stdio: "pipe",
-      env: { ...process.env, PRIVATE_KEY: DEPLOYER_KEY },
+      env: deployEnv,
     }
   );
 

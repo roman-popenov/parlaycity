@@ -21,12 +21,23 @@ contract Deploy is Script {
 
         vm.startBroadcast(deployerKey);
 
-        // 1. Deploy MockUSDC
-        MockUSDC usdc = new MockUSDC();
-        console.log("MockUSDC:               ", address(usdc));
+        // 1. USDC: use external address if provided, otherwise deploy MockUSDC
+        address usdcEnv = vm.envOr("USDC_ADDRESS", address(0));
+        IERC20 usdc;
+        bool deployedMock = false;
+
+        if (usdcEnv != address(0)) {
+            usdc = IERC20(usdcEnv);
+            console.log("Using external USDC:    ", usdcEnv);
+        } else {
+            MockUSDC mockUsdc = new MockUSDC();
+            usdc = IERC20(address(mockUsdc));
+            deployedMock = true;
+            console.log("Deployed MockUSDC:      ", address(usdc));
+        }
 
         // 2. Deploy HouseVault
-        HouseVault vault = new HouseVault(IERC20(address(usdc)));
+        HouseVault vault = new HouseVault(usdc);
         console.log("HouseVault:             ", address(vault));
 
         // 3. Deploy LegRegistry
@@ -38,12 +49,14 @@ contract Deploy is Script {
         console.log("AdminOracleAdapter:     ", address(adminOracle));
 
         // 5. Deploy OptimisticOracleAdapter (30 min liveness, 10 USDC bond)
-        OptimisticOracleAdapter optimisticOracle = new OptimisticOracleAdapter(IERC20(address(usdc)), 1800, 10e6);
+        OptimisticOracleAdapter optimisticOracle = new OptimisticOracleAdapter(usdc, 1800, 10e6);
         console.log("OptimisticOracleAdapter:", address(optimisticOracle));
 
-        // 6. Deploy ParlayEngine (bootstrap ends 7 days from now)
-        uint256 bootstrapEndsAt = block.timestamp + 7 days;
-        ParlayEngine engine = new ParlayEngine(vault, registry, IERC20(address(usdc)), bootstrapEndsAt);
+        // 6. Deploy ParlayEngine (bootstrap period configurable via env)
+        uint256 bootstrapDays = vm.envOr("BOOTSTRAP_DAYS", uint256(7));
+        uint256 bootstrapEndsAt = block.timestamp + bootstrapDays * 1 days;
+        ParlayEngine engine = new ParlayEngine(vault, registry, usdc, bootstrapEndsAt);
+        console.log("Bootstrap days:         ", bootstrapDays);
         console.log("ParlayEngine:           ", address(engine));
 
         // 7. Authorize ParlayEngine on HouseVault
@@ -62,33 +75,24 @@ contract Deploy is Script {
         lockVault.setFeeDistributor(address(vault));
         console.log("Fee routing wired (90/5/5)");
 
-        // 7c. Deploy MockYieldAdapter (for local testing)
-        MockYieldAdapter yieldAdapter = new MockYieldAdapter(IERC20(address(usdc)), address(vault));
+        // 7c. Deploy MockYieldAdapter (fine for testnet too)
+        MockYieldAdapter yieldAdapter = new MockYieldAdapter(usdc, address(vault));
         vault.setYieldAdapter(IYieldAdapter(address(yieldAdapter)));
         console.log("MockYieldAdapter:       ", address(yieldAdapter));
 
-        // 8. Create 3 sample legs
-        uint256 cutoff = block.timestamp + 1 days;
-        uint256 resolve = cutoff + 1 hours;
+        // 8. Mint MockUSDC only when we deployed it (not using external USDC)
+        if (deployedMock) {
+            MockUSDC mockRef = MockUSDC(address(usdc));
+            mockRef.mint(deployer, 10_000e6);
+            console.log("Minted 10,000 USDC to deployer");
 
-        registry.createLeg(
-            "Will ETH hit $5000 by end of March?", "coingecko:eth", cutoff, resolve, address(adminOracle), 350_000
-        );
-        registry.createLeg(
-            "Will BTC hit $150k by end of March?", "coingecko:btc", cutoff, resolve, address(adminOracle), 250_000
-        );
-        registry.createLeg(
-            "Will SOL hit $300 by end of March?", "coingecko:sol", cutoff, resolve, address(adminOracle), 200_000
-        );
-        console.log("Created 3 sample legs");
-
-        // 9. Mint USDC to deployer and second Anvil account
-        usdc.mint(deployer, 10_000e6);
-        console.log("Minted 10,000 USDC to deployer");
-
-        address account1 = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
-        usdc.mint(account1, 10_000e6);
-        console.log("Minted 10,000 USDC to account1");
+            // Only mint to hardcoded Anvil account on local chain
+            if (block.chainid == 31337) {
+                address account1 = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
+                mockRef.mint(account1, 10_000e6);
+                console.log("Minted 10,000 USDC to account1 (Anvil)");
+            }
+        }
 
         vm.stopBroadcast();
     }

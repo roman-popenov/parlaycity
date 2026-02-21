@@ -34,9 +34,8 @@ function useReplay(resolvedWon: number, crashed: boolean) {
     if (replayStep < resolvedWon) {
       timerRef.current = setTimeout(() => {
         setReplayStep((s) => s + 1);
-      }, 1200); // 1.2s per leg for dramatic effect
+      }, 1200);
     } else if (replayStep === resolvedWon && crashed && !replayCrashed) {
-      // All won legs shown, now trigger crash
       timerRef.current = setTimeout(() => {
         setReplayCrashed(true);
       }, 800);
@@ -70,11 +69,9 @@ export default function TicketPage() {
   const { ticket: onChainTicket, isLoading } = useTicket(ticketId);
   const { tickets: userTickets } = useUserTickets();
   const legMap = useLegDescriptions(onChainTicket?.legIds ?? []);
-  // Active tickets poll faster (2s) for snappy rocket animation during demo
   const isActive = onChainTicket?.status === 0;
   const legStatuses = useLegStatuses(onChainTicket?.legIds ?? [], legMap, isActive ? 2000 : 5000);
 
-  // Find prev/next ticket IDs from user's tickets
   const sortedIds = userTickets.map((t) => t.id).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
   const currentIdx = ticketId !== undefined ? sortedIds.findIndex((id) => id === ticketId) : -1;
   const prevId = currentIdx > 0 ? sortedIds[currentIdx - 1] : null;
@@ -83,7 +80,7 @@ export default function TicketPage() {
   if (isLoading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-blue border-t-transparent" />
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-pink border-t-transparent" />
       </div>
     );
   }
@@ -94,7 +91,7 @@ export default function TicketPage() {
         <p className="text-gray-500">Ticket not found.</p>
         <Link
           href="/tickets"
-          className="mt-4 inline-block text-sm text-accent-blue hover:underline"
+          className="mt-4 inline-block text-sm text-brand-pink hover:underline"
         >
           Back to My Tickets
         </Link>
@@ -103,14 +100,10 @@ export default function TicketPage() {
   }
 
   const multiplier = Number(onChainTicket.multiplierX1e6) / PPM;
-  // Use effectiveStake (stake minus fee) for cashout math -- matches on-chain ParlayEngine.sol:613
   const effectiveStake = onChainTicket.stake - onChainTicket.feePaid;
-  // Use ticket's snapshotted penalty if available, else default
-  // Nullish check: on-chain 0 bps is a valid penalty (|| would replace it with default)
   const rawPenalty = Number(onChainTicket.cashoutPenaltyBps);
   const penaltyBps = Number.isFinite(rawPenalty) ? rawPenalty : BASE_CASHOUT_PENALTY_BPS;
 
-  // Build legs in a single pass, collecting cashout inputs simultaneously
   const wonProbsPPM: number[] = [];
   let unresolvedCount = 0;
 
@@ -127,12 +120,10 @@ export default function TicketPage() {
     const result = oracleResult?.status ?? 0;
 
     if (resolved && result !== 3) {
-      // Non-voided resolved leg
       if (isLegWon(outcomeChoice, result) && effectivePPM > 0) {
         wonProbsPPM.push(effectivePPM);
       }
     } else {
-      // Unresolved OR voided (result === 3) -- matches ParlayEngine.sol:554-557
       unresolvedCount++;
     }
 
@@ -146,7 +137,6 @@ export default function TicketPage() {
     };
   });
 
-  // Compute cashout value using shared integer math (mirrors ParlayMath.sol)
   const cashoutValue = onChainTicket.payoutMode === 2
     ? computeClientCashoutValue(effectiveStake, wonProbsPPM, unresolvedCount, legs.length, onChainTicket.potentialPayout, penaltyBps)
     : undefined;
@@ -165,9 +155,7 @@ export default function TicketPage() {
     cashoutValue,
   };
 
-  // Crash game loop: derive from already-computed leg data
   const legMultipliers = legs.map((l) => l.odds);
-  // Derive resolvedWon from leg state, not wonProbsPPM.length (which excludes legs with 0 probability)
   const resolvedWon = legs.filter((l) =>
     l.resolved && l.result !== 3 && isLegWon(l.outcomeChoice, l.result),
   ).length;
@@ -179,7 +167,6 @@ export default function TicketPage() {
     return isLegWon(l.outcomeChoice, l.result) ? m * l.odds : m;
   }, 1);
 
-  // Settled ticket state
   const isSettled = ticket.status === "Won" || ticket.status === "Lost" || ticket.status === "Voided" || ticket.status === "Claimed";
 
   return (
@@ -234,10 +221,10 @@ export default function TicketPage() {
             animated
           />
           {/* Live stats bar */}
-          <div className="flex items-center justify-between rounded-xl border border-white/5 bg-gray-900/50 px-4 py-3">
+          <div className="glass-card flex items-center justify-between px-4 py-3">
             <div className="text-center">
               <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">Live</p>
-              <p className={`text-lg font-bold tabular-nums ${crashed ? "text-neon-red" : "text-neon-green"}`}>
+              <p className={`text-lg font-bold tabular-nums ${crashed ? "text-neon-red" : "text-brand-green"}`}>
                 {crashed ? "0.00x" : `${liveMultiplier.toFixed(2)}x`}
               </p>
             </div>
@@ -251,7 +238,7 @@ export default function TicketPage() {
               <p className="text-[10px] font-medium uppercase tracking-wider text-gray-500">
                 {ticket.payoutMode === 2 && !crashed ? "Cashout" : "Potential"}
               </p>
-              <p className="text-lg font-bold tabular-nums text-yellow-400">
+              <p className="text-lg font-bold tabular-nums text-brand-gold">
                 {cashoutValue !== undefined && !crashed
                   ? `$${Number(formatUnits(cashoutValue, 6)).toFixed(2)}`
                   : `$${Number(formatUnits(ticket.payout, 6)).toFixed(2)}`}
@@ -270,7 +257,7 @@ export default function TicketPage() {
         />
       )}
 
-      {/* Rehab CTA for lost tickets -- silver lining card */}
+      {/* Rehab CTA for lost tickets */}
       {ticket.status === "Lost" && (
         <RehabCTA stake={ticket.stake} />
       )}
@@ -312,7 +299,7 @@ function SettledClimb({
         ) : (
           <button
             onClick={stopReplay}
-            className="rounded-lg border border-accent-blue/30 bg-accent-blue/10 px-4 py-1.5 text-sm text-accent-blue transition-colors hover:bg-accent-blue/20"
+            className="rounded-lg border border-brand-pink/30 bg-brand-pink/10 px-4 py-1.5 text-sm text-brand-pink transition-colors hover:bg-brand-pink/20"
           >
             Stop
           </button>

@@ -10,6 +10,7 @@ Next.js 14 (App Router), React 18, TypeScript, Tailwind 3. Wallet: wagmi 2, viem
 - `/vault` -- LP dashboard (deposit/withdraw/lock)
 - `/tickets` -- user tickets list
 - `/ticket/[id]` -- ticket detail + settle/claim
+- `/about` -- project overview, architecture, team info
 
 ## Key Files
 
@@ -17,6 +18,10 @@ Next.js 14 (App Router), React 18, TypeScript, Tailwind 3. Wallet: wagmi 2, viem
 - `lib/contracts.ts` -- inline ABIs + `contractAddresses` object
 - `lib/hooks.ts` -- all wagmi hooks. Write hooks: `isPending -> isConfirming -> isSuccess` pattern
 - `lib/wagmi.ts` -- wagmi config via ConnectKit, supports `foundry` + `baseSepolia` chains
+- `components/FTUESpotlight.tsx` -- first-time user experience spotlight overlay
+- `components/DemoBanner.tsx` -- hackathon demo status banner
+- `components/DemoHint.tsx` -- contextual demo hints for judges
+- `components/HowItWorks.tsx` -- crash-parlay explainer (onboarding)
 
 ## Rules
 

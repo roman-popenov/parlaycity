@@ -3,6 +3,10 @@
 DEV_PORTS := 3000 3001 3002 8545
 PID_DIR   := .pids
 
+# Load .env if it exists (secrets, RPC URLs, contract addresses)
+-include .env
+export
+
 # -- Bootstrap (install all dev tools) --
 bootstrap:
 	./scripts/bootstrap.sh
@@ -18,15 +22,79 @@ chain:
 	cd packages/contracts && anvil
 
 deploy-local:
-	cd packages/contracts && forge script script/Deploy.s.sol --broadcast --rpc-url http://127.0.0.1:8545
-	./scripts/sync-env.sh
+	cd packages/contracts && env -u USDC_ADDRESS forge script script/Deploy.s.sol --broadcast --rpc-url http://127.0.0.1:8545
+	env -u USDC_ADDRESS ./scripts/sync-env.sh
 
 deploy-sepolia:
-	@test -n "$$DEPLOYER_PRIVATE_KEY" || (echo "Error: DEPLOYER_PRIVATE_KEY env var required" && exit 1)
-	@test -n "$$BASE_SEPOLIA_RPC_URL" || (echo "Error: BASE_SEPOLIA_RPC_URL env var required (default: https://sepolia.base.org)" && exit 1)
-	cd packages/contracts && PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY forge script script/Deploy.s.sol \
-		--broadcast --rpc-url $$BASE_SEPOLIA_RPC_URL --verify --slow
-	./scripts/sync-env.sh sepolia
+	@test -n "$$DEPLOYER_PRIVATE_KEY" || (echo "Error: DEPLOYER_PRIVATE_KEY required (set in .env)" && exit 1)
+	$(eval RPC := $(or $(BASE_SEPOLIA_RPC_URL),https://sepolia.base.org))
+	$(eval VERIFY_FLAG := $(if $(BASESCAN_API_KEY),--verify --etherscan-api-key $(BASESCAN_API_KEY) --verifier-url https://api-sepolia.basescan.org/api,))
+	cd packages/contracts && \
+		PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY \
+		$(if $(USDC_ADDRESS),USDC_ADDRESS=$(USDC_ADDRESS)) \
+		BOOTSTRAP_DAYS=30 \
+		forge script script/Deploy.s.sol \
+			--broadcast --rpc-url $(RPC) $(VERIFY_FLAG) --slow
+	$(if $(USDC_ADDRESS),USDC_ADDRESS=$(USDC_ADDRESS)) ./scripts/sync-env.sh sepolia
+
+## Full Sepolia pipeline: deploy + register legs + seed demo data
+deploy-sepolia-full: deploy-sepolia register-legs-sepolia demo-seed-sepolia
+	@echo ""
+	@echo "=== Base Sepolia deployment complete ==="
+	@echo "Run 'make create-pool-sepolia' to create Uniswap V3 USDC/WETH pool"
+
+## Register catalog legs on Base Sepolia
+register-legs-sepolia:
+	$(eval RPC := $(or $(BASE_SEPOLIA_RPC_URL),https://sepolia.base.org))
+	RPC_URL=$(RPC) PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY \
+		pnpm --filter services exec tsx ../../scripts/register-legs.ts
+
+## Seed demo data on Base Sepolia
+demo-seed-sepolia:
+	USDC_ADDRESS=$(USDC_ADDRESS) \
+	BASE_SEPOLIA_RPC_URL=$(or $(BASE_SEPOLIA_RPC_URL),https://sepolia.base.org) \
+	DEPLOYER_PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY \
+	ACCOUNT1_PRIVATE_KEY=$${ACCOUNT1_PRIVATE_KEY:-$$DEPLOYER_PRIVATE_KEY} \
+		./scripts/demo-seed.sh sepolia
+
+## Create Uniswap V3 USDC/WETH pool on Base Sepolia
+create-pool-sepolia:
+	@test -n "$$DEPLOYER_PRIVATE_KEY" || (echo "Error: DEPLOYER_PRIVATE_KEY required (set in .env)" && exit 1)
+	$(eval RPC := $(or $(BASE_SEPOLIA_RPC_URL),https://sepolia.base.org))
+	cd packages/contracts && \
+		PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY \
+		USDC_ADDRESS=$(USDC_ADDRESS) \
+		WETH_ADDRESS=$(or $(WETH_ADDRESS),0x4200000000000000000000000000000000000006) \
+		UNISWAP_NFPM=$(or $(UNISWAP_NFPM),0x27F971cb582BF9E50F397e4d29a5C7A34f11faA2) \
+		forge script script/CreatePool.s.sol \
+			--broadcast --rpc-url $(RPC) --slow
+
+## Print deployer address and funding instructions
+fund-deployer:
+	@echo "Deployer address: $(or $(DEPLOYER_ADDRESS),$(shell cast wallet address $$DEPLOYER_PRIVATE_KEY 2>/dev/null || echo 'DEPLOYER_PRIVATE_KEY not set'))"
+	@echo ""
+	@echo "1. Get Base Sepolia ETH:"
+	@echo "   https://www.coinbase.com/faucets/base-ethereum-goerli-faucet"
+	@echo "   https://faucet.quicknode.com/base/sepolia"
+	@echo ""
+	@echo "2. Get testnet USDC (20 per 2h):"
+	@echo "   https://faucet.circle.com/"
+	@echo "   Select 'Base Sepolia' and paste your deployer address"
+
+## Mint MockUSDC to any wallet on Base Sepolia (10,000 per call, no access control)
+## Usage: make fund-wallet WALLET=0x... [AMOUNT=10000] [RPC=https://sepolia.base.org]
+fund-wallet:
+	$(eval RPC := $(or $(BASE_SEPOLIA_RPC_URL),https://sepolia.base.org))
+	$(eval USDC := $(shell grep NEXT_PUBLIC_USDC_ADDRESS apps/web/.env.local 2>/dev/null | cut -d= -f2))
+	$(eval AMT_USDC := $(or $(AMOUNT),10000))
+	$(eval AMT_RAW := $(shell echo "$(AMT_USDC) * 1000000" | bc))
+	@test -n "$(WALLET)" || (echo "Usage: make fund-wallet WALLET=0x..." && exit 1)
+	@test -n "$(USDC)" || (echo "Error: USDC address not found. Run 'make deploy-sepolia' first." && exit 1)
+	@echo "Minting $(AMT_USDC) MockUSDC to $(WALLET) on Base Sepolia..."
+	@cast send $(USDC) "mint(address,uint256)" $(WALLET) $(AMT_RAW) \
+		--rpc-url $(RPC) --private-key $(DEPLOYER_PRIVATE_KEY)
+	@echo ""
+	@echo "Balance: $$(cast call $(USDC) 'balanceOf(address)(uint256)' $(WALLET) --rpc-url $(RPC) | awk '{printf "%.2f MockUSDC\n", $$1/1000000}')"
 
 sync-env:
 	./scripts/sync-env.sh
@@ -52,8 +120,8 @@ dev:
 	@sleep 2
 	@# Deploy contracts and sync env (clean cache to avoid stale source refs across branches)
 	@cd packages/contracts && forge clean > /dev/null 2>&1 || true
-	@cd packages/contracts && forge script script/Deploy.s.sol --broadcast --rpc-url http://127.0.0.1:8545 > ../../$(PID_DIR)/deploy.log 2>&1
-	@./scripts/sync-env.sh
+	@cd packages/contracts && env -u USDC_ADDRESS forge script script/Deploy.s.sol --broadcast --rpc-url http://127.0.0.1:8545 > ../../$(PID_DIR)/deploy.log 2>&1
+	@env -u USDC_ADDRESS ./scripts/sync-env.sh
 	@echo "  Contracts deployed, .env.local synced"
 	@# Register catalog legs on-chain
 	@cd packages/services && pnpm exec tsx ../../scripts/register-legs.ts > ../../$(PID_DIR)/register-legs.log 2>&1 || echo "  (register-legs skipped, see .pids/register-legs.log)"
@@ -183,9 +251,69 @@ risk-agent:
 risk-agent-dry:
 	DRY_RUN=true pnpm --filter services exec tsx ../../scripts/risk-agent.ts
 
+## Market discovery agent (local)
+market-agent:
+	pnpm --filter services exec tsx ../../scripts/market-agent.ts
+
+## Read contract addresses from deployment record (single source of truth)
+SEPOLIA_ENGINE  = $(shell node -e "console.log(require('./deployments/base-sepolia.json').contracts.ParlayEngine)" 2>/dev/null)
+SEPOLIA_REGISTRY = $(shell node -e "console.log(require('./deployments/base-sepolia.json').contracts.LegRegistry)" 2>/dev/null)
+SEPOLIA_USDC    = $(shell node -e "console.log(require('./deployments/base-sepolia.json').contracts.MockUSDC)" 2>/dev/null)
+SEPOLIA_ORACLE  = $(shell node -e "console.log(require('./deployments/base-sepolia.json').contracts.AdminOracleAdapter)" 2>/dev/null)
+
+## Settler bot on Base Sepolia
+settler-sepolia:
+	$(eval RPC := $(or $(BASE_SEPOLIA_RPC_URL),https://sepolia.base.org))
+	RPC_URL=$(RPC) PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY \
+		PARLAY_ENGINE_ADDRESS=$(SEPOLIA_ENGINE) LEG_REGISTRY_ADDRESS=$(SEPOLIA_REGISTRY) \
+		pnpm --filter services exec tsx ../../scripts/settler-bot.ts
+
+## Risk agent on Base Sepolia
+risk-agent-sepolia:
+	$(eval RPC := $(or $(BASE_SEPOLIA_RPC_URL),https://sepolia.base.org))
+	RPC_URL=$(RPC) PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY SERVICES_URL=http://localhost:3001 \
+		PARLAY_ENGINE_ADDRESS=$(SEPOLIA_ENGINE) USDC_ADDRESS=$(SEPOLIA_USDC) DRY_RUN=false \
+		pnpm --filter services exec tsx ../../scripts/risk-agent.ts
+
+## Market discovery agent on Base Sepolia
+market-agent-sepolia:
+	$(eval RPC := $(or $(BASE_SEPOLIA_RPC_URL),https://sepolia.base.org))
+	RPC_URL=$(RPC) PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY \
+		LEG_REGISTRY_ADDRESS=$(SEPOLIA_REGISTRY) ADMIN_ORACLE_ADDRESS=$(SEPOLIA_ORACLE) \
+		BDL_API_KEY=$$BDL_API_KEY SERVICES_URL=http://localhost:3001 \
+		pnpm --filter services exec tsx ../../scripts/market-agent.ts
+
+## Both agents on Base Sepolia (market-agent + settler)
+agents-sepolia:
+	$(eval RPC := $(or $(BASE_SEPOLIA_RPC_URL),https://sepolia.base.org))
+	@mkdir -p $(PID_DIR)
+	@nohup env RPC_URL=$(RPC) PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY \
+		PARLAY_ENGINE_ADDRESS=$(SEPOLIA_ENGINE) LEG_REGISTRY_ADDRESS=$(SEPOLIA_REGISTRY) \
+		pnpm --filter services exec tsx ../../scripts/settler-bot.ts > $(PID_DIR)/settler.log 2>&1 & echo $$! > $(PID_DIR)/settler.pid
+	@echo "  Settler bot started (pid $$(cat $(PID_DIR)/settler.pid))"
+	@nohup env RPC_URL=$(RPC) PRIVATE_KEY=$$DEPLOYER_PRIVATE_KEY \
+		LEG_REGISTRY_ADDRESS=$(SEPOLIA_REGISTRY) ADMIN_ORACLE_ADDRESS=$(SEPOLIA_ORACLE) \
+		BDL_API_KEY=$$BDL_API_KEY SERVICES_URL=http://localhost:3001 \
+		pnpm --filter services exec tsx ../../scripts/market-agent.ts > $(PID_DIR)/market-agent.log 2>&1 & echo $$! > $(PID_DIR)/market-agent.pid
+	@echo "  Market agent started (pid $$(cat $(PID_DIR)/market-agent.pid))"
+	@echo ""
+	@echo "Agents running on Base Sepolia. Use 'make agents-stop' to shut down."
+	@echo "Logs: $(PID_DIR)/settler.log, $(PID_DIR)/market-agent.log"
+
+## Stop agent processes
+agents-stop:
+	@for name in settler market-agent risk-agent; do \
+		pidfile="$(PID_DIR)/$$name.pid"; \
+		if [ -f "$$pidfile" ]; then \
+			pid=$$(cat "$$pidfile"); \
+			kill $$pid 2>/dev/null && echo "Stopped $$name (pid $$pid)" || true; \
+			rm -f "$$pidfile"; \
+		fi; \
+	done
+
 # -- Cleanup --
 clean:
 	cd packages/contracts && forge clean
 	cd apps/web && rm -rf .next
 
-.PHONY: bootstrap setup chain deploy-local deploy-sepolia sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-web test-all test-e2e gate typecheck build-web build-contracts coverage coverage-contracts coverage-services coverage-web snapshot ci ci-contracts ci-services ci-web demo-seed demo-autopilot demo-autopilot-crash register-legs clean risk-agent risk-agent-dry
+.PHONY: bootstrap setup chain deploy-local deploy-sepolia deploy-sepolia-full sync-env dev-web dev-services dev dev-stop dev-status test-contracts test-services test-web test-all test-e2e gate typecheck build-web build-contracts coverage coverage-contracts coverage-services coverage-web snapshot ci ci-contracts ci-services ci-web demo-seed demo-seed-sepolia demo-autopilot demo-autopilot-crash register-legs register-legs-sepolia create-pool-sepolia fund-deployer fund-wallet clean risk-agent risk-agent-dry market-agent settler-sepolia risk-agent-sepolia market-agent-sepolia agents-sepolia agents-stop

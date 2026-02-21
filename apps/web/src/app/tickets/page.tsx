@@ -38,7 +38,6 @@ function toTicketData(
 ): TicketData {
   const multiplier = Number(t.multiplierX1e6) / PPM;
   const effectiveStake = t.stake - t.feePaid;
-  // Nullish check: on-chain 0 bps is a valid penalty (|| would replace it with default)
   const rawPenalty = Number(t.cashoutPenaltyBps);
   const penaltyBps = Number.isFinite(rawPenalty) ? rawPenalty : BASE_CASHOUT_PENALTY_BPS;
   const wonProbsPPM: number[] = [];
@@ -72,7 +71,6 @@ function toTicketData(
     };
   });
 
-  // Compute cashout value for EarlyCashout tickets
   const cashoutValue = t.payoutMode === 2
     ? computeClientCashoutValue(effectiveStake, wonProbsPPM, unresolvedCount, legs.length, t.potentialPayout, penaltyBps)
     : undefined;
@@ -97,7 +95,6 @@ export default function TicketsPage() {
   const { tickets, totalCount, isLoading, error, refetch } = useUserTickets();
   const [activeTab, setActiveTab] = useState<TabFilter>("all");
 
-  // Collect all unique leg IDs across all tickets
   const allLegIds = useMemo(() => {
     const ids: bigint[] = [];
     for (const { ticket } of tickets) {
@@ -111,7 +108,6 @@ export default function TicketsPage() {
   const legMap = useLegDescriptions(allLegIds);
   const legStatuses = useLegStatuses(allLegIds, legMap);
 
-  // Build ticket data and compute tab counts
   const ticketDataList = useMemo(
     () => tickets.map(({ id, ticket }) => toTicketData(id, ticket, legMap, legStatuses)),
     [tickets, legMap, legStatuses],
@@ -138,10 +134,10 @@ export default function TicketsPage() {
       <section className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-black text-white">
-            My Tickets{" "}
+            My <span className="gradient-text">Tickets</span>
             {tickets.length > 0 && (
               <span className="text-lg font-medium text-gray-500">
-                ({tickets.length})
+                {" "}({tickets.length})
               </span>
             )}
           </h1>
@@ -171,7 +167,7 @@ export default function TicketsPage() {
               onClick={() => setActiveTab(tab.key)}
               className={`flex-1 rounded-lg px-3 py-2 text-sm font-semibold transition-all ${
                 activeTab === tab.key
-                  ? "bg-white/10 text-white"
+                  ? "gradient-bg text-white shadow-lg"
                   : "text-gray-500 hover:text-gray-300"
               }`}
             >
@@ -180,7 +176,7 @@ export default function TicketsPage() {
                 <span
                   className={`ml-1.5 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1.5 text-[10px] font-bold ${
                     activeTab === tab.key
-                      ? "bg-accent-blue/20 text-accent-blue"
+                      ? "bg-white/20 text-white"
                       : "bg-white/5 text-gray-600"
                   }`}
                 >
@@ -200,7 +196,7 @@ export default function TicketsPage() {
 
       {isLoading && (
         <div className="flex min-h-[30vh] items-center justify-center">
-          <div className="h-8 w-8 animate-spin rounded-full border-2 border-accent-blue border-t-transparent" />
+          <div className="h-8 w-8 animate-spin rounded-full border-2 border-brand-pink border-t-transparent" />
         </div>
       )}
 
@@ -228,10 +224,16 @@ export default function TicketsPage() {
 
       {!isLoading && tickets.length === 0 && (
         <div className="py-20 text-center">
-          <p className="text-gray-500">No tickets yet.</p>
+          <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl gradient-bg-subtle">
+            <svg className="h-8 w-8 text-brand-pink" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 6v.75m0 3v.75m0 3v.75m0 3V18m-9-5.25h5.25M7.5 15h3M3.375 5.25c-.621 0-1.125.504-1.125 1.125v3.026a2.999 2.999 0 010 5.198v3.026c0 .621.504 1.125 1.125 1.125h17.25c.621 0 1.125-.504 1.125-1.125v-3.026a2.999 2.999 0 010-5.198V6.375c0-.621-.504-1.125-1.125-1.125H3.375z" />
+            </svg>
+          </div>
+          <p className="text-lg font-semibold text-gray-400">No tickets yet</p>
+          <p className="mt-1 text-sm text-gray-500">Build your first parlay and your tickets will show up here.</p>
           <Link
             href="/"
-            className="mt-4 inline-block rounded-xl bg-gradient-to-r from-accent-blue to-accent-purple px-6 py-2.5 text-sm font-bold text-white"
+            className="btn-gradient mt-6 inline-block rounded-xl px-6 py-2.5 text-sm font-bold text-white"
           >
             Build Your First Parlay
           </Link>

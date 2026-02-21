@@ -60,7 +60,18 @@ sys.exit(1)
 " "$BROADCAST" "$1"
 }
 
-USDC=$(get_addr "MockUSDC")
+# USDC: prefer env var (required for Sepolia where we use Circle USDC)
+if [ -n "${USDC_ADDRESS:-}" ]; then
+  USDC="$USDC_ADDRESS"
+else
+  USDC=$(get_addr "MockUSDC") || true
+  if [ -z "$USDC" ]; then
+    echo "ERROR: No USDC_ADDRESS env var and no MockUSDC in broadcast."
+    echo "For Sepolia, set USDC_ADDRESS to Circle USDC on Base Sepolia."
+    exit 1
+  fi
+fi
+
 VAULT=$(get_addr "HouseVault")
 ENGINE=$(get_addr "ParlayEngine")
 REGISTRY=$(get_addr "LegRegistry")
@@ -88,16 +99,44 @@ send() {
 }
 
 # --- 1. Deposit LP liquidity into HouseVault ---
-# Deploy.s.sol already minted 10,000 USDC each. Use a small slice for
-# realistic demo numbers that judges can relate to.
-echo "--- Depositing LP Liquidity ---"
-send "$DEPLOYER_KEY" "$USDC" "approve(address,uint256)" "$VAULT" 600000000  # 600 USDC
-send "$DEPLOYER_KEY" "$VAULT" "deposit(uint256,address)" 600000000 "$DEPLOYER_ADDR"
-echo "  Deployer deposited 600 USDC into HouseVault"
+# Detect if USDC is mintable (MockUSDC on local) or real (Circle USDC on Sepolia).
+# If mintable, mint first. If real, user must have USDC from a faucet.
+IS_MOCK=false
+if cast call "$USDC" "mint(address,uint256)" "$DEPLOYER_ADDR" 0 --rpc-url "$RPC_URL" > /dev/null 2>&1; then
+  IS_MOCK=true
+fi
 
-send "$ACCOUNT1_KEY" "$USDC" "approve(address,uint256)" "$VAULT" 400000000  # 400 USDC
-send "$ACCOUNT1_KEY" "$VAULT" "deposit(uint256,address)" 400000000 "$ACCOUNT1_ADDR"
-echo "  Account1 deposited 400 USDC into HouseVault"
+if [ "$NETWORK" = "sepolia" ]; then
+  # Sepolia: smaller amounts (limited faucet USDC)
+  LP_DEPLOYER=50000000   # 50 USDC
+  LP_ACCOUNT1=30000000   # 30 USDC
+  LP_LABEL_D="50"
+  LP_LABEL_A="30"
+  LP_TOTAL="80"
+else
+  LP_DEPLOYER=600000000  # 600 USDC
+  LP_ACCOUNT1=400000000  # 400 USDC
+  LP_LABEL_D="600"
+  LP_LABEL_A="400"
+  LP_TOTAL="1,000"
+fi
+
+echo "--- Depositing LP Liquidity ---"
+if [ "$IS_MOCK" = true ]; then
+  echo "  MockUSDC detected -- minting before deposit"
+  send "$DEPLOYER_KEY" "$USDC" "mint(address,uint256)" "$DEPLOYER_ADDR" "$LP_DEPLOYER"
+  send "$DEPLOYER_KEY" "$USDC" "mint(address,uint256)" "$ACCOUNT1_ADDR" "$LP_ACCOUNT1"
+else
+  echo "  Real USDC detected -- skipping mint (ensure wallets are funded via faucet)"
+fi
+
+send "$DEPLOYER_KEY" "$USDC" "approve(address,uint256)" "$VAULT" "$LP_DEPLOYER"
+send "$DEPLOYER_KEY" "$VAULT" "deposit(uint256,address)" "$LP_DEPLOYER" "$DEPLOYER_ADDR"
+echo "  Deployer deposited $LP_LABEL_D USDC into HouseVault"
+
+send "$ACCOUNT1_KEY" "$USDC" "approve(address,uint256)" "$VAULT" "$LP_ACCOUNT1"
+send "$ACCOUNT1_KEY" "$VAULT" "deposit(uint256,address)" "$LP_ACCOUNT1" "$ACCOUNT1_ADDR"
+echo "  Account1 deposited $LP_LABEL_A USDC into HouseVault"
 
 # --- 3. Create legs ---
 echo ""
@@ -148,46 +187,63 @@ L4=$((FIRST_LEG + 4))
 echo ""
 echo "--- Buying Tickets ---"
 
+# Sepolia: smaller stakes to stay within limited vault TVL
+if [ "$NETWORK" = "sepolia" ]; then
+  STAKE_SM=500000    # $0.50
+  STAKE_MD=1000000   # $1.00
+  STAKE_LG=1500000   # $1.50
+  APPROVE_EACH=5000000  # $5
+else
+  STAKE_SM=1000000   # $1
+  STAKE_MD=2000000   # $2
+  STAKE_LG=3000000   # $3
+  APPROVE_EACH=50000000  # $50
+fi
+
+if [ "$IS_MOCK" = true ]; then
+  send "$DEPLOYER_KEY" "$USDC" "mint(address,uint256)" "$DEPLOYER_ADDR" "$APPROVE_EACH"
+  send "$DEPLOYER_KEY" "$USDC" "mint(address,uint256)" "$ACCOUNT1_ADDR" "$APPROVE_EACH"
+fi
+
 # Approve engine to spend USDC
-send "$DEPLOYER_KEY" "$USDC" "approve(address,uint256)" "$ENGINE" 50000000  # 50 USDC
-send "$ACCOUNT1_KEY" "$USDC" "approve(address,uint256)" "$ENGINE" 50000000  # 50 USDC
+send "$DEPLOYER_KEY" "$USDC" "approve(address,uint256)" "$ENGINE" "$APPROVE_EACH"
+send "$ACCOUNT1_KEY" "$USDC" "approve(address,uint256)" "$ENGINE" "$APPROVE_EACH"
 
 # Outcome bytes32 for "Yes" = bytes32(uint256(1)), matching ParlayEngine + frontend conventions
 YES="0x0000000000000000000000000000000000000000000000000000000000000001"
 
-# Ticket stakes are small to stay under vault's 5% max payout cap.
-# With 1,000 USDC vault TVL, max payout ~50 USDC.
+# Ticket stakes stay under vault's 5% max payout cap.
 
-# Ticket 1: Deployer, Classic mode (0), legs 0+1, $2
+# Ticket 1: Deployer, Classic mode (0), legs 0+1
 send "$DEPLOYER_KEY" "$ENGINE" \
   "buyTicketWithMode(uint256[],bytes32[],uint256,uint8)" \
-  "[$L0,$L1]" "[$YES,$YES]" 2000000 0
-echo "  Ticket: deployer, Classic, legs [$L0,$L1], stake \$2"
+  "[$L0,$L1]" "[$YES,$YES]" "$STAKE_MD" 0
+echo "  Ticket: deployer, Classic, legs [$L0,$L1], stake \$$(echo "scale=2; $STAKE_MD / 1000000" | bc)"
 
-# Ticket 2: Deployer, Progressive mode (1), legs 0+2+3, $1
+# Ticket 2: Deployer, Progressive mode (1), legs 0+2+3
 send "$DEPLOYER_KEY" "$ENGINE" \
   "buyTicketWithMode(uint256[],bytes32[],uint256,uint8)" \
-  "[$L0,$L2,$L3]" "[$YES,$YES,$YES]" 1000000 1
-echo "  Ticket: deployer, Progressive, legs [$L0,$L2,$L3], stake \$1"
+  "[$L0,$L2,$L3]" "[$YES,$YES,$YES]" "$STAKE_SM" 1
+echo "  Ticket: deployer, Progressive, legs [$L0,$L2,$L3], stake \$$(echo "scale=2; $STAKE_SM / 1000000" | bc)"
 
-# Ticket 3: Account1, EarlyCashout mode (2), legs 1+3+4, $2
+# Ticket 3: Account1, EarlyCashout mode (2), legs 1+3+4
 send "$ACCOUNT1_KEY" "$ENGINE" \
   "buyTicketWithMode(uint256[],bytes32[],uint256,uint8)" \
-  "[$L1,$L3,$L4]" "[$YES,$YES,$YES]" 2000000 2
-echo "  Ticket: account1, EarlyCashout, legs [$L1,$L3,$L4], stake \$2"
+  "[$L1,$L3,$L4]" "[$YES,$YES,$YES]" "$STAKE_MD" 2
+echo "  Ticket: account1, EarlyCashout, legs [$L1,$L3,$L4], stake \$$(echo "scale=2; $STAKE_MD / 1000000" | bc)"
 
-# Ticket 4: Account1, Classic mode (0), legs 2+4, $3
+# Ticket 4: Account1, Classic mode (0), legs 2+4
 send "$ACCOUNT1_KEY" "$ENGINE" \
   "buyTicketWithMode(uint256[],bytes32[],uint256,uint8)" \
-  "[$L2,$L4]" "[$YES,$YES]" 3000000 0
-echo "  Ticket: account1, Classic, legs [$L2,$L4], stake \$3"
+  "[$L2,$L4]" "[$YES,$YES]" "$STAKE_LG" 0
+echo "  Ticket: account1, Classic, legs [$L2,$L4], stake \$$(echo "scale=2; $STAKE_LG / 1000000" | bc)"
 
 # --- Summary ---
 echo ""
 echo "=== Seed Complete ==="
 echo "Legs created:   5 (IDs $L0-$L4)"
 echo "Tickets bought: 4"
-echo "LP deposits:    1,000 USDC total"
+echo "LP deposits:    $LP_TOTAL USDC total"
 echo ""
 echo "Next: start the autopilot to auto-resolve legs:"
 echo "  make demo-autopilot"

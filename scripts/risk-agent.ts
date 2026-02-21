@@ -136,6 +136,7 @@ function getConfig() {
   const bankroll = isNaN(Number(rawBankroll)) || Number(rawBankroll) <= 0 ? "1000" : rawBankroll;
   const payoutModeRaw = Number(process.env.AGENT_PAYOUT_MODE ?? "0");
   const payoutMode = [0, 1, 2].includes(payoutModeRaw) ? payoutModeRaw : 0;
+  const demoForceBuy = (process.env.DEMO_FORCE_BUY ?? "false").toLowerCase() === "true";
 
   return {
     servicesUrl,
@@ -149,6 +150,7 @@ function getConfig() {
     confidenceThreshold,
     bankroll,
     payoutMode,
+    demoForceBuy,
   };
 }
 
@@ -470,8 +472,11 @@ async function runCycle(
     }
 
     const { risk } = assessment;
+    // Demo mode: force-buy first candidate regardless of Kelly (for on-chain demos)
+    const forceBuyThisCandidate = cfg.demoForceBuy && i === 0 && cycle === 1;
     const shouldBuy =
-      risk.action === "BUY" && risk.confidence >= cfg.confidenceThreshold;
+      forceBuyThisCandidate ||
+      (risk.action === "BUY" && risk.confidence >= cfg.confidenceThreshold);
 
     // Determine final stake
     const suggestedNum = Number(risk.suggestedStake);
@@ -487,7 +492,7 @@ async function runCycle(
       candidate: i + 1,
       legIds: candidate.legIds,
       outcomes: candidate.outcomes,
-      action: shouldBuy ? "BUY" : `SKIP(${risk.action})`,
+      action: shouldBuy ? (forceBuyThisCandidate ? "BUY(DEMO)" : "BUY") : `SKIP(${risk.action})`,
       confidence: risk.confidence,
       suggestedStake: risk.suggestedStake,
       expectedValue: risk.expectedValue,

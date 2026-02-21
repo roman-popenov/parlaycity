@@ -12,7 +12,7 @@ import {
   useSessionState,
 } from "@/lib/utils";
 import { MOCK_LEGS } from "@/lib/mock";
-import { useBuyTicket, useParlayConfig, useUSDCBalance, useVaultStats } from "@/lib/hooks";
+import { useBuyTicket, useParlayConfig, useUSDCBalance, useVaultStats, useMintTestUSDC } from "@/lib/hooks";
 import { MultiplierClimb } from "./MultiplierClimb";
 
 // ── Types ────────────────────────────────────────────────────────────────
@@ -65,8 +65,15 @@ interface RiskAdviceData {
   suggestedStake: string;
   kellyFraction: number;
   winProbability: number;
+  expectedValue: number;
+  confidence: number;
+  fairMultiplier: number;
+  netMultiplier: number;
+  edgeBps: number;
+  riskTolerance: string;
   reasoning: string;
   warnings: string[];
+  aiInsight?: { analysis: string; model: string; provider: string; verified: boolean };
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────
@@ -81,6 +88,17 @@ const CATEGORY_LABELS: Record<string, string> = {
   trivia: "Trivia",
   ethdenver: "ETHDenver",
   nba: "NBA",
+};
+
+const CATEGORY_COLORS: Record<string, string> = {
+  crypto: "bg-brand-purple/15 text-brand-purple-1 border-brand-purple/30",
+  defi: "bg-brand-blue/15 text-brand-blue border-brand-blue/30",
+  nft: "bg-brand-pink/15 text-brand-pink border-brand-pink/30",
+  policy: "bg-yellow-500/15 text-yellow-400 border-yellow-500/30",
+  economics: "bg-neon-green/15 text-neon-green border-neon-green/30",
+  trivia: "bg-brand-amber/15 text-brand-amber border-brand-amber/30",
+  ethdenver: "bg-brand-pink/15 text-brand-pink border-brand-pink/30",
+  nba: "bg-brand-amber/15 text-brand-amber border-brand-amber/30",
 };
 
 // ── Session storage keys ─────────────────────────────────────────────────
@@ -159,20 +177,32 @@ function restoreSelections(stored: StoredSelection[], allLegs: DisplayLeg[]): Se
   return result;
 }
 
-/** Validate that a parsed risk response has the required shape. */
+/** Validate that a parsed risk response has the required shape (lesson #22: exhaustive). */
 function isValidRiskResponse(data: unknown): data is RiskAdviceData {
   if (!data || typeof data !== "object") return false;
   const d = data as Record<string, unknown>;
-  return (
+  const baseValid =
     typeof d.action === "string" &&
     typeof d.suggestedStake === "string" &&
     /^\d+(?:\.\d*)?$/.test(d.suggestedStake) &&
     typeof d.kellyFraction === "number" &&
     typeof d.winProbability === "number" &&
+    typeof d.expectedValue === "number" &&
+    typeof d.confidence === "number" &&
+    typeof d.fairMultiplier === "number" &&
+    typeof d.netMultiplier === "number" &&
+    typeof d.edgeBps === "number" &&
+    typeof d.riskTolerance === "string" &&
     typeof d.reasoning === "string" &&
     Array.isArray(d.warnings) &&
-    d.warnings.every((w: unknown) => typeof w === "string")
-  );
+    d.warnings.every((w: unknown) => typeof w === "string");
+  if (!baseValid) return false;
+  // aiInsight is optional; validate shape if present
+  if (d.aiInsight !== undefined && d.aiInsight !== null) {
+    const ai = d.aiInsight as Record<string, unknown>;
+    if (typeof ai.analysis !== "string" || typeof ai.model !== "string" || typeof ai.provider !== "string") return false;
+  }
+  return true;
 }
 
 // ── Component ────────────────────────────────────────────────────────────
@@ -182,20 +212,16 @@ export function ParlayBuilder() {
   const { setOpen: openConnectModal } = useModal();
   const { buyTicket, resetSuccess, isPending, isConfirming, isSuccess, error, lastTicketId } = useBuyTicket();
   const { balance: usdcBalance } = useUSDCBalance();
+  const mintHook = useMintTestUSDC();
   const { freeLiquidity, maxPayout } = useVaultStats();
   const { baseFeeBps, perLegFeeBps, maxLegs, minStakeUSDC } = useParlayConfig();
 
   // ── Market data state ───────────────────────────────────────────────────
-  // Initialize with MOCK_LEGS as default -- tests and first render always
-  // see these immediately. API fetch upgrades to full catalog if available.
 
   const [allLegs, setAllLegs] = useState<DisplayLeg[]>(mockToDisplayLegs);
   const [availableCategories, setAvailableCategories] = useState<string[]>(["crypto"]);
   const [activeCategory, setActiveCategory] = useSessionState<string>(SESSION_KEYS.category, "all");
 
-  // Dynamic on-chain leg mapping (from register-legs script output)
-  // legMapping: catalog leg ID (string) -> on-chain contract leg ID (number)
-  // onChainLegIds: set of CATALOG IDs that have on-chain mappings
   const [legMapping, setLegMapping] = useState<Record<string, number>>({});
   const [onChainLegIds, setOnChainLegIds] = useState<Set<bigint>>(new Set());
 
@@ -204,10 +230,9 @@ export function ParlayBuilder() {
   const [selectedLegs, setSelectedLegs] = useState<SelectedLeg[]>([]);
   const [stake, setStake] = useSessionState<string>(SESSION_KEYS.stake, "");
   const [payoutMode, setPayoutMode] = useSessionState<0 | 1 | 2>(SESSION_KEYS.payoutMode, 0);
-
   const [mounted, setMounted] = useState(false);
 
-  // Fetch leg-mapping.json (from register-legs script) to know which catalog legs are on-chain
+  // Fetch leg-mapping.json
   useEffect(() => {
     (async () => {
       try {
@@ -215,37 +240,33 @@ export function ParlayBuilder() {
         if (!r?.ok) return;
         const data = await r.json();
         if (data?.legs && typeof data.legs === "object") {
-          // Validate chainId matches current app chain to prevent stale mapping
           const expectedChainId = Number(process.env.NEXT_PUBLIC_CHAIN_ID ?? "31337");
           if (data.chainId && data.chainId !== expectedChainId) {
             console.warn(`[leg-mapping] Chain mismatch: mapping=${data.chainId}, app=${expectedChainId}. Ignoring.`);
             return;
           }
           setLegMapping(data.legs);
-          // Keys are catalog leg IDs; values are on-chain contract IDs
           const catalogIds = new Set<bigint>(
             Object.keys(data.legs as Record<string, number>).map((k) => BigInt(k)),
           );
           setOnChainLegIds(catalogIds);
         }
       } catch {
-        /* leg-mapping.json not available -- all API legs remain off-chain */
+        /* leg-mapping.json not available */
       }
     })();
   }, []);
 
-  // Fetch markets from API (upgrades from MOCK_LEGS to full catalog)
+  // Fetch markets from API
   useEffect(() => {
     setMounted(true);
     let cancelled = false;
 
-    // Parse stored selections early so we can re-restore after API legs load
     let storedSelections: StoredSelection[] | null = null;
     try {
       const raw = sessionStorage.getItem(SESSION_KEYS.legs);
       if (raw) {
         storedSelections = JSON.parse(raw);
-        // Immediate restore against MOCK_LEGS (IDs 0, 1, 2)
         const restored = restoreSelections(storedSelections!, mockToDisplayLegs());
         if (restored.length > 0) setSelectedLegs(restored);
       }
@@ -266,14 +287,13 @@ export function ParlayBuilder() {
           const cats = [...new Set(markets.map((m) => m.category))].sort();
           setAvailableCategories(cats);
 
-          // Re-restore selections against full catalog to recover picks from new categories
           if (storedSelections && storedSelections.length > 0) {
             const restored = restoreSelections(storedSelections, legs);
             if (restored.length > 0) setSelectedLegs(restored);
           }
         }
       } catch {
-        // Keep initial MOCK_LEGS data -- no change needed
+        // Keep initial MOCK_LEGS data
       }
     }
 
@@ -283,8 +303,7 @@ export function ParlayBuilder() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Reconcile selectedLegs when allLegs changes (e.g., API fetch replaces mock data)
-  // so stale mock leg references (with wrong onChain flag) are replaced with current objects.
+  // Reconcile selectedLegs when allLegs changes
   useEffect(() => {
     setSelectedLegs((prev) => {
       if (prev.length === 0) return prev;
@@ -301,14 +320,14 @@ export function ParlayBuilder() {
             reconciled.push(s);
           }
         } else {
-          changed = true; // leg no longer in catalog, drop it
+          changed = true;
         }
       }
       return changed ? reconciled : prev;
     });
   }, [allLegs]);
 
-  // Persist selectedLegs to sessionStorage on change
+  // Persist selectedLegs to sessionStorage
   useEffect(() => {
     if (!mounted) return;
     try {
@@ -328,12 +347,14 @@ export function ParlayBuilder() {
   const [riskLoading, setRiskLoading] = useState(false);
   const [riskError, setRiskError] = useState<string | null>(null);
   const riskFetchIdRef = useRef(0);
+  const [aiInsightExpanded, setAiInsightExpanded] = useState(false);
 
-  // Clear stale risk advice, reset loading, and invalidate in-flight fetches
+  // Clear stale risk data when inputs change
   useEffect(() => {
     setRiskAdvice(null);
     setRiskError(null);
     setRiskLoading(false);
+    setAiInsightExpanded(false);
     riskFetchIdRef.current++;
   }, [selectedLegs, stake, payoutMode]);
 
@@ -345,13 +366,11 @@ export function ParlayBuilder() {
   const effectiveBaseFee = baseFeeBps ?? PARLAY_CONFIG.baseFee;
   const effectivePerLegFee = perLegFeeBps ?? PARLAY_CONFIG.perLegFee;
 
-  /** Legs filtered by active category. */
   const filteredLegs = useMemo(() => {
     if (activeCategory === "all") return allLegs;
     return allLegs.filter((l) => l.category === activeCategory);
   }, [allLegs, activeCategory]);
 
-  // Reset activeCategory if persisted value no longer matches any legs
   useEffect(() => {
     if (
       activeCategory !== "all" &&
@@ -362,7 +381,6 @@ export function ParlayBuilder() {
     }
   }, [activeCategory, allLegs.length, filteredLegs.length, setActiveCategory]);
 
-  /** Group filtered legs by market title for display. */
   const groupedByMarket = useMemo(() => {
     const groups = new Map<string, DisplayLeg[]>();
     for (const leg of filteredLegs) {
@@ -388,8 +406,6 @@ export function ParlayBuilder() {
   const usdcBalanceNum = usdcBalance !== undefined ? parseFloat(formatUnits(usdcBalance, 6)) : 0;
   const insufficientBalance = stakeNum > 0 && usdcBalance !== undefined && stakeNum > usdcBalanceNum;
 
-  /** All selected legs must be on-chain to enable buying.
-   *  MOCK_LEGS have onChain=true (Deploy.s.sol). API legs use live onChainLegIds (from leg-mapping). */
   const allSelectedOnChain = selectedLegs.every(
     (s) => s.leg.onChain || onChainLegIds.has(s.leg.id),
   );
@@ -431,9 +447,6 @@ export function ParlayBuilder() {
 
   const handleBuy = async () => {
     if (!canBuy) return;
-    // Translate catalog leg IDs to on-chain IDs via leg mapping.
-    // Mock/Deploy.s.sol legs (onChain=true) already have correct IDs — skip mapping
-    // to avoid collision with catalog IDs that share the same numeric range.
     const legIds = selectedLegs.map((s) => {
       if (s.leg.onChain) return s.leg.id;
       const catalogId = s.leg.id.toString();
@@ -457,13 +470,7 @@ export function ParlayBuilder() {
     setRiskError(null);
 
     try {
-      const probabilities = selectedLegs.map((s) => {
-        const prob = 1 / effectiveOdds(s.leg, s.outcomeChoice);
-        const scaled = Math.round(prob * 1_000_000);
-        return Math.min(999_999, Math.max(1, scaled));
-      });
-
-      const res = await fetch(`${SERVICES_API_URL}/premium/risk-assess`, {
+      const res = await fetch(`${SERVICES_API_URL}/premium/agent-quote`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -473,7 +480,6 @@ export function ParlayBuilder() {
           legIds: selectedLegs.map((s) => Number(s.leg.id)),
           outcomes: selectedLegs.map((s) => (s.outcomeChoice === 1 ? "Yes" : "No")),
           stake,
-          probabilities,
           bankroll:
             usdcBalance !== undefined && usdcBalance > 0n
               ? formatUnits(usdcBalance, 6)
@@ -490,16 +496,27 @@ export function ParlayBuilder() {
         return;
       }
 
-      const data: unknown = await res.json();
+      const raw: unknown = await res.json();
       if (localFetchId !== riskFetchIdRef.current) return;
 
-      if (!isValidRiskResponse(data)) {
+      // Agent-quote returns { quote, risk, aiInsight? }
+      const envelope = raw as Record<string, unknown>;
+      const riskObj = envelope.risk;
+      if (!riskObj || typeof riskObj !== "object") {
         setRiskError("Invalid response from risk advisor");
         setRiskLoading(false);
         return;
       }
 
-      setRiskAdvice(data);
+      const merged = { ...(riskObj as Record<string, unknown>), ...(envelope.aiInsight ? { aiInsight: envelope.aiInsight } : {}) };
+
+      if (!isValidRiskResponse(merged)) {
+        setRiskError("Invalid response from risk advisor");
+        setRiskLoading(false);
+        return;
+      }
+
+      setRiskAdvice(merged);
     } catch {
       if (localFetchId === riskFetchIdRef.current) {
         setRiskError("Failed to connect to risk advisor");
@@ -508,6 +525,21 @@ export function ParlayBuilder() {
 
     if (localFetchId === riskFetchIdRef.current) setRiskLoading(false);
   }, [selectedLegs, stake, usdcBalance]);
+
+  // Stable ref for auto-trigger (avoids re-debouncing on usdcBalance polls)
+  const fetchRiskAdviceRef = useRef(fetchRiskAdvice);
+  fetchRiskAdviceRef.current = fetchRiskAdvice;
+
+  // Auto-trigger risk analysis when conditions are met (600ms debounce)
+  useEffect(() => {
+    if (selectedLegs.length < PARLAY_CONFIG.minLegs || !(parseFloat(stake) > 0)) return;
+    setRiskLoading(true);
+    const timer = setTimeout(() => {
+      fetchRiskAdviceRef.current();
+    }, 600);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedLegs, stake, payoutMode]);
 
   // ── Derived display ────────────────────────────────────────────────────
 
@@ -536,7 +568,7 @@ export function ParlayBuilder() {
   // ── Render ─────────────────────────────────────────────────────────────
 
   return (
-    <div className={`grid gap-8 lg:grid-cols-5 ${mounted ? "" : "pointer-events-none opacity-0"}`}>
+    <div id="ftue-builder" className={`grid gap-8 lg:grid-cols-5 ${mounted ? "" : "pointer-events-none opacity-0"}`}>
       {/* Leg selector */}
       <div className="space-y-4 lg:col-span-3">
         {vaultEmpty && (
@@ -551,7 +583,7 @@ export function ParlayBuilder() {
             onClick={() => setActiveCategory("all")}
             className={`rounded-full px-3 py-1 text-xs font-semibold transition-all ${
               activeCategory === "all"
-                ? "bg-accent-blue/20 text-accent-blue ring-1 ring-accent-blue/30"
+                ? "gradient-bg text-white shadow-lg shadow-brand-pink/20"
                 : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200"
             }`}
           >
@@ -563,36 +595,64 @@ export function ParlayBuilder() {
               onClick={() => setActiveCategory(cat)}
               className={`rounded-full px-3 py-1 text-xs font-semibold transition-all ${
                 activeCategory === cat
-                  ? "bg-accent-blue/20 text-accent-blue ring-1 ring-accent-blue/30"
+                  ? "gradient-bg text-white shadow-lg shadow-brand-pink/20"
                   : "bg-white/5 text-gray-400 hover:bg-white/10 hover:text-gray-200"
               }`}
             >
               {CATEGORY_LABELS[cat] ?? cat}
-              {cat === "nba" && <span className="ml-1 text-[10px] opacity-60">LIVE</span>}
+              {cat === "nba" && (
+                <span className="ml-1.5 inline-flex items-center gap-1 rounded-full bg-neon-green/15 px-1.5 py-0.5 text-[10px] font-bold text-neon-green">
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-neon-green" />
+                  LIVE
+                </span>
+              )}
             </button>
           ))}
         </div>
 
-        <h2 className="text-lg font-semibold text-gray-300">
-          Pick Your Legs{" "}
-          <span className="text-sm text-gray-500">
-            ({selectedLegs.length}/{effectiveMaxLegs})
-          </span>
-        </h2>
+        {/* Leg counter: visual dot indicators */}
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-gray-300">
+            Pick Your Legs
+          </h2>
+          <div className="flex gap-1">
+            {Array.from({ length: effectiveMaxLegs }, (_, i) => (
+              <div
+                key={i}
+                className={`flex h-6 w-6 items-center justify-center rounded-md text-[10px] font-bold transition-all ${
+                  i < selectedLegs.length
+                    ? "gradient-bg text-white shadow-sm"
+                    : "bg-white/5 text-gray-600"
+                }`}
+              >
+                {i + 1}
+              </div>
+            ))}
+          </div>
+        </div>
 
         <div className={`space-y-4 ${vaultEmpty ? "pointer-events-none opacity-40" : ""}`}>
           {[...groupedByMarket.entries()].map(([title, legs]) => (
-            <div key={title}>
-              <h3 className="mb-1.5 text-xs font-medium uppercase tracking-wider text-gray-500">
-                {title}
+            <div key={title} className="space-y-2">
+              <div className="flex items-center gap-2">
+                <h3 className="text-xs font-medium uppercase tracking-wider text-gray-500">
+                  {title}
+                </h3>
+                {legs[0] && (
+                  <span className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold ${
+                    CATEGORY_COLORS[legs[0].category] ?? "bg-white/10 text-gray-400 border-white/10"
+                  }`}>
+                    {CATEGORY_LABELS[legs[0].category] ?? legs[0].category}
+                  </span>
+                )}
                 {legs[0] && !legs[0].onChain && !onChainLegIds.has(legs[0].id) && (
-                  <span className="ml-2 rounded bg-yellow-500/10 px-1.5 py-0.5 text-[10px] text-yellow-400">
+                  <span className="rounded-full bg-yellow-500/10 px-2 py-0.5 text-[10px] text-yellow-400">
                     Analysis Only
                   </span>
                 )}
-              </h3>
-              <div className="space-y-1">
-                {legs.map((leg) => {
+              </div>
+              <div className="space-y-2">
+                {legs.map((leg, legIdx) => {
                   const selected = selectedLegs.find((s) => s.leg.id === leg.id);
                   const currentOdds = selected
                     ? effectiveOdds(leg, selected.outcomeChoice)
@@ -600,34 +660,36 @@ export function ParlayBuilder() {
                   return (
                     <div
                       key={leg.id.toString()}
-                      className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 transition-all ${
+                      id={legIdx === 0 ? "ftue-market-card" : undefined}
+                      className={`animate-market-card-enter glass-card overflow-hidden transition-all ${
                         selected
-                          ? "border-accent-blue/50 bg-accent-blue/5"
-                          : "border-white/5 bg-gray-900/50 hover:border-white/10"
+                          ? selected.outcomeChoice === 1
+                            ? "border-brand-green/40 shadow-[0_0_15px_rgba(34,197,94,0.1)]"
+                            : "border-brand-amber/40 shadow-[0_0_15px_rgba(245,158,11,0.1)]"
+                          : "hover:border-white/10"
                       }`}
+                      style={{ animationDelay: `${legIdx * 50}ms` }}
                     >
-                      <span className="min-w-0 flex-1 truncate text-sm text-gray-200">
-                        {leg.description}
-                        {!leg.onChain && !onChainLegIds.has(leg.id) && (
-                          <span className="ml-1 text-[10px] text-gray-500">(off-chain)</span>
-                        )}
-                      </span>
-                      <span className={`flex-shrink-0 tabular-nums text-xs font-semibold ${
-                        selected?.outcomeChoice === 1 ? "text-neon-green" :
-                        selected?.outcomeChoice === 2 ? "text-neon-red" :
-                        "text-gray-500"
-                      }`}>
-                        {currentOdds.toFixed(2)}x
-                      </span>
-                      {/* Dual-pill toggle */}
-                      <div className="flex flex-shrink-0 items-center rounded-full bg-white/5 p-0.5">
+                      <div className="flex items-center gap-3 px-4 py-3">
+                        <span className="min-w-0 flex-1 text-sm text-gray-200">
+                          {leg.description}
+                          {!leg.onChain && !onChainLegIds.has(leg.id) && (
+                            <span className="ml-1 text-[10px] text-gray-500">(off-chain)</span>
+                          )}
+                        </span>
+                        <span className="flex-shrink-0 rounded-full bg-white/5 px-2 py-0.5 text-xs font-bold tabular-nums text-brand-gold">
+                          {currentOdds.toFixed(2)}x
+                        </span>
+                      </div>
+                      {/* Full-width YES/NO buttons */}
+                      <div className="grid grid-cols-2">
                         <button
                           disabled={vaultEmpty}
                           onClick={() => toggleLeg(leg, 1)}
-                          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-all ${
+                          className={`py-2 text-xs font-bold uppercase tracking-wider transition-all ${
                             selected?.outcomeChoice === 1
-                              ? "bg-neon-green/20 text-neon-green"
-                              : "text-gray-500 hover:text-gray-300"
+                              ? "bg-brand-green/20 text-brand-green"
+                              : "bg-white/[0.02] text-gray-500 hover:bg-brand-green/10 hover:text-brand-green/70"
                           }`}
                         >
                           Yes
@@ -635,10 +697,10 @@ export function ParlayBuilder() {
                         <button
                           disabled={vaultEmpty}
                           onClick={() => toggleLeg(leg, 2)}
-                          className={`rounded-full px-2.5 py-1 text-xs font-semibold transition-all ${
+                          className={`border-l border-white/5 py-2 text-xs font-bold uppercase tracking-wider transition-all ${
                             selected?.outcomeChoice === 2
-                              ? "bg-neon-red/20 text-neon-red"
-                              : "text-gray-500 hover:text-gray-300"
+                              ? "bg-brand-amber/20 text-brand-amber"
+                              : "bg-white/[0.02] text-gray-500 hover:bg-brand-amber/10 hover:text-brand-amber/70"
                           }`}
                         >
                           No
@@ -654,28 +716,33 @@ export function ParlayBuilder() {
       </div>
 
       {/* Ticket builder / summary panel */}
-      <div className="lg:col-span-2">
-        <div className="sticky top-20 space-y-6 rounded-2xl border border-white/5 bg-gray-900/60 p-6 backdrop-blur">
+      <div className="lg:col-span-2" id="parlay-panel">
+        <div className="glass-card-glow sticky top-20 space-y-6 p-6">
           {/* Multiplier climb */}
-          <MultiplierClimb
-            legMultipliers={selectedLegs.map((s) => effectiveOdds(s.leg, s.outcomeChoice))}
-          />
+          <div id="parlay-multiplier">
+            <MultiplierClimb
+              legMultipliers={selectedLegs.map((s) => effectiveOdds(s.leg, s.outcomeChoice))}
+              animated
+            />
+          </div>
 
-          {/* Selected legs summary */}
+          {/* Selected legs summary with numbered badges */}
           {selectedLegs.length > 0 && (
             <div className="space-y-2">
               {selectedLegs.map((s, i) => (
                 <div
                   key={s.leg.id.toString()}
-                  className="flex items-center justify-between rounded-lg bg-white/5 px-3 py-2 text-sm animate-fade-in"
+                  className="flex items-center gap-3 rounded-lg bg-white/5 px-3 py-2 text-sm animate-fade-in"
                 >
-                  <span className="truncate text-gray-300">
-                    <span className="mr-2 text-gray-500">#{i + 1}</span>
+                  <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full gradient-bg text-[10px] font-bold text-white">
+                    {i + 1}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate text-gray-300">
                     {s.leg.description}
                   </span>
                   <span
                     className={`ml-2 flex-shrink-0 text-xs font-bold ${
-                      s.outcomeChoice === 1 ? "text-neon-green" : "text-neon-red"
+                      s.outcomeChoice === 1 ? "text-brand-green" : "text-brand-amber"
                     }`}
                   >
                     {s.outcomeChoice === 1 ? "YES" : "NO"}
@@ -686,15 +753,27 @@ export function ParlayBuilder() {
           )}
 
           {/* Stake input */}
-          <div>
+          <div id="stake-input">
             <div className="mb-1.5 flex items-center justify-between">
               <label className="text-xs font-medium uppercase tracking-wider text-gray-500">
                 Stake (USDC)
               </label>
               {usdcBalance !== undefined && (
-                <span className="text-xs text-gray-500">
+                <span className="flex items-center gap-2 text-xs text-gray-500">
                   Balance: {parseFloat(formatUnits(usdcBalance, 6)).toFixed(2)}
+                  {isConnected && (
+                    <button
+                      onClick={() => mintHook.mint()}
+                      disabled={mintHook.isPending || mintHook.isConfirming}
+                      className="rounded-md bg-brand-pink/20 px-1.5 py-0.5 text-[10px] font-semibold text-brand-pink transition-colors hover:bg-brand-pink/30 disabled:opacity-50"
+                    >
+                      {mintHook.isPending ? "..." : mintHook.isConfirming ? "Minting" : mintHook.isSuccess ? "Done!" : "+ Mint"}
+                    </button>
+                  )}
                 </span>
+              )}
+              {mintHook.error && (
+                <p className="text-xs text-red-400">{mintHook.error}</p>
               )}
             </div>
             <div className="relative">
@@ -705,14 +784,14 @@ export function ParlayBuilder() {
                 onKeyDown={blockNonNumericKeys}
                 onChange={(e) => { resetSuccess(); setStake(sanitizeNumericInput(e.target.value)); }}
                 placeholder={`Min ${effectiveMinStake} USDC`}
-                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-24 text-lg font-semibold text-white placeholder-gray-600 outline-none transition-colors focus:border-accent-blue/50"
+                className="w-full rounded-xl border border-white/10 bg-white/5 px-4 py-3 pr-24 text-lg font-semibold text-white placeholder-gray-600 outline-none transition-colors focus:border-brand-pink/50"
               />
               <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2">
                 {usdcBalance !== undefined && usdcBalance > 0n && (
                   <button
                     type="button"
                     onClick={() => setStake(formatUnits(usdcBalance!, 6))}
-                    className="rounded-md bg-accent-blue/20 px-2 py-0.5 text-xs font-semibold text-accent-blue transition-colors hover:bg-accent-blue/30"
+                    className="rounded-md bg-brand-pink/20 px-2 py-0.5 text-xs font-semibold text-brand-pink transition-colors hover:bg-brand-pink/30"
                   >
                     MAX
                   </button>
@@ -738,7 +817,7 @@ export function ParlayBuilder() {
                   onClick={() => { resetSuccess(); setPayoutMode(value); }}
                   className={`rounded-lg px-2 py-2 text-center transition-all ${
                     payoutMode === value
-                      ? "bg-accent-blue/20 text-accent-blue ring-1 ring-accent-blue/30"
+                      ? "bg-brand-purple/15 text-brand-purple-1 ring-1 ring-brand-purple/30"
                       : "text-gray-400 hover:text-gray-200"
                   }`}
                 >
@@ -763,62 +842,128 @@ export function ParlayBuilder() {
             </div>
             <div className="flex justify-between text-gray-400">
               <span>Combined Odds</span>
-              <span
-                className="font-bold"
-                style={{
-                  color:
-                    selectedLegs.length <= 2
-                      ? "#22c55e"
-                      : selectedLegs.length <= 3
-                        ? "#eab308"
-                        : "#ef4444",
-                }}
-              >
+              <span className="gradient-text-gold text-glow-gold font-bold">
                 {multiplier.toFixed(2)}x
               </span>
             </div>
           </div>
 
-          {/* Risk Advisor */}
+          {/* Kelly AI Risk Advisor */}
           {selectedLegs.length >= PARLAY_CONFIG.minLegs && stakeNum > 0 && (
-            <div className="space-y-2">
-              <button
-                onClick={fetchRiskAdvice}
-                disabled={riskLoading}
-                className="w-full rounded-lg border border-accent-purple/30 bg-accent-purple/10 py-2 text-xs font-semibold text-accent-purple transition-all hover:bg-accent-purple/20 disabled:opacity-50"
-              >
-                {riskLoading ? "Analyzing..." : "AI Risk Analysis (x402)"}
-              </button>
-              {riskError && (
-                <div className="rounded-lg border border-neon-red/20 bg-neon-red/5 px-3 py-2 text-xs text-neon-red animate-fade-in">
-                  {riskError}
+            <div className="space-y-2" data-testid="risk-advisor">
+              {/* Loading skeleton */}
+              {riskLoading && (
+                <div className="space-y-2 rounded-lg border border-brand-purple-1/20 bg-brand-purple/5 p-3 animate-pulse" data-testid="risk-loading">
+                  <div className="flex items-center justify-between">
+                    <div className="h-4 w-24 rounded bg-white/10" />
+                    <div className="h-4 w-16 rounded bg-white/10" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div className="h-8 rounded bg-white/10" />
+                    <div className="h-8 rounded bg-white/10" />
+                    <div className="h-8 rounded bg-white/10" />
+                    <div className="h-8 rounded bg-white/10" />
+                  </div>
+                  <div className="h-3 w-3/4 rounded bg-white/5" />
                 </div>
               )}
-              {riskAdvice && (
-                <div className={`rounded-lg border px-3 py-2.5 text-xs animate-fade-in ${
-                  riskAdvice.action === "BUY" ? "border-neon-green/20 bg-neon-green/5 text-neon-green" :
-                  riskAdvice.action === "REDUCE_STAKE" ? "border-yellow-500/20 bg-yellow-500/5 text-yellow-400" :
-                  "border-neon-red/20 bg-neon-red/5 text-neon-red"
+
+              {/* Error with retry */}
+              {riskError && !riskLoading && (
+                <div className="rounded-lg border border-neon-red/20 bg-neon-red/5 px-3 py-2 text-xs text-neon-red animate-fade-in">
+                  {riskError}
+                  <button onClick={fetchRiskAdvice} className="ml-2 underline hover:no-underline">
+                    Retry
+                  </button>
+                </div>
+              )}
+
+              {/* Rich results card */}
+              {riskAdvice && !riskLoading && (
+                <div className={`rounded-lg border px-3 py-3 text-xs animate-fade-in ${
+                  riskAdvice.action === "BUY" ? "border-neon-green/20 bg-neon-green/5" :
+                  riskAdvice.action === "REDUCE_STAKE" ? "border-yellow-500/20 bg-yellow-500/5" :
+                  "border-neon-red/20 bg-neon-red/5"
                 }`}>
-                  <div className="mb-1 flex items-center justify-between">
-                    <span className="font-bold">{riskAdvice.action}</span>
-                    <span className="text-gray-400">Kelly: {(riskAdvice.kellyFraction * 100).toFixed(1)}%</span>
+                  {/* Header: action badge + refresh */}
+                  <div className="mb-2 flex items-center justify-between">
+                    <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                      riskAdvice.action === "BUY" ? "bg-neon-green/20 text-neon-green" :
+                      riskAdvice.action === "REDUCE_STAKE" ? "bg-yellow-500/20 text-yellow-400" :
+                      "bg-neon-red/20 text-neon-red"
+                    }`}>
+                      {riskAdvice.action}
+                    </span>
+                    <button
+                      onClick={fetchRiskAdvice}
+                      disabled={riskLoading}
+                      className="text-[10px] text-gray-500 hover:text-gray-300 disabled:opacity-50"
+                    >
+                      Refresh
+                    </button>
                   </div>
-                  <p className="text-gray-300">{riskAdvice.reasoning}</p>
+
+                  {/* Stats grid */}
+                  <div className="mb-2 grid grid-cols-2 gap-x-4 gap-y-1">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Kelly</span>
+                      <span className="font-semibold text-white">{(riskAdvice.kellyFraction * 100).toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Win Prob</span>
+                      <span className="font-semibold text-white">{(riskAdvice.winProbability * 100).toFixed(1)}%</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">EV</span>
+                      <span className={`font-semibold ${riskAdvice.expectedValue >= 0 ? "text-neon-green" : "text-neon-red"}`}>
+                        {riskAdvice.expectedValue >= 0 ? "+" : ""}{riskAdvice.expectedValue.toFixed(2)} USDC
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Edge</span>
+                      <span className="font-semibold text-white">{riskAdvice.edgeBps}bps</span>
+                    </div>
+                  </div>
+
+                  {/* Reasoning */}
+                  <p className="mb-1.5 text-gray-300">{riskAdvice.reasoning}</p>
+
+                  {/* Warnings */}
                   {riskAdvice.warnings.length > 0 && (
-                    <div className="mt-1.5 space-y-0.5">
+                    <div className="mb-1.5 space-y-0.5">
                       {riskAdvice.warnings.map((w, i) => (
                         <p key={i} className="text-yellow-400/80">! {w}</p>
                       ))}
                     </div>
                   )}
+
+                  {/* Suggested stake */}
                   {riskAdvice.suggestedStake && riskAdvice.suggestedStake !== stake && (
                     <button
                       onClick={() => setStake(sanitizeNumericInput(riskAdvice!.suggestedStake))}
-                      className="mt-1.5 rounded bg-accent-blue/20 px-2 py-0.5 text-accent-blue hover:bg-accent-blue/30"
+                      className="mb-1.5 rounded bg-brand-pink/20 px-2 py-0.5 text-brand-pink hover:bg-brand-pink/30"
                     >
                       Use suggested: ${riskAdvice.suggestedStake}
                     </button>
+                  )}
+
+                  {/* AI Insight (collapsible, from 0G) */}
+                  {riskAdvice.aiInsight && (
+                    <div className="mt-2 border-t border-white/5 pt-2">
+                      <button
+                        onClick={() => setAiInsightExpanded(!aiInsightExpanded)}
+                        className="flex w-full items-center justify-between text-[10px] text-gray-500 hover:text-gray-300"
+                        data-testid="ai-insight-toggle"
+                      >
+                        <span>AI Insight ({riskAdvice.aiInsight.provider})</span>
+                        <span>{aiInsightExpanded ? "\u2212" : "+"}</span>
+                      </button>
+                      {aiInsightExpanded && (
+                        <p className="mt-1 text-[11px] leading-relaxed text-gray-400" data-testid="ai-insight-content">
+                          {riskAdvice.aiInsight.analysis}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -836,12 +981,12 @@ export function ParlayBuilder() {
           <button
             onClick={!mounted || !isConnected ? () => openConnectModal(true) : handleBuy}
             disabled={mounted && isConnected && (!canBuy || vaultEmpty || isPending || isConfirming)}
-            className={`w-full rounded-xl py-3.5 text-sm font-bold uppercase tracking-wider transition-all ${
+            className={`btn-gradient w-full rounded-xl py-3.5 text-sm font-bold uppercase tracking-wider text-white transition-all ${
               !mounted || !isConnected
-                ? "bg-gradient-to-r from-accent-blue to-accent-purple text-white shadow-lg shadow-accent-purple/20 hover:shadow-accent-purple/40"
+                ? ""
                 : canBuy && !vaultEmpty && !isPending && !isConfirming
-                  ? "bg-gradient-to-r from-accent-blue to-accent-purple text-white shadow-lg shadow-accent-purple/20 hover:shadow-accent-purple/40"
-                  : "cursor-not-allowed bg-gray-800 text-gray-500"
+                  ? ""
+                  : "!bg-none !bg-gray-800 !text-gray-500 cursor-not-allowed !shadow-none"
             }`}
           >
             {buyButtonLabel()}
@@ -853,7 +998,7 @@ export function ParlayBuilder() {
               className={`rounded-lg px-4 py-2.5 text-center text-sm font-medium animate-fade-in ${
                 txState === "confirmed"
                   ? "bg-neon-green/10 text-neon-green"
-                  : "bg-accent-blue/10 text-accent-blue"
+                  : "bg-brand-purple/10 text-brand-purple-1"
               }`}
             >
               {txState === "pending" && "Transaction submitted..."}
