@@ -181,7 +181,7 @@ async function main() {
   // Explicitly manage nonce to avoid "nonce too low" / "replacement transaction
   // underpriced" errors on real networks where RPC propagation lags behind
   // waitForTransactionReceipt.
-  let nonce = await publicClient.getTransactionCount({ address: account.address });
+  let nonce = await publicClient.getTransactionCount({ address: account.address, blockTag: "pending" });
   console.log(`[register-legs] Starting nonce: ${nonce}`);
 
   for (const leg of catalogLegs) {

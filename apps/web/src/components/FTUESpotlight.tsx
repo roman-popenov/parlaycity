@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, createContext, useContext, type ReactNode } from "react";
 
 // ── FTUE Hook ──────────────────────────────────────────────────────────
 
@@ -56,7 +56,36 @@ const PHASE_2_STEPS: FTUEStep[] = [
 const STORAGE_KEY = "ftue:completed";
 const PHASE2_STORAGE_KEY = "ftue:phase2_completed";
 
-export function useFTUE() {
+// ── Shared Context ─────────────────────────────────────────────────────
+
+interface FTUEState {
+  active: boolean;
+  phase: 0 | 1 | 2;
+  stepIndex: number;
+  steps: FTUEStep[];
+  currentStep: FTUEStep | null;
+  next: () => void;
+  prev: () => void;
+  skip: () => void;
+  restart: () => void;
+}
+
+const FTUEContext = createContext<FTUEState | null>(null);
+
+export function FTUEProvider({ children }: { children: ReactNode }) {
+  const state = useFTUEInternal();
+  return <FTUEContext.Provider value={state}>{children}</FTUEContext.Provider>;
+}
+
+export function useFTUE(): FTUEState {
+  const ctx = useContext(FTUEContext);
+  if (!ctx) {
+    throw new Error("useFTUE must be used within <FTUEProvider>");
+  }
+  return ctx;
+}
+
+function useFTUEInternal(): FTUEState {
   const [phase, setPhase] = useState<0 | 1 | 2>(0); // 0 = inactive
   const [stepIndex, setStepIndex] = useState(0);
   const [hydrated, setHydrated] = useState(false);
@@ -152,10 +181,13 @@ export function FTUESpotlight() {
   // Track whether the target element exists on the current page
   const [targetExists, setTargetExists] = useState(false);
 
-  // Measure target element position
+  // Measure target element position (compare before setState to avoid 60fps re-renders)
+  const prevRectRef = useRef<SpotlightRect | null>(null);
+
   useEffect(() => {
     if (!active || !currentStep) {
       setRect(null);
+      prevRectRef.current = null;
       setTargetExists(false);
       return;
     }
@@ -166,14 +198,19 @@ export function FTUESpotlight() {
         setTargetExists(true);
         const r = el.getBoundingClientRect();
         const pad = 8;
-        setRect({
-          top: r.top - pad,
-          left: r.left - pad,
-          width: r.width + pad * 2,
-          height: r.height + pad * 2,
-        });
+        const top = r.top - pad;
+        const left = r.left - pad;
+        const width = r.width + pad * 2;
+        const height = r.height + pad * 2;
+        const prev = prevRectRef.current;
+        if (!prev || prev.top !== top || prev.left !== left || prev.width !== width || prev.height !== height) {
+          const next = { top, left, width, height };
+          prevRectRef.current = next;
+          setRect(next);
+        }
       } else {
         setTargetExists(false);
+        prevRectRef.current = null;
         setRect(null);
       }
       rafRef.current = requestAnimationFrame(measure);

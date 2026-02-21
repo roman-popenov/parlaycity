@@ -406,12 +406,15 @@ export function useMintTestUSDC() {
   const [isPending, setIsPending] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout>>();
 
   const mint = async (amount: bigint = parseUnits("1000", 6)) => {
     if (!address || !publicClient) return;
     setIsPending(true);
     setIsConfirming(false);
     setIsSuccess(false);
+    setError(null);
     try {
       const hash = await writeContractAsync({
         address: contractAddresses.usdc,
@@ -424,14 +427,19 @@ export function useMintTestUSDC() {
       await publicClient.waitForTransactionReceipt({ hash });
       setIsConfirming(false);
       setIsSuccess(true);
-      setTimeout(() => setIsSuccess(false), 3000);
-    } catch {
+      clearTimeout(successTimerRef.current);
+      successTimerRef.current = setTimeout(() => setIsSuccess(false), 3000);
+    } catch (err) {
       setIsPending(false);
       setIsConfirming(false);
+      setError(err instanceof Error ? err.message : "Mint failed -- token may not be mintable");
     }
   };
 
-  return { mint, isPending, isConfirming, isSuccess };
+  // Cleanup timeout on unmount
+  useEffect(() => () => clearTimeout(successTimerRef.current), []);
+
+  return { mint, isPending, isConfirming, isSuccess, error };
 }
 
 export function useBuyTicket() {

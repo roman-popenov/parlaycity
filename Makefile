@@ -22,8 +22,8 @@ chain:
 	cd packages/contracts && anvil
 
 deploy-local:
-	cd packages/contracts && USDC_ADDRESS= forge script script/Deploy.s.sol --broadcast --rpc-url http://127.0.0.1:8545
-	USDC_ADDRESS= ./scripts/sync-env.sh
+	cd packages/contracts && env -u USDC_ADDRESS forge script script/Deploy.s.sol --broadcast --rpc-url http://127.0.0.1:8545
+	env -u USDC_ADDRESS ./scripts/sync-env.sh
 
 deploy-sepolia:
 	@test -n "$$DEPLOYER_PRIVATE_KEY" || (echo "Error: DEPLOYER_PRIVATE_KEY required (set in .env)" && exit 1)
@@ -120,8 +120,8 @@ dev:
 	@sleep 2
 	@# Deploy contracts and sync env (clean cache to avoid stale source refs across branches)
 	@cd packages/contracts && forge clean > /dev/null 2>&1 || true
-	@cd packages/contracts && USDC_ADDRESS= forge script script/Deploy.s.sol --broadcast --rpc-url http://127.0.0.1:8545 > ../../$(PID_DIR)/deploy.log 2>&1
-	@USDC_ADDRESS= ./scripts/sync-env.sh
+	@cd packages/contracts && env -u USDC_ADDRESS forge script script/Deploy.s.sol --broadcast --rpc-url http://127.0.0.1:8545 > ../../$(PID_DIR)/deploy.log 2>&1
+	@env -u USDC_ADDRESS ./scripts/sync-env.sh
 	@echo "  Contracts deployed, .env.local synced"
 	@# Register catalog legs on-chain
 	@cd packages/services && pnpm exec tsx ../../scripts/register-legs.ts > ../../$(PID_DIR)/register-legs.log 2>&1 || echo "  (register-legs skipped, see .pids/register-legs.log)"

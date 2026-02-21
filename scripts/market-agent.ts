@@ -253,7 +253,7 @@ async function discover(
   }
 
   // Explicit nonce management for batch registrations
-  let nonce = await publicClient.getTransactionCount({ address: account.address });
+  let nonce = await publicClient.getTransactionCount({ address: account.address, blockTag: "pending" });
   let registered = 0;
 
   for (const leg of toRegister) {
@@ -436,7 +436,7 @@ async function resolve(
   }
 
   let resolved = 0;
-  let nonce = await publicClient.getTransactionCount({ address: account.address });
+  let nonce = await publicClient.getTransactionCount({ address: account.address, blockTag: "pending" });
 
   for (const game of completedGames) {
     // -- Moneyline resolution --

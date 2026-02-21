@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Providers } from "@/components/providers";
 import { Header } from "@/components/Header";
 import { DemoBanner } from "@/components/DemoBanner";
-import { FTUESpotlight } from "@/components/FTUESpotlight";
+import { FTUESpotlight, FTUEProvider } from "@/components/FTUESpotlight";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -26,14 +26,16 @@ export default function RootLayout({
           <div className="absolute -bottom-60 left-1/3 h-[500px] w-[500px] rounded-full bg-brand-purple-1/[0.04] blur-[130px]" />
         </div>
         <Providers>
-          <div className="relative z-10">
-            <Header />
-            <DemoBanner />
-            <FTUESpotlight />
-            <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
-              {children}
-            </main>
-          </div>
+          <FTUEProvider>
+            <div className="relative z-10">
+              <Header />
+              <DemoBanner />
+              <FTUESpotlight />
+              <main className="mx-auto max-w-7xl px-4 py-8 sm:px-6">
+                {children}
+              </main>
+            </div>
+          </FTUEProvider>
         </Providers>
       </body>
     </html>

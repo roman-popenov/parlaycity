@@ -93,7 +93,7 @@ forge verify-contract <address> src/core/HouseVault.sol:HouseVault \
 
 ## Uniswap V3 Pool Creation
 
-Creates a USDC/WETH pool on Base Sepolia Uniswap V3 (0.3% fee tier):
+Creates a USDC/WETH pool on Base Sepolia Uniswap V3 (0.05% fee tier):
 
 ```bash
 make create-pool-sepolia

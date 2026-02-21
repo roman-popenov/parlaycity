@@ -200,7 +200,7 @@ function isValidRiskResponse(data: unknown): data is RiskAdviceData {
   // aiInsight is optional; validate shape if present
   if (d.aiInsight !== undefined && d.aiInsight !== null) {
     const ai = d.aiInsight as Record<string, unknown>;
-    if (typeof ai.analysis !== "string" || typeof ai.model !== "string") return false;
+    if (typeof ai.analysis !== "string" || typeof ai.model !== "string" || typeof ai.provider !== "string") return false;
   }
   return true;
 }
@@ -539,7 +539,7 @@ export function ParlayBuilder() {
     }, 600);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedLegs, stake]);
+  }, [selectedLegs, stake, payoutMode]);
 
   // ── Derived display ────────────────────────────────────────────────────
 

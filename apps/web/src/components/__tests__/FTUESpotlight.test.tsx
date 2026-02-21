@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
-import { FTUESpotlight } from "../FTUESpotlight";
+import { FTUESpotlight, FTUEProvider } from "../FTUESpotlight";
 
 // ── DOM mocks ─────────────────────────────────────────────────────────────
 
@@ -36,7 +36,7 @@ afterEach(() => {
 
 describe("FTUESpotlight", () => {
   it("renders tooltip on first visit (phase 1)", async () => {
-    await act(async () => { render(<FTUESpotlight />); });
+    await act(async () => { render(<FTUEProvider><FTUESpotlight /></FTUEProvider>); });
     expect(screen.getByTestId("ftue-tooltip")).toBeInTheDocument();
     expect(screen.getByText("Connect Your Wallet")).toBeInTheDocument();
   });
@@ -44,12 +44,12 @@ describe("FTUESpotlight", () => {
   it("does not render when both phases are completed", async () => {
     sessionStore["ftue:completed"] = "true";
     sessionStore["ftue:phase2_completed"] = "true";
-    await act(async () => { render(<FTUESpotlight />); });
+    await act(async () => { render(<FTUEProvider><FTUESpotlight /></FTUEProvider>); });
     expect(screen.queryByTestId("ftue-tooltip")).not.toBeInTheDocument();
   });
 
   it("skip button completes both phases", async () => {
-    await act(async () => { render(<FTUESpotlight />); });
+    await act(async () => { render(<FTUEProvider><FTUESpotlight /></FTUEProvider>); });
     expect(screen.getByTestId("ftue-tooltip")).toBeInTheDocument();
     await act(async () => { fireEvent.click(screen.getByText("Skip")); });
     expect(screen.queryByTestId("ftue-tooltip")).not.toBeInTheDocument();
@@ -58,7 +58,7 @@ describe("FTUESpotlight", () => {
   });
 
   it("renders progress dots", async () => {
-    await act(async () => { render(<FTUESpotlight />); });
+    await act(async () => { render(<FTUEProvider><FTUESpotlight /></FTUEProvider>); });
     // Phase 1 has 3 steps, so 3 dots
     const tooltip = screen.getByTestId("ftue-tooltip");
     const dots = tooltip.querySelectorAll(".rounded-full");
@@ -68,7 +68,7 @@ describe("FTUESpotlight", () => {
   });
 
   it("shows Back button disabled on first step", async () => {
-    await act(async () => { render(<FTUESpotlight />); });
+    await act(async () => { render(<FTUEProvider><FTUESpotlight /></FTUEProvider>); });
     const backBtn = screen.getByText("Back");
     expect(backBtn).toBeDisabled();
   });
