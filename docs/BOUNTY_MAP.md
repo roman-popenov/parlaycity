@@ -19,11 +19,12 @@
 | 3 | Track: Futurllama | $2K | Novel mechanic + agent quoting | Crash-parlay + /quote API | HIGH | 1h | Narrative |
 | 4 | Track: Prosperia | $2K | Non-extractive, no owner sweep, social impact | 90/5/5 fee + rehab spec | MEDIUM | 1h | Narrative |
 | 5 | Uniswap API | $5K | Integrate Uniswap Trading API | Not started | MEDIUM | 6-8h | Swap-to-USDC |
-| 6 | Base Agents | $10K | Self-sustaining autonomous agents on Base | READY: market discovery agent + settler bot + Sepolia deploy + docs | HIGH | DONE | docs/BASE_AGENTS_BOUNTY.md |
-| 7 | ADI Open Project | $19K | Open-ended DeFi innovation on Base | Strong candidate | LOW | 2h | Narrative |
-| 8 | 0g Labs DeFAI | $7K | DeFi AI agent using 0g inference | Risk advisor fits | LOW-MED | 4-8h | Stretch |
+| 6 | Base Agents | $10K | Self-sustaining autonomous agents on Base | READY: market discovery agent + settler bot + MCP tools + Sepolia deploy + docs | HIGH | DONE | docs/BASE_AGENTS_BOUNTY.md |
+| 7 | Coinbase MCP | $10K | MCP server exposing protocol tools for AI agents | READY: 6 MCP tools (list_markets, get_quote, assess_risk, get_vault_health, get_leg_status, get_protocol_config) + JSON-RPC endpoint + AI chat UI | HIGH | DONE | /api/mcp |
+| 8 | ADI Open Project | $19K | Open-ended DeFi innovation on Base | Strong candidate | LOW | 2h | Narrative |
+| 9 | 0g Labs DeFAI | $7K | DeFi AI agent using 0g inference | Risk advisor fits | LOW-MED | 4-8h | Stretch |
 
-**Realistic: $31K** (1-6) | **Stretch: $57K** (add 7-8)
+**Realistic: $41K** (1-7) | **Stretch: $67K** (add 8-9)
 
 ## NOT Targeting
 
@@ -35,12 +36,13 @@
 
 ## Priority Order
 
-1. **Kite AI x402 ($10K)** -- real verification done, ship agent demo + docs
-2. **Track prizes ($6K)** -- already qualifying, polish narratives
-3. **Uniswap API ($5K)** -- swap-to-USDC onramp, needs API key
-4. **Base Agents ($10K)** -- market discovery agent + settler bot, deploy to Sepolia
-5. **ADI Open Project ($19K)** -- high prize but low confidence, needs strong application
-6. **0g Labs DeFAI ($7K)** -- stretch goal, wrap risk advisor with 0g inference
+1. **Kite AI x402 ($10K)** -- DONE, real verification + agent demo + docs
+2. **Base Agents ($10K)** -- DONE, market discovery agent + settler bot + Sepolia deploy
+3. **Coinbase MCP ($10K)** -- DONE, 6 MCP tools + JSON-RPC endpoint + AI chat UI + Vercel deploy
+4. **Track prizes ($6K)** -- already qualifying, polish narratives
+5. **Uniswap API ($5K)** -- swap-to-USDC onramp, needs API key
+6. **ADI Open Project ($19K)** -- high prize but low confidence, needs strong application
+7. **0g Labs DeFAI ($7K)** -- stretch goal, wrap risk advisor with 0g inference
 
 ## Bounty Deep Dives
 
@@ -67,6 +69,17 @@
 
 **What we need:** `GET /swap/quote` service endpoint proxying to Uniswap API. `SwapToUSDC.tsx` component on ParlayBuilder and VaultDashboard. Permit2 signing. API key application.
 
+### Coinbase MCP ($10K)
+**What they want:** MCP server exposing protocol capabilities for AI agent consumption.
+
+**What we have:** Full MCP implementation:
+1. **6 MCP tools** in `apps/web/src/lib/mcp/tools.ts`: `list_markets`, `get_quote`, `assess_risk`, `get_vault_health`, `get_leg_status`, `get_protocol_config`
+2. **JSON-RPC endpoint** at `/api/mcp` implementing `tools/list` and `tools/call` methods per MCP protocol
+3. **AI Chat UI** with Vercel AI SDK + Claude -- floating chat panel on all pages, tool calls rendered inline
+4. **Vercel deployment** at production URL with all env vars configured
+
+**Architecture:** Same tool implementations power both the MCP endpoint (for external AI agents like Claude Desktop) and the AI chat (via AI SDK `tool()` wrappers). No duplication.
+
 ### 0g Labs DeFAI ($7K)
 **What they want:** DeFi AI agent using 0g inference infrastructure.
 
@@ -77,6 +90,6 @@
 ### ADI Open Project ($19K)
 **What they want:** Open-ended DeFi innovation on Base.
 
-**What we have:** Full crash-parlay AMM with non-extractive fee routing, live cashout, unified vault liquidity. Strong narrative.
+**What we have:** Full crash-parlay AMM with non-extractive fee routing, live cashout, unified vault liquidity, MCP-enabled AI agent interface. Strong narrative.
 
-**What we need:** Polish submission narrative. Emphasize innovation (crash-parlay mechanic + x402 agent-native + rehab mode).
+**What we need:** Polish submission narrative. Emphasize innovation (crash-parlay mechanic + x402 agent-native + MCP tools + rehab mode).

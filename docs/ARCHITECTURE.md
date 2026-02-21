@@ -1,8 +1,8 @@
-# ParlayCity Architecture
+# ParlayVoo Architecture
 
 ## Overview
 
-ParlayCity is an onchain parlay betting platform on Base. Users build 2-5 leg parlays, LPs provide house liquidity via a vault, and settlement uses a hybrid model (fast admin resolution for bootstrap, optimistic challenge-based resolution thereafter). Autonomous agents handle market discovery and settlement -- humans make all betting decisions.
+ParlayVoo (protocol name: ParlayCity) is an onchain parlay betting platform on Base. Users build 2-5 leg parlays, LPs provide house liquidity via a vault, and settlement uses a hybrid model (fast admin resolution for bootstrap, optimistic challenge-based resolution thereafter). Autonomous agents handle market discovery and settlement -- humans make all betting decisions.
 
 ## System Diagram
 
@@ -17,8 +17,11 @@ flowchart TB
         SB[Settler Bot<br/>scripts/settler-bot.ts]
     end
 
-    subgraph "Frontend -- Next.js 14"
-        UI[Parlay Builder / Vault / Tickets / Ticket Detail]
+    subgraph "Frontend -- Next.js 14 (Vercel)"
+        UI[Parlay Builder / Vault / Tickets / Ticket Detail / About]
+        CHAT[AI Chat Panel<br/>Vercel AI SDK + Claude]
+        MCP[MCP JSON-RPC Endpoint<br/>/api/mcp]
+        AQN[Agent Quote API<br/>/api/premium/agent-quote]
     end
 
     subgraph "Services API :3001"
@@ -64,6 +67,8 @@ flowchart TB
     HU -->|buyTicket / cashoutEarly| PE
     HU -->|deposit / withdraw| HV
     HU -->|lock / unlock| LV
+    HU -->|natural language| CHAT
+    CHAT -->|tool calls| MCP
 
     %% Contract internals
     PE -->|reserve / release / pay| HV
@@ -134,6 +139,29 @@ flowchart LR
 
 1. **x402 (USDC on Base):** Agent pays for risk assessment via x402 payment header. Services verifies on-chain USDC transfer via facilitator.
 2. **0G Compute (A0GI tokens):** Services API optionally invokes 0G inference for AI risk narrative. Each call costs A0GI tokens on the 0G testnet.
+
+## MCP Server & AI Chat
+
+### MCP Tools (`apps/web/src/lib/mcp/tools.ts`)
+
+Six protocol tools callable by any MCP-compatible AI agent:
+
+| Tool | Input | Returns |
+|------|-------|---------|
+| `list_markets` | `{ category?: string }` | Markets with legs, probabilities, categories |
+| `get_quote` | `{ legIds, stake }` | Multiplier, edge, payout, fees |
+| `assess_risk` | `{ legIds, stake, bankroll? }` | Kelly fraction, EV, recommendation |
+| `get_vault_health` | `{}` | TVL, reserved, free liquidity, utilization% |
+| `get_leg_status` | `{ legId }` | Status, question, sourceRef |
+| `get_protocol_config` | `{}` | Fees, caps, addresses, chain |
+
+### MCP Endpoint (`/api/mcp`)
+
+Stateless JSON-RPC endpoint implementing MCP protocol (`tools/list` + `tools/call`). External AI agents (Claude Desktop, etc.) connect here for programmatic protocol access. GET returns tool discovery metadata.
+
+### AI Chat (`/api/chat` + `ChatPanel.tsx`)
+
+Floating chat panel (Vercel AI SDK + Claude) available on all pages. Uses the same tool implementations as the MCP endpoint via AI SDK `tool()` wrappers. Streaming responses with inline tool call results.
 
 ## Offchain Services
 

@@ -1,10 +1,11 @@
-# ParlayCity Demo Script
+# ParlayVoo Demo Script
 
 ## Setup (30 seconds)
 
-1. Open the app at `http://localhost:3000`
+1. Open the app at the Vercel deployment URL (or `http://localhost:3000` for local)
 2. Connect wallet (MetaMask or Coinbase Wallet)
 3. Ensure you're on Base Sepolia (or Anvil for local)
+4. FTUE spotlight auto-starts for first-time visitors -- walk through or skip
 
 ## Flow 1: LP Deposits (1 minute)
 
@@ -68,6 +69,30 @@
 
 **Narrative**: "Agents handle the plumbing. They discover real-world events, bring them on-chain, and resolve outcomes. Humans make all betting decisions. The agents earn keeper fees and keep the protocol running autonomously."
 
+## Flow 7: AI Chat Assistant (1 minute)
+
+1. Click the purple chat bubble (bottom-right corner, available on every page)
+2. Ask: "What markets are available?" -- AI calls `list_markets` tool, shows results inline
+3. Ask: "Quote a 3-leg parlay with legs 1, 5, 12 for $50" -- AI calls `get_quote`, returns multiplier/payout
+4. Ask: "How healthy is the vault?" -- AI calls `get_vault_health`, shows TVL/utilization
+5. Ask: "Assess risk for legs 1, 5, 12 with $50 stake" -- AI calls `assess_risk`, shows Kelly recommendation
+
+**Narrative**: "AI agents can discover markets, price risk, and check protocol health through the same tools the chat uses. ParlayVoo is agent-native -- every protocol action is tool-accessible."
+
+## Flow 8: MCP Endpoint for External Agents (30 seconds)
+
+1. Show the MCP discovery endpoint: `curl https://<vercel-url>/api/mcp` -- returns tool list
+2. Call a tool: `curl -X POST https://<vercel-url>/api/mcp -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'`
+3. External AI agents (Claude Desktop, ChatGPT plugins, etc.) can connect via this standard MCP interface
+
+**Narrative**: "Any AI agent that speaks MCP can discover and use ParlayVoo's protocol tools. The same tools that power the chat UI are exposed as a standard JSON-RPC endpoint."
+
+## Flow 9: About Page (15 seconds)
+
+1. Navigate to **/about**
+2. Shows protocol mechanics, payout modes, fee structure, and the crash-parlay concept
+3. Links to vault, builder, and tickets
+
 ## Key Talking Points
 
 - **Fully onchain**: tickets are NFTs, payouts are pull-based, math is transparent
@@ -77,4 +102,8 @@
 - **Hybrid settlement**: starts centralized for speed, upgrades to optimistic for trust
 - **House vault**: LPs earn the edge -- not a zero-sum PvP game
 - **Base-native**: fast confirmations, low gas, smart wallet ready
+- **Agent-native (MCP)**: 6 protocol tools exposed via MCP JSON-RPC + AI SDK chat. Any AI agent can discover markets, get quotes, assess risk
+- **AI chat**: Built-in chat assistant (Claude + Vercel AI SDK) with tool calling, streaming, and inline results
+- **Vercel-deployed**: Live on Vercel, no Express server dependency for frontend
+- **FTUE onboarding**: Two-phase spotlight tutorial for first-time users
 - **Composable**: oracle adapters are pluggable, hedge pipeline exists (stubbed)

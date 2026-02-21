@@ -1,15 +1,19 @@
 import { NextResponse } from "next/server";
 import { SEED_MARKETS } from "@/lib/mcp/tools";
+import { fetchNBAMarkets } from "@/lib/bdl";
 
 /**
- * GET /api/markets — serve seed markets in the same shape the ParlayBuilder expects.
+ * GET /api/markets -- serve seed + live NBA markets.
  * Replaces the Express services `/markets` endpoint for Vercel deployment.
+ * NBA markets fetched from BallDontLie API when BDL_API_KEY is set.
  */
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
   const categoryFilter = searchParams.get("category");
 
-  let markets = SEED_MARKETS;
+  // Merge seed + NBA markets
+  const nbaMarkets = await fetchNBAMarkets();
+  let markets = [...SEED_MARKETS, ...nbaMarkets];
 
   if (categoryFilter) {
     const cats = categoryFilter.split(",").map((c) => c.trim().toLowerCase());

@@ -24,7 +24,7 @@ export async function POST(req: Request) {
 
   const result = streamText({
     model: anthropic("claude-sonnet-4-20250514"),
-    system: `You are ParlayCity AI, an expert assistant for the ParlayCity crash-parlay protocol on Base.
+    system: `You are ParlayVoo AI, an expert assistant for the ParlayVoo crash-parlay protocol on Base.
 You help users discover betting markets, understand quotes and risk, and check protocol health.
 Use your tools to fetch live data -- never make up numbers. Be concise and helpful.
 When showing market data, format it clearly. When showing risk assessments, highlight the action recommendation.
@@ -92,7 +92,7 @@ USDC amounts are in 6-decimal format on-chain but display as human-readable doll
       }),
       get_protocol_config: tool({
         description:
-          "Get ParlayCity protocol configuration -- fee structure, limits, contract addresses, and chain info.",
+          "Get ParlayVoo protocol configuration -- fee structure, limits, contract addresses, and chain info.",
         parameters: z.object({}),
         execute: async () => getProtocolConfig(),
       }),
