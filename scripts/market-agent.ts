@@ -38,6 +38,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { foundry, baseSepolia } from "viem/chains";
 
 import { loadEnvLocal, requireExplicitKeyForRemoteRpc, safeBigIntToNumber, safeParseNumber } from "./lib/env";
+import { BUILDER_SUFFIX } from "./lib/builder-code";
 import { fetchNBAMarkets, fetchCompletedGames, isBDLEnabled } from "../packages/services/src/catalog/bdl";
 
 // -- ABI fragments -----------------------------------------------------------
@@ -273,6 +274,7 @@ async function discover(
           adminOracleAddr,
           BigInt(leg.probabilityPPM),
         ],
+        dataSuffix: BUILDER_SUFFIX,
         nonce,
         chain,
         account,
@@ -574,6 +576,7 @@ async function tryResolveleg(
       abi: ORACLE_ABI,
       functionName: "resolve",
       args: [BigInt(legId), status, outcome],
+      dataSuffix: BUILDER_SUFFIX,
       nonce,
       chain,
       account,

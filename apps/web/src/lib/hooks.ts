@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useAccount, useReadContract, useWriteContract, usePublicClient } from "wagmi";
 import { parseUnits, toHex, pad, parseEventLogs } from "viem";
+import { BUILDER_SUFFIX } from "./builder-code";
 import {
   USDC_ABI,
   HOUSE_VAULT_ABI,
@@ -421,6 +422,7 @@ export function useMintTestUSDC() {
         abi: USDC_ABI,
         functionName: "mint",
         args: [address, amount],
+        dataSuffix: BUILDER_SUFFIX,
       });
       setIsPending(false);
       setIsConfirming(true);
@@ -480,6 +482,7 @@ export function useBuyTicket() {
         abi: USDC_ABI,
         functionName: "approve",
         args: [contractAddresses.parlayEngine as `0x${string}`, stakeAmount],
+        dataSuffix: BUILDER_SUFFIX,
       });
       const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash });
       if (approveReceipt.status === "reverted") {
@@ -499,6 +502,7 @@ export function useBuyTicket() {
         args: payoutMode === 0
           ? [legIds, outcomesBytes32, stakeAmount]
           : [legIds, outcomesBytes32, stakeAmount, payoutMode],
+        dataSuffix: BUILDER_SUFFIX,
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash: buyHash });
 
@@ -581,6 +585,7 @@ export function useDepositVault() {
         abi: USDC_ABI,
         functionName: "approve",
         args: [contractAddresses.houseVault as `0x${string}`, amount],
+        dataSuffix: BUILDER_SUFFIX,
       });
       const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash });
       if (approveReceipt.status === "reverted") {
@@ -595,6 +600,7 @@ export function useDepositVault() {
         abi: HOUSE_VAULT_ABI,
         functionName: "deposit",
         args: [amount, address],
+        dataSuffix: BUILDER_SUFFIX,
       });
       const depositReceipt = await publicClient.waitForTransactionReceipt({ hash: depositHash });
       if (depositReceipt.status === "reverted") {
@@ -646,6 +652,7 @@ export function useWithdrawVault() {
         abi: HOUSE_VAULT_ABI,
         functionName: "withdraw",
         args: [amount, address],
+        dataSuffix: BUILDER_SUFFIX,
       });
       const withdrawReceipt = await publicClient.waitForTransactionReceipt({ hash: withdrawHash });
       if (withdrawReceipt.status === "reverted") {
@@ -694,6 +701,7 @@ export function useSettleTicket() {
         abi: PARLAY_ENGINE_ABI,
         functionName: "settleTicket",
         args: [ticketId],
+        dataSuffix: BUILDER_SUFFIX,
       });
       setHash(txHash);
 
@@ -744,6 +752,7 @@ export function useClaimPayout() {
         abi: PARLAY_ENGINE_ABI,
         functionName: "claimPayout",
         args: [ticketId],
+        dataSuffix: BUILDER_SUFFIX,
       });
       setHash(txHash);
 
@@ -794,6 +803,7 @@ export function useClaimProgressive() {
         abi: PARLAY_ENGINE_ABI,
         functionName: "claimProgressive",
         args: [ticketId],
+        dataSuffix: BUILDER_SUFFIX,
       });
       setHash(txHash);
 
@@ -844,6 +854,7 @@ export function useCashoutEarly() {
         abi: PARLAY_ENGINE_ABI,
         functionName: "cashoutEarly",
         args: [ticketId, minOut],
+        dataSuffix: BUILDER_SUFFIX,
       });
       setHash(txHash);
 
@@ -906,6 +917,7 @@ export function useLockVault() {
         abi: USDC_ABI,
         functionName: "approve",
         args: [contractAddresses.lockVault as `0x${string}`, shares],
+        dataSuffix: BUILDER_SUFFIX,
       });
       const approveReceipt = await publicClient.waitForTransactionReceipt({ hash: approveHash });
       if (approveReceipt.status === "reverted") {
@@ -920,6 +932,7 @@ export function useLockVault() {
         abi: LOCK_VAULT_ABI,
         functionName: "lock",
         args: [shares, tier],
+        dataSuffix: BUILDER_SUFFIX,
       });
       const lockReceipt = await publicClient.waitForTransactionReceipt({ hash: lockHash });
       if (lockReceipt.status === "reverted") {
@@ -962,6 +975,7 @@ export function useUnlockVault() {
         abi: LOCK_VAULT_ABI,
         functionName: "unlock",
         args: [positionId],
+        dataSuffix: BUILDER_SUFFIX,
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status === "reverted") {
@@ -999,6 +1013,7 @@ export function useEarlyWithdraw() {
         abi: LOCK_VAULT_ABI,
         functionName: "earlyWithdraw",
         args: [positionId],
+        dataSuffix: BUILDER_SUFFIX,
       });
       const receipt = await publicClient.waitForTransactionReceipt({ hash });
       if (receipt.status === "reverted") {
