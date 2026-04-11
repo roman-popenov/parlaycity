@@ -67,10 +67,12 @@ LEG_REGISTRY=$(get_addr "LegRegistry")
 LOCK_VAULT=$(get_addr "LockVault")
 ADMIN_ORACLE=$(get_addr "AdminOracleAdapter")
 
-# Preserve WalletConnect project ID if it exists
+# Preserve values that are set out-of-band and shouldn't be clobbered on deploy
 WC_ID=""
+ALCHEMY_RPC=""
 if [ -f "$ENV_FILE" ]; then
   WC_ID=$(grep -oP '(?<=NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=).*' "$ENV_FILE" 2>/dev/null || true)
+  ALCHEMY_RPC=$(grep -oP '(?<=NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL=).*' "$ENV_FILE" 2>/dev/null || true)
 fi
 
 cat > "$ENV_FILE" <<EOF
@@ -83,6 +85,7 @@ NEXT_PUBLIC_LOCK_VAULT_ADDRESS=$LOCK_VAULT
 NEXT_PUBLIC_ADMIN_ORACLE_ADDRESS=$ADMIN_ORACLE
 ADMIN_ORACLE_ADDRESS=$ADMIN_ORACLE
 NEXT_PUBLIC_WALLETCONNECT_PROJECT_ID=$WC_ID
+NEXT_PUBLIC_BASE_SEPOLIA_RPC_URL=$ALCHEMY_RPC
 EOF
 
 echo "Updated $ENV_FILE with deployed addresses (chain $CHAIN_ID):"
