@@ -21,7 +21,7 @@ Mark tasks `[x]` when done. Don't delete — keeps a log of what shipped vs what
 
 ## Scaling backlog
 
-### S-1 — Tune React Query defaults
+### S-1 — Tune React Query defaults [x]
 - **Time:** 5 minutes
 - **Value:** High. Halves background-tab RPC load and kills redundant refetches on route navigation. Whole app feels snappier with zero risk.
 - **Files:** `packages/nextjs/src/components/providers.tsx`
@@ -92,17 +92,17 @@ Mark tasks `[x]` when done. Don't delete — keeps a log of what shipped vs what
 
 Add your own below. For each, jot down: time estimate, value, blockers (which scaling task it depends on, if any). Then slot them into the alternation sequence.
 
-### F-1 — (your idea here)
-- **Time:**
-- **Value:**
-- **Blockers:**
+### F-1 — Implement real AMM pool
+- **Time:** 1 day
+- **Value:** high, the product is not complete until we have an actual lock up mechanism driven by market dynamics
+- **Blockers:** currect lock functionality has return periods and values hard-coded 
 - **Notes:**
 
-### F-2 — (your idea here)
-- **Time:**
-- **Value:**
-- **Blockers:**
-- **Notes:**
+### F-2 — Add live polymarket data
+- **Time:** 2 days
+- **Value:** medium, will need this for the launch and settlement
+- **Blockers:** values are hard-coded as of right now, some agent workloads probably depend on this as well. Possible need to remove Kelly and Betty agents to accomplish this. Better data retention needed (Postgres)
+- **Notes:** Live polymarket data will be used to 1) find real bets with their live odds 2) settle active bets
 
 ### F-3 — (your idea here)
 - **Time:**
