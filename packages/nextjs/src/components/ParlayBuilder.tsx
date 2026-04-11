@@ -806,32 +806,7 @@ export function ParlayBuilder() {
             </div>
           </div>
 
-          {/* Payout mode selector */}
-          <div>
-            <label className="mb-1.5 block text-xs font-medium uppercase tracking-wider text-gray-500">
-              Payout Mode
-            </label>
-            <div className="grid grid-cols-3 gap-1 rounded-xl bg-white/5 p-1">
-              {([
-                { value: 0 as const, label: "Classic", desc: "All or nothing" },
-                { value: 1 as const, label: "Progressive", desc: "Claim as legs win" },
-                { value: 2 as const, label: "Cashout", desc: "Exit early w/ penalty" },
-              ]).map(({ value, label, desc }) => (
-                <button
-                  key={value}
-                  onClick={() => { resetSuccess(); setPayoutMode(value); }}
-                  className={`rounded-lg px-2 py-2 text-center transition-all ${
-                    payoutMode === value
-                      ? "bg-brand-purple/15 text-brand-purple-1 ring-1 ring-brand-purple/30"
-                      : "text-gray-400 hover:text-gray-200"
-                  }`}
-                >
-                  <span className="block text-xs font-semibold">{label}</span>
-                  <span className="block text-[10px] opacity-60">{desc}</span>
-                </button>
-              ))}
-            </div>
-          </div>
+          {/* Payout mode selector hidden: payoutMode is fixed to Classic (0) via initial state */}
 
           {/* Payout breakdown */}
           <div className="space-y-2 text-sm">
